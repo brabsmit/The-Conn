@@ -92,6 +92,7 @@ const DECELERATION = 0.05; // knots per tick
 const DIVE_RATE = 1.0; // feet per tick
 const ASCENT_RATE = 1.0; // feet per tick
 const FEET_PER_KNOT_PER_TICK = 0.028; // approx 1.68 ft/sec / 60 ticks/sec
+const MAX_HISTORY = 300;
 
 // Helper for Gaussian noise (Box-Muller)
 const gaussianRandom = (mean: number, stdev: number) => {
@@ -284,18 +285,27 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Every 60 ticks (approx 1 sec), record history
       let newOwnShipHistory = state.ownShipHistory;
       if (newTickCount % 60 === 0) {
-        newTrackers = newTrackers.map(tracker => ({
-          ...tracker,
-          bearingHistory: [
+        newTrackers = newTrackers.map(tracker => {
+          let newHistory = [
             ...tracker.bearingHistory,
             { time: newGameTime, bearing: tracker.currentBearing }
-          ]
-        }));
+          ];
+          if (newHistory.length > MAX_HISTORY) {
+            newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+          }
+          return {
+            ...tracker,
+            bearingHistory: newHistory
+          };
+        });
 
         newOwnShipHistory = [
           ...state.ownShipHistory,
           { time: newGameTime, x: newX, y: newY, heading: newHeading }
         ];
+        if (newOwnShipHistory.length > MAX_HISTORY) {
+          newOwnShipHistory = newOwnShipHistory.slice(newOwnShipHistory.length - MAX_HISTORY);
+        }
       }
 
       return {
