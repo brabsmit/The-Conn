@@ -1,0 +1,79 @@
+import { Panel } from './components/ui/Panel';
+
+function App() {
+  return (
+    // LAYER 1: The Bulkhead (Background)
+    <div className="min-h-screen bg-bulkhead bg-noise p-8 flex items-center justify-center font-mono">
+      
+      {/* The Main Desk Container */}
+      <div className="w-full max-w-6xl grid grid-cols-12 grid-rows-6 gap-6 h-[800px]">
+        
+        {/* SECTION 1: SENSOR ARRAY (Left Side) */}
+        <div className="col-span-4 row-span-6 flex flex-col gap-4">
+          <Panel title="Sonar Array" className="flex-1">
+             {/* Placeholder for PixiJS Screen */}
+             <div className="w-full h-full bg-screen-off rounded shadow-inset border border-white/10 flex items-center justify-center">
+                <span className="text-phosphor animate-pulse text-sm">[NO SIGNAL]</span>
+             </div>
+          </Panel>
+          
+          <Panel title="Signal Analysis" className="h-1/3">
+            <div className="grid grid-cols-4 gap-2 h-full">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="bg-black/40 border border-white/5 relative">
+                   <div className="absolute bottom-0 w-full bg-phosphor/20" style={{height: `${Math.random() * 100}%`}}></div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+
+        {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
+        <Panel title="Target Motion Analysis" className="col-span-8 row-span-4">
+           <div className="w-full h-full bg-zinc-900/50 rounded border border-dashed border-zinc-700 relative p-4">
+              <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-phosphor rounded-full shadow-[0_0_10px_rgba(51,255,51,0.8)]" />
+              <div className="text-zinc-600 text-xs">Waiting for solution input...</div>
+           </div>
+        </Panel>
+
+        {/* SECTION 3: SHIP CONTROL (Center/Right Bottom) */}
+        <div className="col-span-8 row-span-2 grid grid-cols-2 gap-6">
+          
+          {/* Helm Station */}
+          <Panel title="Helm">
+            <div className="grid grid-cols-2 gap-4 h-full">
+              <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
+                <span className="text-xs text-zinc-500">DEPTH</span>
+                <span className="text-2xl text-amber-500">0400</span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
+                <span className="text-xs text-zinc-500">SPEED</span>
+                <span className="text-2xl text-amber-500">12.0</span>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Weapons Control */}
+          <Panel title="Fire Control" variant="danger">
+             <div className="flex gap-2 h-full items-center justify-around">
+                <button className="w-16 h-16 rounded-full bg-red-900 border-4 border-red-950 shadow-hard flex items-center justify-center hover:bg-red-800 active:shadow-inset active:translate-y-1 transition-all">
+                  <span className="text-xs font-bold text-red-200">FIRE</span>
+                </button>
+                <div className="flex flex-col gap-1">
+                   <div className="w-24 h-6 bg-black border border-red-900/50 flex items-center px-2">
+                      <span className="text-red-500 text-xs">TUBE 1: RDY</span>
+                   </div>
+                   <div className="w-24 h-6 bg-black border border-red-900/50 flex items-center px-2">
+                      <span className="text-red-500 text-xs">TUBE 2: LOAD</span>
+                   </div>
+                </div>
+             </div>
+          </Panel>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+export default App;
