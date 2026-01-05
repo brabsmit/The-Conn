@@ -62,7 +62,7 @@ export const TMAControls = () => {
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">BEARING</span>
                     <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {projected.calcBearing.toFixed(0)}
+                        {projected.calcBearing.toFixed(0).padStart(3, '0')}
                     </span>
                  </div>
                  <div className="flex flex-col">
@@ -74,7 +74,7 @@ export const TMAControls = () => {
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">COURSE</span>
                     <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {selectedTrackerCourse.toFixed(1)}
+                        {selectedTrackerCourse.toFixed(0).padStart(3, '0')}
                     </span>
                  </div>
                  <div className="flex flex-col">
@@ -145,11 +145,28 @@ export const TMAControls = () => {
                 </div>
                 <input
                 type="range"
-                min="1000"
-                max="40000"
+                min="0"
+                max="10000"
                 step="100"
                 value={range}
                 onChange={(e) => updateTrackerSolution(selectedTracker.id, { range: parseFloat(e.target.value) })}
+                className={sliderClass}
+                />
+            </div>
+
+            {/* Bearing Slider */}
+            <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-xs text-green-500 font-mono">
+                <span>BRG</span>
+                <span>{bearing.toFixed(0).padStart(3, '0')}°</span>
+                </div>
+                <input
+                type="bearing"
+                min="0"
+                max="359"
+                step="1"
+                value={bearing}
+                onChange={(e) => updateTrackerSolution(selectedTracker.id, { bearing: parseFloat(e.target.value) })}
                 className={sliderClass}
                 />
             </div>
