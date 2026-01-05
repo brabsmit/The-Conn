@@ -201,7 +201,26 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
 const Grid = ({ width, height, viewMode }: DisplayProps) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
-    const heading = useSubmarineStore(state => state.heading);
+    const labelsContainerRef = useRef<PIXI.Container | null>(null);
+
+    // Static list of angles for labels
+    const labels = useMemo(() => {
+        const result = [];
+        for (let b = 0; b < 360; b += 30) {
+             result.push(b);
+        }
+        return result;
+    }, []);
+
+    // We create text components for each label *twice* to handle wrapping
+    // Or just one set and update positions?
+    // In Pixi/React-Pixi, we can't easily move components imperatively without re-render if we use props.
+    // However, we can use refs to access the PIXI.Text instances and modify them.
+    // We need a stable list of refs.
+
+    // But `useTick` runs in the context of the component.
+    // If we want to avoid re-renders of Grid, we must not use `useSubmarineStore` hook.
+    // We already removed it.
 
     useTick(() => {
         const g = graphicsRef.current;
@@ -211,11 +230,11 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         // Grid Lines: Very dim green (alpha: 0.1)
         g.lineStyle(1, 0x33FF33, 0.1);
 
-        if (viewMode === 'GEO') {
-            const PIXELS_PER_DEGREE = width / 360;
-            const SCREEN_CENTER = width / 2;
-            const currentHeading = useSubmarineStore.getState().heading;
+        const currentHeading = useSubmarineStore.getState().heading;
+        const PIXELS_PER_DEGREE = width / 360;
+        const SCREEN_CENTER = width / 2;
 
+        if (viewMode === 'GEO') {
             for (let b = 0; b < 360; b += 30) {
                  const diff = getShortestAngle(b, currentHeading);
                  if (diff >= -180 && diff <= 180) {
@@ -238,35 +257,108 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
             g.moveTo(0, y);
             g.lineTo(width, y);
         }
-    });
 
-    // Labels
-    const labels = useMemo(() => {
-        const result = [];
-        for (let b = 0; b < 360; b += 30) {
-             result.push(b);
+        // Update Labels Positions
+        const container = labelsContainerRef.current;
+        if (container && viewMode === 'GEO') {
+            // We expect children to be PIXI.Text objects.
+            // We have labels 0, 30, ... 330.
+            // We need to update their x position and visibility.
+
+            // Note: We need a way to map specific text objects to angles.
+            // Since we render them in order, we can iterate.
+
+            // However, wrapping adds complexity (duplicate labels).
+            // A simpler approach for the refactor:
+            // Just iterate over the children and update them if we can identify them.
+            // But we can't easily attach metadata to PIXI objects created via JSX cleanly without custom props.
+
+            // Alternative: Re-calculate positions for *all* 12 angles.
+            // And assign them to the first 12 children.
+            // Handle wrapping by using extra children if needed, or just hide them.
+
+            // Let's assume we render 2 sets of labels to handle wrapping safely?
+            // Or just 1 set and move them.
+            // If an angle is at -180/180 boundary, it appears at x=0 and x=width.
+            // We might need a duplicate for that specific case.
+
+            // To be robust and avoid React re-renders, let's just create enough Text objects.
+            // 12 angles. At most one angle splits (180 deg away).
+            // So 13 text objects would suffice?
+            // Actually, usually only one or zero labels are at the wrap point.
+
+            // Let's iterate through the 12 primary labels.
+            // We can assume the first 12 children correspond to 0, 30, ..., 330.
+
+            const children = container.children as PIXI.Text[];
+
+            labels.forEach((angle, index) => {
+                const textObj = children[index];
+                if (!textObj) return;
+
+                const diff = getShortestAngle(angle, currentHeading);
+
+                // Visible if within [-180, 180] (which it always is by definition of shortest angle)
+                // But we only show if it maps to screen?
+                // Actually in 360 view, everything is visible.
+
+                const x = SCREEN_CENTER + (diff * PIXELS_PER_DEGREE);
+                textObj.x = x;
+                textObj.visible = true; // Always visible in GEO
+
+                // Handle the wrap case where a label might be needed at the other edge.
+                // If diff is close to -180, it might need to show at +180 (width) too?
+                // getShortestAngle returns [-180, 180].
+                // If diff is -180, x = 0. We might want x = width too.
+
+                // We reserved indices 12+ for wrap duplicates.
+                // Let's manage the duplicate for the one angle that is -180.
+            });
+
+            // Handle wrap duplicates
+            // We can use a dedicated pool of text objects for "right side" duplicates.
+            // Let's say children[12+] are for duplicates.
+            // Reset them to invisible first.
+            for (let i = 12; i < children.length; i++) {
+                children[i].visible = false;
+            }
+
+            let dupIndex = 12;
+            labels.forEach((angle) => {
+                const diff = getShortestAngle(angle, currentHeading);
+                if (Math.abs(diff + 180) < 0.1) { // Close to -180
+                     // This label is at x=0. We also want it at x=width.
+                     if (dupIndex < children.length) {
+                         const dup = children[dupIndex];
+                         dup.text = angle.toString().padStart(3, '0');
+                         dup.x = width;
+                         dup.visible = true;
+                         dupIndex++;
+                     }
+                }
+            });
+        } else if (container && viewMode === 'DOTS') {
+             // Hide all labels in DOTS mode for now (or implement DOTS specific labels)
+             container.visible = false;
         }
-        return result;
-    }, []);
 
-    const PIXELS_PER_DEGREE = width / 360;
-    const SCREEN_CENTER = width / 2;
+        if (container && viewMode === 'GEO') {
+             container.visible = true;
+        }
+    });
 
     if (viewMode === 'DOTS') return <Container><Graphics ref={graphicsRef} /></Container>;
 
     return (
         <Container>
             <Graphics ref={graphicsRef} />
-            {labels.map(angle => {
-                 const diff = getShortestAngle(angle, heading);
-                 if (diff < -180 || diff > 180) return null;
-                 const x = SCREEN_CENTER + (diff * PIXELS_PER_DEGREE);
-
-                 return (
+            <Container ref={labelsContainerRef}>
+                {/* Primary Labels (0-11) */}
+                {labels.map(angle => (
                      <Text
                         key={angle}
                         text={angle.toString().padStart(3, '0')}
-                        x={x}
+                        x={0} // Updated in useTick
                         y={10}
                         anchor={0.5}
                         style={
@@ -279,32 +371,28 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
                             })
                         }
                      />
-                 );
-            })}
-             {labels.map(angle => {
-                 const diff = getShortestAngle(angle, heading);
-                 if (diff === -180) {
-                      return (
-                         <Text
-                            key={`${angle}-right`}
-                            text={angle.toString().padStart(3, '0')}
-                            x={width}
-                            y={10}
-                            anchor={0.5}
-                            style={
-                                new PIXI.TextStyle({
-                                    fill: '#33FF33',
-                                    fontSize: 12,
-                                    fontFamily: 'monospace',
-                                    // @ts-ignore
-                                    alpha: 0.5
-                                })
-                            }
-                         />
-                     );
-                 }
-                 return null;
-              })}
+                ))}
+                {/* Duplicate/Wrap Labels (Reserve a few, e.g. 2) */}
+                {[0, 1].map(i => (
+                     <Text
+                        key={`dup-${i}`}
+                        text=""
+                        x={0}
+                        y={10}
+                        anchor={0.5}
+                        visible={false}
+                        style={
+                            new PIXI.TextStyle({
+                                fill: '#33FF33',
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                // @ts-ignore
+                                alpha: 0.5
+                            })
+                        }
+                     />
+                ))}
+            </Container>
         </Container>
     );
 };
