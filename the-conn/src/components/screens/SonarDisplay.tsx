@@ -21,6 +21,8 @@ const Waterfall = () => {
     const rtB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
     const currentRtIndex = useRef(0);
 
+    const designateTracker = useSubmarineStore(state => state.designateTracker);
+
     // Cleanup textures on unmount
     useEffect(() => {
         return () => {
@@ -97,7 +99,36 @@ const Waterfall = () => {
     });
 
     return (
-        <Sprite ref={spriteRef} texture={rtA.current} />
+        <Sprite
+            ref={spriteRef}
+            texture={rtA.current}
+            eventMode="static"
+            pointerdown={(e) => {
+                if (!e.currentTarget) return;
+                const localPoint = e.currentTarget.toLocal(e.global);
+                const x = localPoint.x;
+
+                // Inverse Formula:
+                // x = (normalizedBearing / 360) * width
+                // normalizedBearing = (x / width) * 360
+                // bearing = normalizedBearing - 180
+
+                const normalizedBearing = (x / width) * 360;
+                let bearing = normalizedBearing - 180;
+
+                // Ensure wrapping consistency if needed, though the formula gives -180 to 180 directly.
+                // The store normalizeAngle expects inputs that might be outside 0-360 and wraps them to 0-359.
+                // -180 becomes 180. -90 becomes 270.
+                // So passing 'bearing' as calculated here is fine if designateTracker uses it directly or normalizes it.
+                // designateTracker stores it as is.
+                // But generally bearings are 0-359 in the store.
+                // Let's normalize it to 0-359 before sending.
+                if (bearing < 0) bearing += 360;
+
+                designateTracker(bearing);
+                console.log(`Tracker designated at bearing: ${bearing}`);
+            }}
+        />
     );
 };
 
