@@ -16,6 +16,13 @@ export interface TrackerHistory {
   bearing: number;
 }
 
+export interface OwnShipHistory {
+  time: number;
+  x: number;
+  y: number;
+  heading: number;
+}
+
 export interface TrackerSolution {
   speed: number;
   range: number;
@@ -37,6 +44,7 @@ interface SubmarineState {
   depth: number; // 0-1200ft
   x: number;
   y: number;
+  ownShipHistory: OwnShipHistory[];
 
   // Truth Data
   contacts: Contact[];
@@ -46,6 +54,7 @@ interface SubmarineState {
 
   // Tracker Data
   trackers: Tracker[];
+  selectedTrackerId: string | null;
   tickCount: number;
   gameTime: number; // in seconds
 
@@ -59,6 +68,8 @@ interface SubmarineState {
   setOrderedSpeed: (speed: number) => void;
   setOrderedDepth: (depth: number) => void;
   designateTracker: (bearing: number) => void;
+  setSelectedTracker: (id: string | null) => void;
+  updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
   tick: () => void;
 }
 
@@ -90,9 +101,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   depth: 0,
   x: 0,
   y: 0,
+  ownShipHistory: [],
   contacts: [{ id: 'Sierra-1', x: 5000, y: 5000 }],
   sensorReadings: [],
   trackers: [],
+  selectedTrackerId: null,
   tickCount: 0,
   gameTime: 0,
   orderedHeading: 0,
@@ -131,8 +144,21 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       bearingHistory: [],
       solution: { speed: 0, range: 0, course: 0 }
     };
-    return { trackers: [...state.trackers, newTracker] };
+    return {
+      trackers: [...state.trackers, newTracker],
+      selectedTrackerId: id // Auto-select new tracker
+    };
   }),
+
+  setSelectedTracker: (id) => set({ selectedTrackerId: id }),
+
+  updateTrackerSolution: (trackerId, solution) => set((state) => ({
+    trackers: state.trackers.map(t =>
+      t.id === trackerId
+        ? { ...t, solution: { ...t.solution, ...solution } }
+        : t
+    )
+  })),
 
   tick: () =>
     set((state) => {
@@ -235,6 +261,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       });
 
       // Every 60 ticks (approx 1 sec), record history
+      let newOwnShipHistory = state.ownShipHistory;
       if (newTickCount % 60 === 0) {
         newTrackers = newTrackers.map(tracker => ({
           ...tracker,
@@ -243,6 +270,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
             { time: newGameTime, bearing: tracker.currentBearing }
           ]
         }));
+
+        newOwnShipHistory = [
+          ...state.ownShipHistory,
+          { time: newGameTime, x: newX, y: newY, heading: newHeading }
+        ];
       }
 
       return {
@@ -251,6 +283,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         depth: newDepth,
         x: newX,
         y: newY,
+        ownShipHistory: newOwnShipHistory,
         sensorReadings: newSensorReadings,
         tickCount: newTickCount,
         gameTime: newGameTime,

@@ -3,6 +3,7 @@ import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
+import { TMAControls } from './components/panels/TMAControls';
 
 function App() {
   const {
@@ -48,9 +49,12 @@ function App() {
         </div>
 
         {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
-        <Panel title="Target Motion Analysis" className="col-span-8 row-span-4">
-           <div className="w-full h-full bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
+        <Panel title="Target Motion Analysis" className="col-span-8 row-span-4 flex flex-col gap-2">
+           <div className="w-full flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
                <TMADisplay />
+           </div>
+           <div className="w-full h-24 bg-black/30 rounded border border-white/10">
+               <TMAControls />
            </div>
         </Panel>
 

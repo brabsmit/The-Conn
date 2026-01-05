@@ -153,7 +153,7 @@ const NoiseBackground = () => {
 
 const TrackerOverlay = () => {
     const width = 800;
-    const height = 600;
+    // const height = 600;
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
 
     useTick(() => {
