@@ -13,7 +13,46 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         if (!graphics) return;
 
         graphics.clear();
-        const { trackers, gameTime } = useSubmarineStore.getState();
+        const { trackers, gameTime, ownShipHistory } = useSubmarineStore.getState();
+
+        // Draw Ownship Heading Trace
+        graphics.lineStyle(2, 0x4444FF, 0.6);
+        let firstTracePoint = true;
+        let lastX = 0;
+
+        // Iterate through history to draw the line
+        ownShipHistory.forEach((history) => {
+            const age = gameTime - history.time;
+            const y = age * PIXELS_PER_SECOND;
+
+            // Only draw if within reasonable bounds (allow some overflow for continuity)
+            if (y >= -50 && y <= height + 50) {
+                let signedHeading = history.heading;
+                if (signedHeading > 180) signedHeading -= 360;
+
+                const x = ((signedHeading + 150) / 300) * width;
+
+                if (firstTracePoint) {
+                    graphics.moveTo(x, y);
+                    firstTracePoint = false;
+                } else {
+                    // Check for wrap-around (e.g. crossing 180/-180)
+                    // If the X jump is too large, don't draw the line
+                    if (Math.abs(x - lastX) > width / 3) {
+                         graphics.moveTo(x, y);
+                    } else {
+                         graphics.lineTo(x, y);
+                    }
+                }
+                lastX = x;
+            } else {
+                // If we skipped points, next valid point should be a move
+                firstTracePoint = true;
+            }
+        });
+
+        // Reset line style for dots
+        graphics.lineStyle(0);
 
         trackers.forEach(tracker => {
             graphics.beginFill(0x33ff33, 0.8);
@@ -38,7 +77,7 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         });
 
         // Draw Solution Line
-        const { selectedTrackerId, ownShipHistory } = useSubmarineStore.getState();
+        const { selectedTrackerId } = useSubmarineStore.getState();
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
         if (selectedTracker && (selectedTracker.solution.range > 0 || selectedTracker.solution.speed > 0)) {
