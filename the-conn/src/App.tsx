@@ -40,7 +40,6 @@ function App() {
             <div className="grid grid-cols-4 gap-2 h-full">
               {[1,2,3,4].map(i => (
                 <div key={i} className="bg-black/40 border border-white/5 relative">
-                   <div className="absolute bottom-0 w-full bg-phosphor/20" style={{height: `${Math.random() * 100}%`}}></div>
                 </div>
               ))}
             </div>
