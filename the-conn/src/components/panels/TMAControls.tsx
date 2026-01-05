@@ -9,7 +9,7 @@ export const TMAControls = () => {
 
   if (!selectedTracker) {
     return (
-        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">
+        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs bg-white/5 border-l border-white/10">
             NO TRACKER SELECTED
         </div>
     );
@@ -18,7 +18,7 @@ export const TMAControls = () => {
   const { speed, range, course } = selectedTracker.solution;
 
   return (
-    <div className="flex flex-col gap-2 p-4 h-full justify-center">
+    <div className="flex flex-col gap-2 p-4 h-full justify-center bg-white/5 border-l border-white/10">
 
       {/* Speed Slider */}
       <div className="flex flex-col gap-1">

@@ -50,11 +50,13 @@ function App() {
 
         {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
         <Panel title="Target Motion Analysis" className="col-span-8 row-span-4 flex flex-col gap-2">
-           <div className="w-full flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
-               <TMADisplay />
-           </div>
-           <div className="w-full h-24 bg-black/30 rounded border border-white/10">
-               <TMAControls />
+           <div className="flex flex-row h-full">
+               <div className="flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
+                   <TMADisplay />
+               </div>
+               <div className="w-48 h-full">
+                   <TMAControls />
+               </div>
            </div>
         </Panel>
 
