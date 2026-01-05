@@ -3,6 +3,7 @@ import { Stage, Container, Graphics, useTick } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { calculateTargetPosition, normalizeAngle } from '../../lib/tma';
 
 const DotStack = ({ width, height }: { width: number, height: number }) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
@@ -21,6 +22,10 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         let lastX = 0;
 
         // Iterate through history to draw the line
+        // ownShipHistory is ordered Oldest -> Newest
+        // We want to draw typically from Newest (top) to Oldest (bottom) or vice versa.
+        // If we just iterate array order (Old -> New), y decreases (as age decreases).
+        // Let's iterate normally.
         ownShipHistory.forEach((history) => {
             const age = gameTime - history.time;
             const y = age * PIXELS_PER_SECOND;
@@ -37,7 +42,6 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
                     firstTracePoint = false;
                 } else {
                     // Check for wrap-around (e.g. crossing 180/-180)
-                    // If the X jump is too large, don't draw the line
                     if (Math.abs(x - lastX) > width / 3) {
                          graphics.moveTo(x, y);
                     } else {
@@ -46,7 +50,6 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
                 }
                 lastX = x;
             } else {
-                // If we skipped points, next valid point should be a move
                 firstTracePoint = true;
             }
         });
@@ -80,131 +83,68 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         const { selectedTrackerId } = useSubmarineStore.getState();
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
-        if (selectedTracker && (selectedTracker.solution.range > 0 || selectedTracker.solution.speed > 0)) {
-            const { speed: solSpeed, course: solCourse, range: solRange } = selectedTracker.solution;
-            const currentBearingRad = (selectedTracker.currentBearing * Math.PI) / 180;
-            const FEET_PER_YD = 3;
+        if (selectedTracker && selectedTracker.solution && selectedTracker.solution.anchorTime !== undefined) {
+             const solution = selectedTracker.solution;
 
-            // Current OwnShip Pos
-            const currentOwnShip = useSubmarineStore.getState(); // x, y are current
+             graphics.lineStyle(2, 0xffffff, 0.8);
 
-            // Calculate Target Initial Position at gameTime (Hypothesis Anchor)
-            // Target is at Range R along Bearing B from OwnShip
-            // Note: Display bearing is usually Relative? Or True?
-            // Store uses: relativeBearing -> noisyBearing.
-            // So tracker.currentBearing is RELATIVE.
-            // To get Target True Position, we need True Bearing.
-            // True Bearing = Relative + Heading.
+             // Draw from "Now" downwards into history
+             // 1. Current Point
+             const currentOwnShip = {
+                 x: useSubmarineStore.getState().x,
+                 y: useSubmarineStore.getState().y,
+                 heading: useSubmarineStore.getState().heading
+             };
 
-            const currentHeadingRad = (currentOwnShip.heading * Math.PI) / 180;
-            const trueBearingRad = currentBearingRad + currentHeadingRad;
+             const targetPosNow = calculateTargetPosition(solution as any, gameTime);
+             const dxNow = targetPosNow.x - currentOwnShip.x;
+             const dyNow = targetPosNow.y - currentOwnShip.y;
+             let trueBearingNow = Math.atan2(dxNow, dyNow) * (180 / Math.PI);
+             trueBearingNow = normalizeAngle(trueBearingNow);
+             const relBearingNow = normalizeAngle(trueBearingNow - currentOwnShip.heading);
+             let signedRelNow = relBearingNow;
+             if (signedRelNow > 180) signedRelNow -= 360;
+             const xNow = ((signedRelNow + 150) / 300) * width;
 
-            const targetX = currentOwnShip.x + (solRange * FEET_PER_YD) * Math.sin(trueBearingRad);
-            const targetY = currentOwnShip.y + (solRange * FEET_PER_YD) * Math.cos(trueBearingRad);
+             graphics.moveTo(xNow, 0);
+             let lastX = xNow;
 
-            // Target Velocity Components (ft/sec? No, store coordinates are feet, time is seconds)
-            // Speed is Knots. 1 Kt ~= 1.6878 ft/s.
-            const FEET_PER_KNOT_SEC = 1.6878;
-            const targetSpeedFtSec = solSpeed * FEET_PER_KNOT_SEC;
-            const solCourseRad = (solCourse * Math.PI) / 180;
-            const targetVx = targetSpeedFtSec * Math.sin(solCourseRad);
-            const targetVy = targetSpeedFtSec * Math.cos(solCourseRad);
-
-            graphics.lineStyle(2, 0xffffff, 0.8);
-
-            // We need to draw the line corresponding to history points
-            // Iterate through ownShipHistory to find corresponding points in time
-            // However, ownShipHistory might be sparse (every 60 ticks).
-            // Let's iterate backwards from gameTime
-
-            let firstPoint = true;
-
-            // Use ownShipHistory for past points.
-            // Add current point first?
-            // At t=0 (now), y=0. x = currentBearing.
-            let signedStart = selectedTracker.currentBearing;
-            if (signedStart > 180) signedStart -= 360;
-
-            // Only draw if valid? Or should we draw even if out of bounds (off screen)?
-            // For lines, drawing off screen is fine (it will clip).
-            const startX = ((signedStart + 150) / 300) * width;
-            graphics.moveTo(startX, 0);
-
-            // Iterate backwards through history
-            // We can reuse the loop over tracker.bearingHistory to get times?
-            // Or iterate ownShipHistory.
-
-            // Let's align with tracker.bearingHistory times for consistency with dots
-            // But we need OwnShip pos at those times.
-            // ownShipHistory should be recorded at same times.
-
-            for (let i = selectedTracker.bearingHistory.length - 1; i >= 0; i--) {
+             // 2. History Points (Newest to Oldest)
+             for (let i = selectedTracker.bearingHistory.length - 1; i >= 0; i--) {
                 const h = selectedTracker.bearingHistory[i];
                 const age = gameTime - h.time;
                 const y = age * PIXELS_PER_SECOND;
 
-                if (y > height + 5) continue; // Out of view
+                if (y > height + 5) continue;
 
-                // Find ownship state at h.time
-                // optimization: search backwards or map?
-                // For now simple find (array is small?)
-                const ownShipState = ownShipHistory.find(os => Math.abs(os.time - h.time) < 0.01);
+                // Find ownship state
+                const ownShipState = ownShipHistory.find(os => Math.abs(os.time - h.time) < 0.1);
 
                 if (ownShipState) {
-                    // Time delta from NOW to THEN (negative)
-                    const dt = h.time - gameTime;
+                    const targetPos = calculateTargetPosition(solution as any, h.time);
 
-                    // Target Pos at time t
-                    const tx = targetX + targetVx * dt;
-                    const ty = targetY + targetVy * dt;
+                    const dx = targetPos.x - ownShipState.x;
+                    const dy = targetPos.y - ownShipState.y;
 
-                    // Relative Bearing calculation
-                    const dx = tx - ownShipState.x;
-                    const dy = ty - ownShipState.y;
+                    let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                    trueBearing = normalizeAngle(trueBearing);
 
-                    // Math angle
-                    const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-                    const trueBearing = (90 - mathAngleDeg + 360) % 360;
-
-                    const relBearing = (trueBearing - ownShipState.heading + 360) % 360;
+                    const relBearing = normalizeAngle(trueBearing - ownShipState.heading);
 
                     let signedRel = relBearing;
                     if (signedRel > 180) signedRel -= 360;
-                    const x = ((signedRel + 150) / 300) * width;
 
-                    // Handle wrapping?
-                    // If the line crosses 360/0 boundary, moveTo instead of lineTo
-                    // Simple check: if delta X is too large
+                     const x = ((signedRel + 150) / 300) * width;
 
-                    // Actually, if we just lineTo, it will cross the screen.
-                    // We need to break the line.
-
-                    // Get previous point (which was drawn last iteration, i.e. closer to now)
-                    // Wait, we are iterating backwards in time (increasing y).
-                    // previous point was at y_prev < y.
-
-                    // Just draw to x,y. If jump is big, moveTo.
-
-                    // We need to track last drawn X
-                    // But inside the loop 'firstPoint' handles the very start.
-
-                    if (firstPoint) {
-                       // handled by initial moveTo(startX, 0)
-                       firstPoint = false;
-                    }
-
-                    // Check for wrap
-                    // We don't have access to 'lastX' easily unless we store it.
-                    // Let's rely on standard PIXI line behavior for now?
-                    // No, it will draw a horizontal line across the screen.
-                    // We should check distance from last point.
-
-                    // Ideally we project the line properly.
-                    // But for now, let's just lineTo.
-
-                    graphics.lineTo(x, y);
+                     // Check for wrap (crossing stern 180)
+                     if (Math.abs(x - lastX) > width / 3) {
+                         graphics.moveTo(x, y);
+                     } else {
+                         graphics.lineTo(x, y);
+                     }
+                     lastX = x;
                 }
-            }
+             }
         }
     });
 
@@ -218,8 +158,7 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
 
         // Vertical lines (Bearing)
         // Range -150 to +150.
-        // Step every 30 degrees?
-        // -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150
+        // Step every 30 degrees
         for (let b = -150; b <= 150; b += 30) {
             const x = ((b + 150) / 300) * width;
             g.moveTo(x, 0);
