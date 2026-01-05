@@ -16,7 +16,7 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         graphics.clear();
         const { trackers, gameTime, ownShipHistory, heading: currentHeading } = useSubmarineStore.getState();
 
-        const PIXELS_PER_DEGREE = width / 300;
+        const PIXELS_PER_DEGREE = width / 360;
         const SCREEN_CENTER = width / 2;
 
         // Draw Ownship Heading Trace
@@ -71,8 +71,8 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
                     // Calculate relative bearing to Current Heading
                     const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
 
-                    // Draw if within visible range (-150 to +150)
-                    if (angleDiff >= -150 && angleDiff <= 150) {
+                    // Draw if within visible range (-180 to +180)
+                    if (angleDiff >= -180 && angleDiff <= 180) {
                          const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
                          const age = gameTime - history.time;
                          const y = age * PIXELS_PER_SECOND;
@@ -162,7 +162,7 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
         // Grid Lines: Very dim green (alpha: 0.1)
         g.lineStyle(1, 0x33FF33, 0.1);
 
-        const PIXELS_PER_DEGREE = width / 300;
+        const PIXELS_PER_DEGREE = width / 360;
         const SCREEN_CENTER = width / 2;
 
         // Current Heading allows us to shift the grid
@@ -171,10 +171,19 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
         // Draw Vertical Lines every 30 degrees (World Bearing)
         for (let b = 0; b < 360; b += 30) {
              const diff = getShortestAngle(b, currentHeading);
-             if (diff >= -150 && diff <= 150) {
+             // Full 360 view: range -180 to 180
+             if (diff >= -180 && diff <= 180) {
                  const x = SCREEN_CENTER + (diff * PIXELS_PER_DEGREE);
                  g.moveTo(x, 0);
                  g.lineTo(x, height);
+
+                 // Edge Case: If diff is -180, it draws at x=0.
+                 // We should also draw at x=width (which is +180) to complete the wrap visually.
+                 if (diff === -180) {
+                     const xRight = width; // SCREEN_CENTER + (180 * PIXELS_PER_DEGREE)
+                     g.moveTo(xRight, 0);
+                     g.lineTo(xRight, height);
+                 }
              }
         }
 
@@ -194,7 +203,7 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
         return result;
     }, []);
 
-    const PIXELS_PER_DEGREE = width / 300;
+    const PIXELS_PER_DEGREE = width / 360;
     const SCREEN_CENTER = width / 2;
 
     return (
@@ -202,8 +211,15 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
             <Graphics ref={graphicsRef} />
             {labels.map(angle => {
                  const diff = getShortestAngle(angle, heading);
-                 if (diff < -150 || diff > 150) return null;
+                 if (diff < -180 || diff > 180) return null;
                  const x = SCREEN_CENTER + (diff * PIXELS_PER_DEGREE);
+
+                 // If diff is -180, it's at x=0. We might also want to render it at x=width?
+                 // But for text, maybe just left edge is fine.
+                 // Actually, if we want to mimic the grid lines, we should render it at right too?
+                 // But React keys must be unique. Rendering twice is tricky in this map.
+                 // Let's stick to rendering once. If it's at -180 (x=0), it's visible on left.
+
                  return (
                      <Text
                         key={angle}
@@ -223,6 +239,34 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
                      />
                  );
             })}
+             {/* Special case for right-edge label if needed?
+                 If there's an angle with diff -180, we could render a +180 label at x=width.
+                 The angle is the same (e.g. 180 deg).
+              */}
+              {labels.map(angle => {
+                 const diff = getShortestAngle(angle, heading);
+                 if (diff === -180) {
+                      return (
+                         <Text
+                            key={`${angle}-right`}
+                            text={angle.toString().padStart(3, '0')}
+                            x={width}
+                            y={10}
+                            anchor={0.5}
+                            style={
+                                new PIXI.TextStyle({
+                                    fill: '#33FF33',
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                    // @ts-ignore
+                                    alpha: 0.5
+                                })
+                            }
+                         />
+                     );
+                 }
+                 return null;
+              })}
         </Container>
     );
 };
