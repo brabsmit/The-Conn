@@ -217,7 +217,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const newY = state.y + distance * Math.cos(radHeading);
 
       // Sensor Simulation
-      const newSensorReadings = state.contacts.map((contact) => {
+      const newSensorReadings = state.contacts.reduce((acc, contact) => {
         // Calculate True Bearing
         const dx = contact.x - newX;
         const dy = contact.y - newY;
@@ -237,14 +237,21 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
         const relativeBearing = normalizeAngle(trueBearing - newHeading);
 
+        // Baffles: Blind in rear 60 degrees (150 to 210 relative)
+        if (relativeBearing > 150 && relativeBearing < 210) {
+          return acc;
+        }
+
         // Add Noise (e.g. 2 degrees std dev)
         const noisyBearing = normalizeAngle(gaussianRandom(relativeBearing, 1.0));
 
-        return {
+        acc.push({
           contactId: contact.id,
           bearing: noisyBearing
-        };
-      });
+        });
+
+        return acc;
+      }, [] as SensorReading[]);
 
       // Update Trackers
       const newTickCount = state.tickCount + 1;
