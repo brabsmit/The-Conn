@@ -18,13 +18,20 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
         trackers.forEach(tracker => {
             graphics.beginFill(0x33ff33, 0.8);
             tracker.bearingHistory.forEach(history => {
-                const x = (history.bearing / 360) * width;
-                const age = gameTime - history.time;
-                const y = age * PIXELS_PER_SECOND;
+                // Map to -150 to +150 range centered on 0
+                let signedBearing = history.bearing;
+                if (signedBearing > 180) signedBearing -= 360;
 
-                // Draw only if within bounds (considering radius)
-                if (y >= -5 && y <= height + 5) {
-                    graphics.drawCircle(x, y, 2.5);
+                // Only draw if within visible range
+                if (signedBearing >= -150 && signedBearing <= 150) {
+                    const x = ((signedBearing + 150) / 300) * width;
+                    const age = gameTime - history.time;
+                    const y = age * PIXELS_PER_SECOND;
+
+                    // Draw only if within bounds (considering radius)
+                    if (y >= -5 && y <= height + 5) {
+                        graphics.drawCircle(x, y, 2.5);
+                    }
                 }
             });
             graphics.endFill();
@@ -76,7 +83,12 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
             // Use ownShipHistory for past points.
             // Add current point first?
             // At t=0 (now), y=0. x = currentBearing.
-            const startX = (selectedTracker.currentBearing / 360) * width;
+            let signedStart = selectedTracker.currentBearing;
+            if (signedStart > 180) signedStart -= 360;
+
+            // Only draw if valid? Or should we draw even if out of bounds (off screen)?
+            // For lines, drawing off screen is fine (it will clip).
+            const startX = ((signedStart + 150) / 300) * width;
             graphics.moveTo(startX, 0);
 
             // Iterate backwards through history
@@ -117,7 +129,9 @@ const DotStack = ({ width, height }: { width: number, height: number }) => {
 
                     const relBearing = (trueBearing - ownShipState.heading + 360) % 360;
 
-                    const x = (relBearing / 360) * width;
+                    let signedRel = relBearing;
+                    if (signedRel > 180) signedRel -= 360;
+                    const x = ((signedRel + 150) / 300) * width;
 
                     // Handle wrapping?
                     // If the line crosses 360/0 boundary, moveTo instead of lineTo
@@ -164,8 +178,11 @@ const Grid = ({ width, height }: { width: number, height: number }) => {
         g.lineStyle(1, 0x005500, 0.5); // Brighter green
 
         // Vertical lines (Bearing)
-        for (let b = 0; b <= 360; b += 30) {
-            const x = (b / 360) * width;
+        // Range -150 to +150.
+        // Step every 30 degrees?
+        // -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150
+        for (let b = -150; b <= 150; b += 30) {
+            const x = ((b + 150) / 300) * width;
             g.moveTo(x, 0);
             g.lineTo(x, height);
         }

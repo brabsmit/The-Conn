@@ -63,15 +63,21 @@ const Waterfall = () => {
         sensorReadings.forEach((reading) => {
             // Map bearing to X coordinate.
             // Center (width/2) is 0 degrees (Dead Ahead).
-            // Left edge is -180 (180). Right edge is 180.
-            // Formula: x = ((bearing + 180) % 360) / 360 * width
+            // Left edge (0% X) is 210 Relative (-150).
+            // Right edge (100% X) is 150 Relative (+150).
+            // Total span = 300 degrees.
 
-            const normalizedBearing = (reading.bearing + 180) % 360;
-            const x = (normalizedBearing / 360) * width;
+            let signedBearing = reading.bearing;
+            if (signedBearing > 180) signedBearing -= 360;
 
-            lineGraphics.beginFill(0xccffcc, 1.0); // Brighter green/white
-            lineGraphics.drawRect(x, 0, 4, 3); // Slightly larger dot
-            lineGraphics.endFill();
+            // Check if visible (within -150 to +150)
+            if (signedBearing >= -150 && signedBearing <= 150) {
+                 const x = ((signedBearing + 150) / 300) * width;
+
+                 lineGraphics.beginFill(0xccffcc, 1.0);
+                 lineGraphics.drawRect(x, 0, 4, 3);
+                 lineGraphics.endFill();
+            }
         });
 
         // Render previous frame shifted down to next texture
@@ -109,13 +115,13 @@ const Waterfall = () => {
                 const x = localPoint.x;
 
                 // Inverse Formula:
-                // x = (normalizedBearing / 360) * width
-                // normalizedBearing = (x / width) * 360
-                // bearing = normalizedBearing - 180
+                // x = ((signedBearing + 150) / 300) * width
+                // signedBearing + 150 = (x / width) * 300
+                // signedBearing = (x / width) * 300 - 150
 
-                const normalizedBearing = (x / width) * 360;
-                let bearing = normalizedBearing - 180;
+                const signedBearing = (x / width) * 300 - 150;
 
+                let bearing = signedBearing;
                 if (bearing < 0) bearing += 360;
 
                 designateTracker(bearing);
@@ -167,16 +173,20 @@ const TrackerOverlay = () => {
 
         trackers.forEach((tracker) => {
              // Map bearing to X coordinate.
-             const normalizedBearing = (tracker.currentBearing + 180) % 360;
-             const x = (normalizedBearing / 360) * width;
+             let signedBearing = tracker.currentBearing;
+             if (signedBearing > 180) signedBearing -= 360;
 
-             // Draw a triangle pointing down at the top
-             graphics.beginFill(0x33ff33);
-             graphics.moveTo(x, 0);
-             graphics.lineTo(x - 5, 10);
-             graphics.lineTo(x + 5, 10);
-             graphics.closePath();
-             graphics.endFill();
+             if (signedBearing >= -150 && signedBearing <= 150) {
+                 const x = ((signedBearing + 150) / 300) * width;
+
+                 // Draw a triangle pointing down at the top
+                 graphics.beginFill(0x33ff33);
+                 graphics.moveTo(x, 0);
+                 graphics.lineTo(x - 5, 10);
+                 graphics.lineTo(x + 5, 10);
+                 graphics.closePath();
+                 graphics.endFill();
+             }
         });
     });
 
@@ -186,8 +196,12 @@ const TrackerOverlay = () => {
         <Container>
             <Graphics ref={graphicsRef} />
             {trackers.map((tracker) => {
-                 const normalizedBearing = (tracker.currentBearing + 180) % 360;
-                 const x = (normalizedBearing / 360) * width;
+                 let signedBearing = tracker.currentBearing;
+                 if (signedBearing > 180) signedBearing -= 360;
+
+                 if (signedBearing < -150 || signedBearing > 150) return null;
+
+                 const x = ((signedBearing + 150) / 300) * width;
                  return (
                      <Text
                         key={tracker.id}
