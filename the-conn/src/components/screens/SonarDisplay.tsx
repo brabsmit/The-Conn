@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect, useState } from 'react';
 import { Stage, Container, Sprite, Text, Graphics, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
-import { useSubmarineStore, OwnShipHistory } from '../../store/useSubmarineStore';
+import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
 
