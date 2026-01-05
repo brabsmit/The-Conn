@@ -11,7 +11,6 @@ export const TopBar = () => {
   const {
     gameTime,
     heading,
-    orderedHeading,
     speed,
     depth
   } = useSubmarineStore();
