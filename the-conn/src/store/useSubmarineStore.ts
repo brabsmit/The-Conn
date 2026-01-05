@@ -1,10 +1,29 @@
 import { create } from 'zustand';
 
+interface Contact {
+  id: string;
+  x: number;
+  y: number;
+}
+
+interface SensorReading {
+  contactId: string;
+  bearing: number;
+}
+
 interface SubmarineState {
   // OwnShip Data
   heading: number; // 0-359
   speed: number; // 0-30kts
   depth: number; // 0-1200ft
+  x: number;
+  y: number;
+
+  // Truth Data
+  contacts: Contact[];
+
+  // Sensor Data
+  sensorReadings: SensorReading[];
 
   // Ordered Data (Controls)
   orderedHeading: number;
@@ -29,11 +48,25 @@ const ACCELERATION = 0.05; // knots per tick
 const DECELERATION = 0.05; // knots per tick
 const DIVE_RATE = 1.0; // feet per tick
 const ASCENT_RATE = 1.0; // feet per tick
+const FEET_PER_KNOT_PER_TICK = 0.028; // approx 1.68 ft/sec / 60 ticks/sec
+
+// Helper for Gaussian noise (Box-Muller)
+const gaussianRandom = (mean: number, stdev: number) => {
+  let u = 0, v = 0;
+  while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+  while(v === 0) v = Math.random();
+  const num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+  return num * stdev + mean;
+};
 
 export const useSubmarineStore = create<SubmarineState>((set) => ({
   heading: 0,
   speed: 0,
   depth: 0,
+  x: 0,
+  y: 0,
+  contacts: [{ id: 'Sierra-1', x: 5000, y: 5000 }],
+  sensorReadings: [],
   orderedHeading: 0,
   orderedSpeed: 0,
   orderedDepth: 0,
@@ -87,10 +120,54 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         }
       }
 
+      // Update Position (Simple 2D kinematics)
+      // Nav convention: 0 is North (Positive Y?), 90 is East (Positive X?)
+      // Let's assume standard math convention for X/Y, but mapping Heading to it.
+      // If Heading 0 is North (Up, +Y) and 90 is East (Right, +X):
+      // dx = speed * sin(heading)
+      // dy = speed * cos(heading)
+      const radHeading = (newHeading * Math.PI) / 180;
+      const distance = newSpeed * FEET_PER_KNOT_PER_TICK;
+      const newX = state.x + distance * Math.sin(radHeading);
+      const newY = state.y + distance * Math.cos(radHeading);
+
+      // Sensor Simulation
+      const newSensorReadings = state.contacts.map((contact) => {
+        // Calculate True Bearing
+        const dx = contact.x - newX;
+        const dy = contact.y - newY;
+
+        // Atan2 returns angle from +X axis (East).
+        // If 0 is North (+Y), 90 is East (+X).
+        // Math angle = atan2(dy, dx).
+        // Nav bearing = (90 - MathAngle + 360) % 360.
+        // Wait, if 0 is North (+Y), then (1,1) is 45 deg. atan2(1,1)=45. 90-45=45. Correct.
+        // (1,0) is East (90). atan2(0,1)=0. 90-0=90. Correct.
+        // (0,1) is North (0). atan2(1,0)=90. 90-90=0. Correct.
+        // (-1, 0) is West (270). atan2(0, -1)=180. 90-180=-90 -> 270. Correct.
+        // (0, -1) is South (180). atan2(-1, 0)=-90. 90-(-90)=180. Correct.
+
+        const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+        const trueBearing = normalizeAngle(90 - mathAngleDeg);
+
+        const relativeBearing = normalizeAngle(trueBearing - newHeading);
+
+        // Add Noise (e.g. 2 degrees std dev)
+        const noisyBearing = normalizeAngle(gaussianRandom(relativeBearing, 1.0));
+
+        return {
+          contactId: contact.id,
+          bearing: noisyBearing
+        };
+      });
+
       return {
         heading: newHeading,
         speed: newSpeed,
         depth: newDepth,
+        x: newX,
+        y: newY,
+        sensorReadings: newSensorReadings,
       };
     }),
 }));
