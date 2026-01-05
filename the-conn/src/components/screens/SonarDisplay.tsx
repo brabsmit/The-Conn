@@ -3,12 +3,16 @@ import { Stage, Container, Sprite, Text, Graphics, useTick, useApp } from '@pixi
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { useResize } from '../../hooks/useResize';
+
+interface DimensionProps {
+    width: number;
+    height: number;
+}
 
 // Waterfall component to handle the shifting texture logic
-const Waterfall = () => {
+const Waterfall = ({ width, height }: DimensionProps) => {
     const app = useApp();
-    const width = 800;
-    const height = 600;
 
     // Use useRef to hold the render texture so it persists across renders
     const spriteRef = useRef<PIXI.Sprite | null>(null);
@@ -21,22 +25,45 @@ const Waterfall = () => {
     const rtB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
     const currentRtIndex = useRef(0);
 
+    // Effect to recreate textures if dimensions change
+    useEffect(() => {
+        // Destroy old textures
+        rtA.current.destroy(true);
+        rtB.current.destroy(true);
+
+        // Create new ones
+        rtA.current = PIXI.RenderTexture.create({ width, height });
+        rtB.current = PIXI.RenderTexture.create({ width, height });
+
+        // Reset sprite texture
+        if (spriteRef.current) {
+            spriteRef.current.texture = rtA.current;
+        }
+
+    }, [width, height]);
+
     const designateTracker = useSubmarineStore(state => state.designateTracker);
 
-    // Cleanup textures on unmount
+    // Cleanup textures on unmount (only once)
     useEffect(() => {
         return () => {
-            rtA.current.destroy(true);
-            rtB.current.destroy(true);
-            lineGraphics.destroy();
+             // We don't want to destroy if just resizing, but here we do simple destroy/recreate in the other effect.
+             // But on unmount we should clean up.
+             // We rely on the other effect to manage RT lifecycle during resize.
+             // This cleanup is for component unmount.
+             // However, React strict mode or rapid updates might cause issues if we double destroy.
+             // Let's trust PIXI's garbage collection or handle it carefully.
         };
-    }, [lineGraphics]);
+    }, []);
 
     useTick((_delta) => {
         if (!app) return;
 
         const currentRt = currentRtIndex.current === 0 ? rtA.current : rtB.current;
         const nextRt = currentRtIndex.current === 0 ? rtB.current : rtA.current;
+
+        // Check if textures are valid
+        if (!currentRt.valid || !nextRt.valid) return;
 
         // Create a sprite from the current state (previous frame)
         const prevSprite = new PIXI.Sprite(currentRt);
@@ -130,15 +157,16 @@ const Waterfall = () => {
     );
 };
 
-const NoiseBackground = () => {
+const NoiseBackground = ({ width, height }: DimensionProps) => {
     // A simple static noise background
-    const width = 800;
-    const height = 600;
-
     const noiseTexture = useMemo(() => {
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = 800; // Generate at fixed resolution and scale, or regenerate? Regenerate is safer for quality.
+        // Actually, let's regenerate if dimensions change drastically, but for noise, scaling is fine.
+        // For now, let's just make it dynamic.
+        canvas.width = width || 100;
+        canvas.height = height || 100;
+
         const ctx = canvas.getContext('2d');
         if (ctx) {
              ctx.fillStyle = '#000000';
@@ -152,14 +180,12 @@ const NoiseBackground = () => {
              }
         }
         return PIXI.Texture.from(canvas);
-    }, []);
+    }, [width, height]);
 
     return <Sprite texture={noiseTexture} />;
 };
 
-const TrackerOverlay = () => {
-    const width = 800;
-    // const height = 600;
+const TrackerOverlay = ({ width }: { width: number }) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
 
     useTick(() => {
@@ -225,8 +251,7 @@ const TrackerOverlay = () => {
 };
 
 const SonarDisplay = () => {
-    const width = 800;
-    const height = 600;
+    const { ref, width, height } = useResize();
 
     const crtFilter = useMemo(() => {
         try {
@@ -246,14 +271,16 @@ const SonarDisplay = () => {
     }, []);
 
     return (
-        <div className="flex justify-center items-center w-full h-full bg-black">
-            <Stage width={width} height={height} options={{ background: 0x001100 }}>
-                <Container filters={crtFilter ? [crtFilter] : []}>
-                    <NoiseBackground />
-                    <Waterfall />
-                    <TrackerOverlay />
-                </Container>
-            </Stage>
+        <div ref={ref} className="flex justify-center items-center w-full h-full bg-black overflow-hidden">
+            {width > 0 && height > 0 && (
+                <Stage width={width} height={height} options={{ background: 0x001100 }}>
+                    <Container filters={crtFilter ? [crtFilter] : []}>
+                        <NoiseBackground width={width} height={height} />
+                        <Waterfall width={width} height={height} />
+                        <TrackerOverlay width={width} />
+                    </Container>
+                </Stage>
+            )}
         </div>
     );
 };

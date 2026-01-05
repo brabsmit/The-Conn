@@ -4,6 +4,7 @@ import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
+import { useResize } from '../../hooks/useResize';
 
 type ViewMode = 'GEO' | 'DOTS';
 
@@ -217,16 +218,6 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         return result;
     }, []);
 
-    // We create text components for each label *twice* to handle wrapping
-    // Or just one set and update positions?
-    // In Pixi/React-Pixi, we can't easily move components imperatively without re-render if we use props.
-    // However, we can use refs to access the PIXI.Text instances and modify them.
-    // We need a stable list of refs.
-
-    // But `useTick` runs in the context of the component.
-    // If we want to avoid re-renders of Grid, we must not use `useSubmarineStore` hook.
-    // We already removed it.
-
     useTick(() => {
         const g = graphicsRef.current;
         if (!g) return;
@@ -266,35 +257,6 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         // Update Labels Positions
         const container = labelsContainerRef.current;
         if (container && viewMode === 'GEO') {
-            // We expect children to be PIXI.Text objects.
-            // We have labels 0, 30, ... 330.
-            // We need to update their x position and visibility.
-
-            // Note: We need a way to map specific text objects to angles.
-            // Since we render them in order, we can iterate.
-
-            // However, wrapping adds complexity (duplicate labels).
-            // A simpler approach for the refactor:
-            // Just iterate over the children and update them if we can identify them.
-            // But we can't easily attach metadata to PIXI objects created via JSX cleanly without custom props.
-
-            // Alternative: Re-calculate positions for *all* 12 angles.
-            // And assign them to the first 12 children.
-            // Handle wrapping by using extra children if needed, or just hide them.
-
-            // Let's assume we render 2 sets of labels to handle wrapping safely?
-            // Or just 1 set and move them.
-            // If an angle is at -180/180 boundary, it appears at x=0 and x=width.
-            // We might need a duplicate for that specific case.
-
-            // To be robust and avoid React re-renders, let's just create enough Text objects.
-            // 12 angles. At most one angle splits (180 deg away).
-            // So 13 text objects would suffice?
-            // Actually, usually only one or zero labels are at the wrap point.
-
-            // Let's iterate through the 12 primary labels.
-            // We can assume the first 12 children correspond to 0, 30, ..., 330.
-
             const children = container.children as PIXI.Text[];
 
             labels.forEach((angle, index) => {
@@ -302,22 +264,9 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
                 if (!textObj) return;
 
                 const diff = getShortestAngle(angle, currentHeading);
-
-                // Visible if within [-180, 180] (which it always is by definition of shortest angle)
-                // But we only show if it maps to screen?
-                // Actually in 360 view, everything is visible.
-
                 const x = SCREEN_CENTER + (diff * PIXELS_PER_DEGREE);
                 textObj.x = x;
                 textObj.visible = true; // Always visible in GEO
-
-                // Handle the wrap case where a label might be needed at the other edge.
-                // If diff is close to -180, it might need to show at +180 (width) too?
-                // getShortestAngle returns [-180, 180].
-                // If diff is -180, x = 0. We might want x = width too.
-
-                // We reserved indices 12+ for wrap duplicates.
-                // Let's manage the duplicate for the one angle that is -180.
             });
 
             // Handle wrap duplicates
@@ -403,8 +352,7 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
 };
 
 const TMADisplay = () => {
-    const width = 700;
-    const height = 500;
+    const { ref, width, height } = useResize();
     const [viewMode, setViewMode] = useState<ViewMode>('GEO');
 
     const crtFilter = useMemo(() => {
@@ -425,13 +373,15 @@ const TMADisplay = () => {
     }, []);
 
     return (
-        <div className="relative flex justify-center items-center w-full h-full bg-black">
-            <Stage width={width} height={height} options={{ background: 0x001100 }}>
-                <Container filters={crtFilter ? [crtFilter] : []}>
-                     <Grid width={width} height={height} viewMode={viewMode} />
-                     <DotStack width={width} height={height} viewMode={viewMode} />
-                </Container>
-            </Stage>
+        <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black overflow-hidden">
+            {width > 0 && height > 0 && (
+                <Stage width={width} height={height} options={{ background: 0x001100 }}>
+                    <Container filters={crtFilter ? [crtFilter] : []}>
+                        <Grid width={width} height={height} viewMode={viewMode} />
+                        <DotStack width={width} height={height} viewMode={viewMode} />
+                    </Container>
+                </Stage>
+            )}
 
             {/* UI Overlay */}
             <div className="absolute top-4 right-4 flex flex-col items-end gap-2">

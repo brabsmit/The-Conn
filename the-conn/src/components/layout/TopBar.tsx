@@ -33,7 +33,7 @@ export const TopBar = () => {
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none">
+    <div className="w-full h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none flex-shrink-0">
 
       {/* TIME */}
       <div className="flex flex-col mr-8">
