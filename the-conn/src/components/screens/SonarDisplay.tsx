@@ -1,9 +1,10 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import { Stage, Container, Sprite, Text, Graphics, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
-import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { useSubmarineStore, OwnShipHistory } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
+import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
 
 interface DimensionProps {
     width: number;
@@ -185,6 +186,163 @@ const NoiseBackground = ({ width, height }: DimensionProps) => {
     return <Sprite texture={noiseTexture} />;
 };
 
+interface SolutionOverlayProps extends DimensionProps {
+    visible: boolean;
+}
+
+const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
+    const graphicsRef = useRef<PIXI.Graphics | null>(null);
+
+    useTick(() => {
+        const graphics = graphicsRef.current;
+        if (!graphics) return;
+
+        graphics.clear();
+        if (!visible) return;
+
+        const store = useSubmarineStore.getState();
+        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading } = store;
+
+        if (!selectedTrackerId) return;
+        const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
+        if (!selectedTracker || !selectedTracker.solution) return;
+
+        const solution = selectedTracker.solution;
+
+        // Settings
+        const STEP_Y = 5; // Calculate every 5 pixels
+
+        graphics.lineStyle(2, 0xffffff, 0.5);
+
+        let firstPoint = true;
+
+        // Helper to interpolate ownship history
+        const getInterpolatedOwnShip = (time: number): { x: number, y: number, heading: number } | null => {
+            // If time is future (shouldn't happen with history logic), return current
+            if (time >= gameTime) {
+                return { x: currentX, y: currentY, heading: currentHeading };
+            }
+
+            // Find history points surrounding 'time'
+            // ownShipHistory is ordered oldest to newest
+            // We search from end backwards
+            for (let i = ownShipHistory.length - 1; i >= 0; i--) {
+                const h1 = ownShipHistory[i];
+                if (h1.time <= time) {
+                    // h1 is just before or at time.
+                    // h2 (the next one) is just after time.
+
+                    // If h1 is the last element, and time < gameTime, then we are between h1 and current state?
+                    // Wait, ownShipHistory is pushed every 60 ticks.
+                    // Between last history and now is the "live" gap.
+
+                    let h2: { time: number, x: number, y: number, heading: number };
+                    if (i === ownShipHistory.length - 1) {
+                        h2 = { time: gameTime, x: currentX, y: currentY, heading: currentHeading };
+                    } else {
+                        h2 = ownShipHistory[i + 1];
+                    }
+
+                    // Interpolate between h1 and h2
+                    const range = h2.time - h1.time;
+                    if (range <= 0.0001) return h1; // Avoid divide by zero
+
+                    const t = (time - h1.time) / range; // 0 to 1
+
+                    const x = h1.x + (h2.x - h1.x) * t;
+                    const y = h1.y + (h2.y - h1.y) * t;
+
+                    // Angular interpolation for heading
+                    // Use getShortestAngle to find diff
+                    const diff = getShortestAngle(h2.heading, h1.heading);
+                    const heading = normalizeAngle(h1.heading + diff * t);
+
+                    return { x, y, heading };
+                }
+            }
+
+            // If time is older than oldest history
+            if (ownShipHistory.length > 0) {
+                 // Clamp to oldest? Or return null?
+                 // If we return null, the line stops.
+                 return null;
+            }
+
+            // Fallback if no history but we have current state
+            return { x: currentX, y: currentY, heading: currentHeading };
+        };
+
+        for (let y = 0; y <= height; y += STEP_Y) {
+            const timeOffset = y / 60; // 1 pixel = 1 tick = 1/60th sec
+            const timeAtY = gameTime - timeOffset;
+
+            const ownShip = getInterpolatedOwnShip(timeAtY);
+            if (!ownShip) {
+                // Out of history range, stop drawing
+                break;
+            }
+
+            // Calculate solution position at this time
+            const targetPos = calculateTargetPosition(solution, timeAtY);
+
+            // Calculate Relative Bearing
+            const dx = targetPos.x - ownShip.x;
+            const dy = targetPos.y - ownShip.y;
+
+            // True Bearing to Target
+            // Math.atan2(dx, dy) gives angle from +Y (North)
+            let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+            trueBearing = normalizeAngle(trueBearing);
+
+            // Relative Bearing
+            // Rel = True - OwnHeading
+            // e.g. True 090, Head 000 -> Rel 090
+            // e.g. True 000, Head 090 -> Rel -090 (270)
+            const relBearing = getShortestAngle(trueBearing, ownShip.heading);
+
+            // Check visibility (-150 to +150)
+            if (relBearing >= -150 && relBearing <= 150) {
+                 const x = ((relBearing + 150) / 300) * width;
+
+                 if (firstPoint) {
+                     graphics.moveTo(x, y);
+                     firstPoint = false;
+                 } else {
+                     // Check for wrap-around artifacts (if it jumped from left to right)
+                     // Since we check bounds -150 to 150, there shouldn't be a wrap unless it crossed the rear 60 deg blind spot.
+                     // If it crossed the blind spot, relBearing would go outside [-150, 150].
+                     // But we are inside the 'if'.
+                     // Wait, if consecutive points are valid but separated by the blind spot?
+                     // E.g. 150 -> 210 (invalid) -> -150.
+                     // The loop would skip the invalid ones, and connect 150 to -150. That's a huge line across the screen.
+                     // We should check distance from previous point.
+                     // Screen width is 'width'.
+                     // If distance > width / 2, probably a wrap/jump.
+
+                     // Get previous position? Graphics api doesn't expose easily.
+                     // We trust that small STEP_Y means small changes.
+                     // A jump across the screen means crossing the baffles.
+                     // But we only draw if INSIDE baffles.
+                     // If we skipped points, 'lineTo' will connect across the gap.
+                     // We need to 'moveTo' if we had a gap.
+
+                     // Optimization: Track 'lastValidY'.
+                     // If y - lastValidY > STEP_Y * 2, then we had a gap.
+                     // But I'm local variables inside loop.
+                     // Actually, if we just check visibility:
+                     // If invalid, we set firstPoint = true (so next valid point is a moveTo).
+
+                     graphics.lineTo(x, y);
+                 }
+            } else {
+                firstPoint = true;
+            }
+        }
+    });
+
+    return <Graphics ref={graphicsRef} />;
+};
+
 const TrackerOverlay = ({ width }: { width: number }) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
 
@@ -252,6 +410,7 @@ const TrackerOverlay = ({ width }: { width: number }) => {
 
 const SonarDisplay = () => {
     const { ref, width, height } = useResize();
+    const [showSolution, setShowSolution] = useState(true);
 
     const crtFilter = useMemo(() => {
         try {
@@ -271,16 +430,27 @@ const SonarDisplay = () => {
     }, []);
 
     return (
-        <div ref={ref} className="flex justify-center items-center w-full h-full bg-black overflow-hidden">
+        <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black overflow-hidden">
             {width > 0 && height > 0 && (
                 <Stage width={width} height={height} options={{ background: 0x001100 }}>
                     <Container filters={crtFilter ? [crtFilter] : []}>
                         <NoiseBackground width={width} height={height} />
                         <Waterfall width={width} height={height} />
+                        <SolutionOverlay width={width} height={height} visible={showSolution} />
                         <TrackerOverlay width={width} />
                     </Container>
                 </Stage>
             )}
+
+            {/* UI Overlay */}
+            <div className="absolute top-2 right-2 flex gap-2">
+                <button
+                    className={`px-2 py-1 text-xs font-mono border rounded ${showSolution ? 'bg-green-900/50 text-green-400 border-green-600' : 'bg-gray-900/50 text-gray-500 border-gray-700'}`}
+                    onClick={() => setShowSolution(!showSolution)}
+                >
+                    SOL
+                </button>
+            </div>
         </div>
     );
 };
