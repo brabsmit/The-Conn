@@ -153,24 +153,6 @@ export const TMAControls = () => {
                 className={sliderClass}
                 />
             </div>
-
-            {/* Bearing Slider */}
-            <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-green-500 font-mono">
-                <span>BEARING (ANCHOR)</span>
-                <span>{(bearing || 0).toFixed(1)}°</span>
-                </div>
-                <input
-                type="range"
-                min="0"
-                max="359"
-                step="0.1"
-                value={bearing || 0}
-                onChange={(e) => updateTrackerSolution(selectedTracker.id, { bearing: parseFloat(e.target.value) })}
-                className={sliderClass}
-                />
-            </div>
-
         </div>
     </div>
   );

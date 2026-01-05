@@ -27,20 +27,14 @@ export const TopBar = () => {
         </span>
       </div>
 
-      {/* COURSE / HEADING */}
-      <div className="flex items-center mr-8 gap-4 border-l border-white/5 pl-6 h-full py-2">
-        <div className="flex flex-col items-end">
-           <span className="text-[10px] text-zinc-500 leading-none mb-1">CSE</span>
-           <span className="text-sm text-zinc-400">
-             {Math.round(orderedHeading).toString().padStart(3, '0')}°
-           </span>
-        </div>
-        <div className="flex flex-col">
-           <span className="text-[10px] text-zinc-500 leading-none mb-1">HDG</span>
-           <span className="text-2xl text-white font-bold tracking-widest">
-             {Math.round(heading).toString().padStart(3, '0')}°
-           </span>
-        </div>
+      {/* HEADING */}
+      <div className="flex flex-col mr-8 border-l border-white/5 pl-6 h-full justify-center">
+         <div className="flex items-baseline gap-1">
+            <span className="text-2xl text-white font-bold">
+              {Math.round(heading).toString().padStart(3, '0')}
+            </span>
+         </div>
+         <span className="text-[10px] text-zinc-500 leading-none">HDG</span>
       </div>
 
       {/* SPEED */}
