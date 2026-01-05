@@ -3,6 +3,8 @@ import { calculateProjectedSolution } from '../../lib/tma';
 
 export const TMAControls = () => {
   const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
+  const selectedTrackerSpeed = useSubmarineStore((state) => state.trackers[0]?.solution.speed)
+  const selectedTrackerCourse = useSubmarineStore((state) => state.trackers[0]?.solution.course)
   const trackers = useSubmarineStore((state) => state.trackers);
   const updateTrackerSolution = useSubmarineStore((state) => state.updateTrackerSolution);
   const gameTime = useSubmarineStore((state) => state.gameTime);
@@ -55,12 +57,12 @@ export const TMAControls = () => {
     <div className="flex flex-col gap-4 p-4 h-full bg-white/5 border-l border-white/10 overflow-y-auto font-mono">
         {/* Section 1: Readout */}
         <div className="flex flex-col gap-2 p-3 bg-black/40 rounded border border-white/10 shadow-inner shadow-black/50">
-            <div className="text-[10px] text-zinc-400 font-bold tracking-widest border-b border-white/5 pb-1 mb-1">PROJECTED @ NOW</div>
+            <div className="text-[10px] text-zinc-400 font-bold tracking-widest border-b border-white/5 pb-1 mb-1">{selectedTrackerId}</div>
             <div className="grid grid-cols-2 gap-4">
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">BEARING</span>
                     <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {projected.calcBearing.toFixed(1)}°
+                        {projected.calcBearing.toFixed(0)}
                     </span>
                  </div>
                  <div className="flex flex-col">
@@ -69,10 +71,16 @@ export const TMAControls = () => {
                         {projected.calcRange.toFixed(0)}
                     </span>
                  </div>
-                 <div className="flex flex-col col-span-2 border-t border-white/5 pt-2">
-                    <span className="text-[10px] text-zinc-500">ANGLE ON BOW</span>
-                    <span className="font-mono text-xl text-red-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(248,113,113,0.5)]">
-                        {projected.calcAOB.toFixed(0)}°
+                 <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500">COURSE</span>
+                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+                        {selectedTrackerCourse.toFixed(1)}
+                    </span>
+                 </div>
+                 <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500">SPEED</span>
+                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+                        {selectedTrackerSpeed.toFixed(1)}
                     </span>
                  </div>
             </div>

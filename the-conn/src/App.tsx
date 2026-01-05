@@ -37,19 +37,10 @@ function App() {
                 <SonarDisplay />
              </div>
           </Panel>
-          
-          <Panel title="Signal Analysis" className="h-1/3">
-            <div className="grid grid-cols-4 gap-2 h-full">
-              {[1,2,3,4].map(i => (
-                <div key={i} className="bg-black/40 border border-white/5 relative">
-                </div>
-              ))}
-            </div>
-          </Panel>
         </div>
 
         {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
-        <Panel title="Target Motion Analysis" className="col-span-8 row-span-4 flex flex-col gap-2">
+        <Panel title="Target Motion Analysis" className="col-span-8 row-span-6 flex flex-col gap-2">
            <div className="flex flex-row h-full">
                <div className="flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
                    <TMADisplay />
