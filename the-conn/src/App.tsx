@@ -5,20 +5,10 @@ import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import { TMAControls } from './components/panels/TMAControls';
 import { TopBar } from './components/layout/TopBar';
+import { HelmScreen } from './components/screens/HelmScreen';
 
 function App() {
-  const {
-    heading,
-    speed,
-    depth,
-    orderedHeading,
-    orderedSpeed,
-    orderedDepth,
-    setOrderedHeading,
-    setOrderedSpeed,
-    setOrderedDepth,
-    tick
-  } = useSubmarineStore();
+  const tick = useSubmarineStore(state => state.tick);
 
   useInterval(() => {
     tick();
@@ -58,55 +48,7 @@ function App() {
         <div className="col-span-8 row-span-2 grid grid-cols-2 gap-6">
           
           {/* Helm Station */}
-          <Panel title="Helm">
-            <div className="grid grid-cols-3 gap-2 h-full">
-              <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">HEADING</span>
-                  <input
-                    type="number"
-                    className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-                    value={Math.round(orderedHeading)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (!isNaN(val)) setOrderedHeading(val);
-                    }}
-                  />
-                </div>
-                <span className="text-2xl text-amber-500">{Math.round(heading).toString().padStart(3, '0')}</span>
-              </div>
-              <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">DEPTH</span>
-                  <input
-                    type="number"
-                    className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-                    value={Math.round(orderedDepth)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (!isNaN(val)) setOrderedDepth(val);
-                    }}
-                  />
-                </div>
-                <span className="text-2xl text-amber-500">{Math.round(depth).toString().padStart(4, '0')}</span>
-              </div>
-              <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-500">SPEED</span>
-                  <input
-                    type="number"
-                    className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-                    value={Math.round(orderedSpeed)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (!isNaN(val)) setOrderedSpeed(val);
-                    }}
-                  />
-                </div>
-                <span className="text-2xl text-amber-500">{speed.toFixed(1)}</span>
-              </div>
-            </div>
-          </Panel>
+          <HelmScreen />
 
           {/* Weapons Control */}
           <Panel title="Fire Control" variant="danger">

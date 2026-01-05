@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 
 const formatTime = (seconds: number) => {
@@ -8,12 +9,28 @@ const formatTime = (seconds: number) => {
 };
 
 export const TopBar = () => {
-  const {
-    gameTime,
-    heading,
-    speed,
-    depth
-  } = useSubmarineStore();
+  const timeRef = useRef<HTMLSpanElement>(null);
+  const headingRef = useRef<HTMLSpanElement>(null);
+  const speedRef = useRef<HTMLSpanElement>(null);
+  const depthRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    // Initial Update
+    const state = useSubmarineStore.getState();
+    if (timeRef.current) timeRef.current.innerText = formatTime(state.gameTime);
+    if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
+    if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
+    if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
+
+    const unsub = useSubmarineStore.subscribe((state) => {
+      if (timeRef.current) timeRef.current.innerText = formatTime(state.gameTime);
+      if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
+      if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
+      if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
+    });
+
+    return unsub;
+  }, []);
 
   return (
     <div className="fixed top-0 left-0 right-0 h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none">
@@ -21,16 +38,16 @@ export const TopBar = () => {
       {/* TIME */}
       <div className="flex flex-col mr-8">
         <span className="text-[10px] text-zinc-500 leading-none mb-1">SIM TIME</span>
-        <span className="text-xl text-amber-500 tracking-wider">
-          {formatTime(gameTime)}
+        <span ref={timeRef} className="text-xl text-amber-500 tracking-wider">
+          00:00:00
         </span>
       </div>
 
       {/* HEADING */}
       <div className="flex flex-col mr-8 border-l border-white/5 pl-6 h-full justify-center">
          <div className="flex items-baseline gap-1">
-            <span className="text-2xl text-white font-bold">
-              {Math.round(heading).toString().padStart(3, '0')}
+            <span ref={headingRef} className="text-2xl text-white font-bold">
+              000
             </span>
          </div>
          <span className="text-[10px] text-zinc-500 leading-none">HDG</span>
@@ -39,8 +56,8 @@ export const TopBar = () => {
       {/* SPEED */}
       <div className="flex flex-col mr-8 border-l border-white/5 pl-6 h-full justify-center">
          <div className="flex items-baseline gap-1">
-            <span className="text-2xl text-white font-bold">
-              {speed.toFixed(1)}
+            <span ref={speedRef} className="text-2xl text-white font-bold">
+              0.0
             </span>
             <span className="text-xs text-zinc-500">KTS</span>
          </div>
@@ -50,8 +67,8 @@ export const TopBar = () => {
       {/* DEPTH */}
       <div className="flex flex-col mr-8 border-l border-white/5 pl-6 h-full justify-center">
          <div className="flex items-baseline gap-1">
-            <span className="text-2xl text-white font-bold">
-              {Math.round(depth).toString().padStart(4, '0')}
+            <span ref={depthRef} className="text-2xl text-white font-bold">
+              0000
             </span>
             <span className="text-xs text-zinc-500">FT</span>
          </div>
