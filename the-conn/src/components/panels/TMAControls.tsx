@@ -161,7 +161,7 @@ export const TMAControls = () => {
                 <span>{bearing.toFixed(0).padStart(3, '0')}°</span>
                 </div>
                 <input
-                type="bearing"
+                type="range"
                 min="0"
                 max="359"
                 step="1"
