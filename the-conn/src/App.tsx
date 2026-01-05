@@ -2,6 +2,7 @@ import { Panel } from './components/ui/Panel';
 import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
+import TMADisplay from './components/screens/TMADisplay';
 
 function App() {
   const {
@@ -48,9 +49,8 @@ function App() {
 
         {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
         <Panel title="Target Motion Analysis" className="col-span-8 row-span-4">
-           <div className="w-full h-full bg-zinc-900/50 rounded border border-dashed border-zinc-700 relative p-4">
-              <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-phosphor rounded-full shadow-[0_0_10px_rgba(51,255,51,0.8)]" />
-              <div className="text-zinc-600 text-xs">Waiting for solution input...</div>
+           <div className="w-full h-full bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
+               <TMADisplay />
            </div>
         </Panel>
 

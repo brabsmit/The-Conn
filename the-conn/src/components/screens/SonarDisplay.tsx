@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect } from 'react';
-import { Stage, Container, Sprite, useTick, useApp } from '@pixi/react';
+import { Stage, Container, Sprite, Text, Graphics, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
@@ -116,17 +116,9 @@ const Waterfall = () => {
                 const normalizedBearing = (x / width) * 360;
                 let bearing = normalizedBearing - 180;
 
-                // Ensure wrapping consistency if needed, though the formula gives -180 to 180 directly.
-                // The store normalizeAngle expects inputs that might be outside 0-360 and wraps them to 0-359.
-                // -180 becomes 180. -90 becomes 270.
-                // So passing 'bearing' as calculated here is fine if designateTracker uses it directly or normalizes it.
-                // designateTracker stores it as is.
-                // But generally bearings are 0-359 in the store.
-                // Let's normalize it to 0-359 before sending.
                 if (bearing < 0) bearing += 360;
 
                 designateTracker(bearing);
-                console.log(`Tracker designated at bearing: ${bearing}`);
             }}
         />
     );
@@ -159,6 +151,65 @@ const NoiseBackground = () => {
     return <Sprite texture={noiseTexture} />;
 };
 
+const TrackerOverlay = () => {
+    const width = 800;
+    const height = 600;
+    const graphicsRef = useRef<PIXI.Graphics | null>(null);
+
+    useTick(() => {
+        const graphics = graphicsRef.current;
+        if (!graphics) return;
+
+        graphics.clear();
+
+        // Access store directly
+        const { trackers } = useSubmarineStore.getState();
+
+        trackers.forEach((tracker) => {
+             // Map bearing to X coordinate.
+             const normalizedBearing = (tracker.currentBearing + 180) % 360;
+             const x = (normalizedBearing / 360) * width;
+
+             // Draw a triangle pointing down at the top
+             graphics.beginFill(0x33ff33);
+             graphics.moveTo(x, 0);
+             graphics.lineTo(x - 5, 10);
+             graphics.lineTo(x + 5, 10);
+             graphics.closePath();
+             graphics.endFill();
+        });
+    });
+
+    const trackers = useSubmarineStore((state) => state.trackers);
+
+    return (
+        <Container>
+            <Graphics ref={graphicsRef} />
+            {trackers.map((tracker) => {
+                 const normalizedBearing = (tracker.currentBearing + 180) % 360;
+                 const x = (normalizedBearing / 360) * width;
+                 return (
+                     <Text
+                        key={tracker.id}
+                        text={tracker.id}
+                        x={x}
+                        y={12}
+                        anchor={0.5}
+                        style={
+                            new PIXI.TextStyle({
+                                fill: '#33ff33',
+                                fontSize: 14,
+                                fontFamily: 'monospace',
+                                fontWeight: 'bold'
+                            })
+                        }
+                     />
+                 );
+            })}
+        </Container>
+    );
+};
+
 const SonarDisplay = () => {
     const width = 800;
     const height = 600;
@@ -186,6 +237,7 @@ const SonarDisplay = () => {
                 <Container filters={crtFilter ? [crtFilter] : []}>
                     <NoiseBackground />
                     <Waterfall />
+                    <TrackerOverlay />
                 </Container>
             </Stage>
         </div>

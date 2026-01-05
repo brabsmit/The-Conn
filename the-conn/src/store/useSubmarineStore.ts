@@ -24,6 +24,7 @@ export interface TrackerSolution {
 
 export interface Tracker {
   id: string;
+  contactId?: string;
   currentBearing: number;
   bearingHistory: TrackerHistory[];
   solution: TrackerSolution;
@@ -104,8 +105,28 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
   designateTracker: (bearing) => set((state) => {
     const id = `S${state.trackers.length + 1}`;
+
+    // Find closest sensor reading
+    let bestContactId: string | undefined;
+    let minDiff = 360;
+
+    state.sensorReadings.forEach(reading => {
+      let diff = Math.abs(reading.bearing - bearing);
+      if (diff > 180) diff = 360 - diff; // Handle wrap
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestContactId = reading.contactId;
+      }
+    });
+
+    // Threshold e.g. 5 degrees
+    if (minDiff > 5) {
+      bestContactId = undefined;
+    }
+
     const newTracker: Tracker = {
       id,
+      contactId: bestContactId,
       currentBearing: bearing,
       bearingHistory: [],
       solution: { speed: 0, range: 0, course: 0 }
@@ -202,11 +223,20 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Update Trackers
       const newTickCount = state.tickCount + 1;
       const newGameTime = state.gameTime + (1/60);
-      let newTrackers = state.trackers;
+      let newTrackers = state.trackers.map(tracker => {
+        // Follow contact if locked
+        if (tracker.contactId) {
+          const reading = newSensorReadings.find(r => r.contactId === tracker.contactId);
+          if (reading) {
+             return { ...tracker, currentBearing: reading.bearing };
+          }
+        }
+        return tracker;
+      });
 
       // Every 60 ticks (approx 1 sec), record history
       if (newTickCount % 60 === 0) {
-        newTrackers = state.trackers.map(tracker => ({
+        newTrackers = newTrackers.map(tracker => ({
           ...tracker,
           bearingHistory: [
             ...tracker.bearingHistory,
