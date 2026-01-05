@@ -29,7 +29,7 @@ export const Panel: React.FC<PanelProps> = ({ title, children, className = '', v
       </div>
 
       {/* The Content Area */}
-      <div className="relative z-10 flex-1 p-4">
+      <div className="relative z-10 flex-1 p-4 flex flex-col">
         {children}
       </div>
     </div>
