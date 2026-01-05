@@ -31,10 +31,10 @@ function App() {
       <TopBar />
 
       {/* The Main Desk Container */}
-      <div className="w-full max-w-6xl grid grid-cols-12 grid-rows-6 gap-6 h-[800px]">
+      <div className="w-full max-w-6xl grid grid-cols-12 grid-rows-6 gap-6 h-[1600px]">
         
-        {/* SECTION 1: SENSOR ARRAY (Left Side) */}
-        <div className="col-span-4 row-span-6 flex flex-col gap-4">
+        {/* SECTION 1: SENSOR ARRAY */}
+        <div className="col-span-10 row-span-6 flex flex-col gap-4">
           <Panel title="Sonar Array" className="flex-1 overflow-hidden">
              <div className="w-full h-full bg-black rounded shadow-inset border border-white/10 relative">
                 <SonarDisplay />
@@ -43,7 +43,7 @@ function App() {
         </div>
 
         {/* SECTION 2: TACTICAL PLOT (Center/Right Top) */}
-        <Panel title="Target Motion Analysis" className="col-span-8 row-span-6 flex flex-col gap-2">
+        <Panel title="Target Motion Analysis" className="col-span-10 row-span-6 flex flex-col gap-2">
            <div className="flex flex-row h-full">
                <div className="flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
                    <TMADisplay />
