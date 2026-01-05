@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { calculateProjectedSolution, TMASolution } from './tma';
+import { calculateProjectedSolution, type TMASolution } from './tma';
 
 test('Static Target, Static Ownship', () => {
     const anchorTime = 100;

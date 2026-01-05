@@ -4,6 +4,7 @@ import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import { TMAControls } from './components/panels/TMAControls';
+import { TopBar } from './components/layout/TopBar';
 
 function App() {
   const {
@@ -25,8 +26,10 @@ function App() {
 
   return (
     // LAYER 1: The Bulkhead (Background)
-    <div className="min-h-screen bg-bulkhead bg-noise p-8 flex items-center justify-center font-mono">
+    <div className="min-h-screen bg-bulkhead bg-noise p-8 pt-20 flex items-center justify-center font-mono">
       
+      <TopBar />
+
       {/* The Main Desk Container */}
       <div className="w-full max-w-6xl grid grid-cols-12 grid-rows-6 gap-6 h-[800px]">
         
