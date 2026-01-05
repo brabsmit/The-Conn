@@ -28,6 +28,14 @@ export const normalizeAngle = (angle: number): number => {
 };
 
 /**
+ * Returns the shortest difference between two angles (-180 to 180)
+ */
+export const getShortestAngle = (target: number, source: number): number => {
+  const diff = (target - source + 540) % 360 - 180;
+  return diff;
+};
+
+/**
  * Calculates the target's world position at a specific time based on the solution anchor.
  */
 export const calculateTargetPosition = (
