@@ -67,12 +67,17 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
             // Draw Tracker History
             // Color: Green (0x33ff33)
+            graphics.beginFill(0x33ff33, 0.8);
             trackers.forEach(tracker => {
-                graphics.beginFill(0x33ff33, 0.8);
+                let osIndex = 0;
                 tracker.bearingHistory.forEach(history => {
-                    const ownShipState = ownShipHistory.find(os => Math.abs(os.time - history.time) < 0.1);
+                    // Optimized lookup: fast forward osIndex
+                    while (osIndex < ownShipHistory.length && ownShipHistory[osIndex].time < history.time - 0.1) {
+                        osIndex++;
+                    }
 
-                    if (ownShipState) {
+                    if (osIndex < ownShipHistory.length && Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                        const ownShipState = ownShipHistory[osIndex];
                         const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
                         const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
 
@@ -87,8 +92,8 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                         }
                     }
                 });
-                graphics.endFill();
             });
+            graphics.endFill();
 
             // Draw Solution Line
             if (selectedTracker && selectedTracker.solution) {
