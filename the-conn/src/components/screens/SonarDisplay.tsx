@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { Stage, Container, Sprite, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
+import { useSubmarineStore } from '../../store/useSubmarineStore';
 
 // Waterfall component to handle the shifting texture logic
 const Waterfall = () => {
@@ -41,7 +42,8 @@ const Waterfall = () => {
 
         // Create the new line
         lineGraphics.clear();
-        // Draw simulated random noise data for the line
+
+        // Draw simulated random noise data for the line (Background noise)
         for (let x = 0; x < width; x+=2) {
              // Phosphor green varying opacity
              const intensity = Math.random();
@@ -51,6 +53,24 @@ const Waterfall = () => {
                  lineGraphics.endFill();
              }
         }
+
+        // Draw Sensor Contacts
+        // Access store state directly to avoid re-renders
+        const { sensorReadings } = useSubmarineStore.getState();
+
+        sensorReadings.forEach((reading) => {
+            // Map bearing to X coordinate.
+            // Center (width/2) is 0 degrees (Dead Ahead).
+            // Left edge is -180 (180). Right edge is 180.
+            // Formula: x = ((bearing + 180) % 360) / 360 * width
+
+            const normalizedBearing = (reading.bearing + 180) % 360;
+            const x = (normalizedBearing / 360) * width;
+
+            lineGraphics.beginFill(0xccffcc, 1.0); // Brighter green/white
+            lineGraphics.drawRect(x, 0, 4, 3); // Slightly larger dot
+            lineGraphics.endFill();
+        });
 
         // Render previous frame shifted down to next texture
         app.renderer.render(prevSprite, {
@@ -73,8 +93,6 @@ const Waterfall = () => {
         }
 
         // Cleanup created sprite to avoid memory leak?
-        // PIXI.Sprite is a lightweight object, but creating one every frame and not destroying it might be an issue if not garbage collected.
-        // It should be GC'd.
         prevSprite.destroy({ children: true, texture: false, baseTexture: false });
     });
 
