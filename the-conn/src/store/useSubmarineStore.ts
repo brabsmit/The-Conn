@@ -27,6 +27,13 @@ export interface TrackerSolution {
   speed: number;
   range: number;
   course: number;
+  bearing: number;
+  anchorTime: number;
+  anchorOwnShip: {
+    x: number;
+    y: number;
+    heading: number;
+  };
 }
 
 export interface Tracker {
@@ -142,7 +149,14 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       contactId: bestContactId,
       currentBearing: bearing,
       bearingHistory: [],
-      solution: { speed: 0, range: 0, course: 0 }
+      solution: {
+        speed: 10,
+        range: 10000,
+        course: 0,
+        bearing: normalizeAngle(bearing + state.heading),
+        anchorTime: state.gameTime,
+        anchorOwnShip: { x: state.x, y: state.y, heading: state.heading }
+      }
     };
     return {
       trackers: [...state.trackers, newTracker],
