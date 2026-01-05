@@ -35,54 +35,70 @@ export const HelmScreen = () => {
   }, []);
 
   return (
-    <Panel title="Helm">
-    <div className="grid grid-cols-3 gap-2 h-full">
-      <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-zinc-500">HEADING</span>
-          <input
-            type="number"
-            className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-            value={Math.round(orderedHeading)}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (!isNaN(val)) setOrderedHeading(val);
-            }}
-          />
+    <Panel title="Helm" className="h-full">
+        <div className="flex flex-row gap-4 h-full items-center px-4">
+
+            {/* Heading Control */}
+            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500">HEADING</span>
+                    <span ref={headingRef} className="text-xl text-amber-500 font-bold tabular-nums">000</span>
+                </div>
+                <div className="flex items-center gap-2">
+                     <span className="text-[10px] text-amber-500/50">ORDER</span>
+                     <input
+                        type="number"
+                        className="w-16 bg-transparent text-right text-lg text-amber-500 border-b border-white/10 focus:outline-none focus:border-amber-500 font-bold tabular-nums"
+                        value={Math.round(orderedHeading)}
+                        onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!isNaN(val)) setOrderedHeading(val);
+                        }}
+                     />
+                </div>
+            </div>
+
+            {/* Depth Control */}
+            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500">DEPTH</span>
+                    <span ref={depthRef} className="text-xl text-amber-500 font-bold tabular-nums">0000</span>
+                </div>
+                <div className="flex items-center gap-2">
+                     <span className="text-[10px] text-amber-500/50">ORDER</span>
+                     <input
+                        type="number"
+                        className="w-16 bg-transparent text-right text-lg text-amber-500 border-b border-white/10 focus:outline-none focus:border-amber-500 font-bold tabular-nums"
+                        value={Math.round(orderedDepth)}
+                        onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!isNaN(val)) setOrderedDepth(val);
+                        }}
+                     />
+                </div>
+            </div>
+
+            {/* Speed Control */}
+            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500">SPEED</span>
+                    <span ref={speedRef} className="text-xl text-amber-500 font-bold tabular-nums">0.0</span>
+                </div>
+                <div className="flex items-center gap-2">
+                     <span className="text-[10px] text-amber-500/50">ORDER</span>
+                     <input
+                        type="number"
+                        className="w-16 bg-transparent text-right text-lg text-amber-500 border-b border-white/10 focus:outline-none focus:border-amber-500 font-bold tabular-nums"
+                        value={Math.round(orderedSpeed)}
+                        onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (!isNaN(val)) setOrderedSpeed(val);
+                        }}
+                     />
+                </div>
+            </div>
+
         </div>
-        <span ref={headingRef} className="text-2xl text-amber-500">000</span>
-      </div>
-      <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-zinc-500">DEPTH</span>
-          <input
-            type="number"
-            className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-            value={Math.round(orderedDepth)}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (!isNaN(val)) setOrderedDepth(val);
-            }}
-          />
-        </div>
-        <span ref={depthRef} className="text-2xl text-amber-500">0000</span>
-      </div>
-      <div className="bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-between">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-zinc-500">SPEED</span>
-          <input
-            type="number"
-            className="w-12 bg-transparent text-right text-xs text-amber-500/50 border-b border-white/10 focus:outline-none focus:border-amber-500"
-            value={Math.round(orderedSpeed)}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (!isNaN(val)) setOrderedSpeed(val);
-            }}
-          />
-        </div>
-        <span ref={speedRef} className="text-2xl text-amber-500">0.0</span>
-      </div>
-    </div>
-  </Panel>
+    </Panel>
   );
 };
