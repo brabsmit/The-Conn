@@ -1,6 +1,7 @@
 import { Panel } from './components/ui/Panel';
 import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
+import SonarDisplay from './components/screens/SonarDisplay';
 
 function App() {
   const {
@@ -29,10 +30,9 @@ function App() {
         
         {/* SECTION 1: SENSOR ARRAY (Left Side) */}
         <div className="col-span-4 row-span-6 flex flex-col gap-4">
-          <Panel title="Sonar Array" className="flex-1">
-             {/* Placeholder for PixiJS Screen */}
-             <div className="w-full h-full bg-screen-off rounded shadow-inset border border-white/10 flex items-center justify-center">
-                <span className="text-phosphor animate-pulse text-sm">[NO SIGNAL]</span>
+          <Panel title="Sonar Array" className="flex-1 overflow-hidden">
+             <div className="w-full h-full bg-black rounded shadow-inset border border-white/10 relative">
+                <SonarDisplay />
              </div>
           </Panel>
           
