@@ -73,6 +73,12 @@ export interface Torpedo {
   speed: number;
   status: 'RUNNING' | 'DUD' | 'EXPLODED';
   launchTime: number;
+  // Guidance Params
+  designatedTargetId?: string; // Target assigned at launch (hint)
+  activeTargetId?: string; // Target actually locked on
+  enableRange: number; // Distance at which to start searching
+  gyroAngle: number; // Initial heading
+  distanceTraveled: number;
 }
 
 interface SubmarineState {
@@ -118,7 +124,7 @@ interface SubmarineState {
   floodTube: (tubeId: number) => void;
   equalizeTube: (tubeId: number) => void;
   openTube: (tubeId: number) => void;
-  fireTube: (tubeId: number) => void;
+  fireTube: (tubeId: number, designatedTargetId?: string, enableRange?: number, gyroAngle?: number) => void;
   tick: (delta?: number) => void;
 }
 
@@ -261,7 +267,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     )
   })),
 
-  fireTube: (tubeId) => set((state) => {
+  fireTube: (tubeId, designatedTargetId, enableRange, gyroAngle) => set((state) => {
     const tube = state.tubes.find(t => t.id === tubeId);
     if (!tube || tube.status !== 'OPEN' || !tube.weaponData) {
       return {};
@@ -269,23 +275,23 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
     const torpedoId = `T-${Date.now()}-${tube.id}`;
 
-    // Get Target Heading from Solution
-    let targetHeading = state.heading;
-    if (state.selectedTrackerId) {
-      const tracker = state.trackers.find(t => t.id === state.selectedTrackerId);
-      if (tracker) {
-        targetHeading = tracker.solution.bearing;
-      }
-    }
+    // Defaults if not provided
+    const launchHeading = gyroAngle !== undefined ? gyroAngle : state.heading;
+    const launchEnableRange = enableRange !== undefined ? enableRange : 1000;
 
     const newTorpedo: Torpedo = {
       id: torpedoId,
       position: { x: state.x, y: state.y },
-      heading: state.heading,
-      targetHeading: targetHeading,
+      heading: launchHeading,
+      targetHeading: launchHeading, // Used for pure straight run if not homing
       speed: 20, // Launch speed
       status: 'RUNNING',
-      launchTime: state.gameTime
+      launchTime: state.gameTime,
+      designatedTargetId,
+      activeTargetId: undefined, // Not locked initially
+      enableRange: launchEnableRange,
+      gyroAngle: launchHeading,
+      distanceTraveled: 0
     };
 
     return {
@@ -357,26 +363,146 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
       // Update Torpedoes
       const newTorpedoes = state.torpedoes.map(torpedo => {
+        if (torpedo.status !== 'RUNNING') return torpedo;
+
         let newSpeed = torpedo.speed;
         if (newSpeed < 45) {
           newSpeed += 0.5 * delta; // Accelerate
           if (newSpeed > 45) newSpeed = 45;
         }
 
-        const torpRadHeading = (torpedo.heading * Math.PI) / 180;
-        const torpDist = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
-        const torpNewX = torpedo.position.x + torpDist * Math.sin(torpRadHeading);
-        const torpNewY = torpedo.position.y + torpDist * Math.cos(torpRadHeading);
+        const distThisTick = newSpeed * FEET_PER_KNOT_PER_TICK * delta; // Feet
+        const newTotalDistance = torpedo.distanceTraveled + (distThisTick / 3); // Yards
+
+        let newHeading = torpedo.heading;
+
+        // --- Autonomy Logic ---
+
+        let finalStatus = torpedo.status;
+        let finalActiveTargetId = torpedo.activeTargetId;
+
+        // Lifecycle: Fuel Exhaustion
+        if (newTotalDistance > 20000) {
+            finalStatus = 'DUD';
+        }
+
+        // Phase 2: Enable / Snake Search
+        if (newTotalDistance >= torpedo.enableRange && finalStatus === 'RUNNING') {
+           // Acquisition Logic (Active Seeker)
+           if (!finalActiveTargetId) {
+                let bestContactId = undefined;
+                let minDist = 2000; // Seeker Range
+
+                // Prioritize designated target
+                if (torpedo.designatedTargetId) {
+                    const contact = state.contacts.find(c => c.id === torpedo.designatedTargetId);
+                    if (contact) {
+                         const dx = contact.x - torpedo.position.x;
+                         const dy = contact.y - torpedo.position.y;
+                         const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
+                         if (distToContact < 2000) {
+                            const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                            const bearingToContact = normalizeAngle(90 - mathAngle);
+                            let relBearing = Math.abs(bearingToContact - newHeading);
+                            if (relBearing > 180) relBearing = 360 - relBearing;
+
+                            if (relBearing < 45) {
+                                bestContactId = contact.id;
+                            }
+                         }
+                    }
+                }
+
+                // If not found designated, check all contacts
+                if (!bestContactId) {
+                    for (const contact of state.contacts) {
+                        const dx = contact.x - torpedo.position.x;
+                        const dy = contact.y - torpedo.position.y;
+                        const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
+                        if (distToContact < 2000) {
+                            const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                            const bearingToContact = normalizeAngle(90 - mathAngle);
+                            let relBearing = Math.abs(bearingToContact - newHeading);
+                            if (relBearing > 180) relBearing = 360 - relBearing;
+
+                            if (relBearing < 45) {
+                                if (distToContact < minDist) {
+                                    minDist = distToContact;
+                                    bestContactId = contact.id;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (bestContactId) {
+                    finalActiveTargetId = bestContactId;
+                }
+           }
+
+           // Snake Search Pattern (if not locked)
+           if (!finalActiveTargetId) {
+               const searchWidth = 20; // degrees
+               const searchPeriod = 2000; // yards
+               const phase = ((newTotalDistance - torpedo.enableRange) % searchPeriod) / searchPeriod;
+               const offset = Math.sin(phase * Math.PI * 2) * searchWidth;
+               newHeading = normalizeAngle(torpedo.gyroAngle + offset);
+           }
+        }
+        // Phase 1: Transit (Implicit - stay on gyroAngle if < enableRange)
+        else {
+            newHeading = torpedo.gyroAngle;
+        }
+
+        // Phase 3: Homing (Pure Pursuit)
+        if (finalActiveTargetId && finalStatus === 'RUNNING') {
+             const contact = state.contacts.find(c => c.id === finalActiveTargetId);
+             if (contact) {
+                 const dx = contact.x - torpedo.position.x;
+                 const dy = contact.y - torpedo.position.y;
+                 const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                 const bearingToContact = normalizeAngle(90 - mathAngle);
+                 newHeading = bearingToContact;
+
+                 // Proximity Fuse (Detonation)
+                 const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
+                 if (distToContact < 50) {
+                     finalStatus = 'EXPLODED';
+                 }
+             } else {
+                 finalActiveTargetId = undefined; // Lost lock
+             }
+        }
+
+        // Apply Heading
+        const torpRadHeading = (newHeading * Math.PI) / 180;
+        const torpNewX = torpedo.position.x + distThisTick * Math.sin(torpRadHeading);
+        const torpNewY = torpedo.position.y + distThisTick * Math.cos(torpRadHeading);
 
         return {
           ...torpedo,
           speed: newSpeed,
-          position: { x: torpNewX, y: torpNewY }
+          heading: newHeading,
+          position: { x: torpNewX, y: torpNewY },
+          distanceTraveled: newTotalDistance,
+          status: finalStatus,
+          activeTargetId: finalActiveTargetId
         };
       });
 
+      // Handle Detonation Effects (Remove Targets)
+      let newContacts = state.contacts;
+      newTorpedoes.forEach(t => {
+          if (t.status === 'EXPLODED' && t.activeTargetId) {
+              newContacts = newContacts.filter(c => c.id !== t.activeTargetId);
+          }
+      });
+
+      // Filter out dead torpedoes
+      const activeTorpedoes = newTorpedoes.filter(t => t.status !== 'DUD' && t.status !== 'EXPLODED');
+
       // Sensor Simulation
-      const newSensorReadings = state.contacts.reduce((acc, contact) => {
+      const newSensorReadings = newContacts.reduce((acc, contact) => {
         // Calculate True Bearing
         const dx = contact.x - newX;
         const dy = contact.y - newY;
@@ -480,12 +606,13 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         x: newX,
         y: newY,
         ownShipHistory: newOwnShipHistory,
+        contacts: newContacts, // Update truth data
         sensorReadings: newSensorReadings,
         tickCount: newTickCount,
         gameTime: newGameTime,
         trackers: newTrackers,
         tubes: newTubes,
-        torpedoes: newTorpedoes
+        torpedoes: activeTorpedoes
       };
     }),
 }));

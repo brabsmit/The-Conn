@@ -90,6 +90,10 @@ export const calculateTargetPosition = (
   };
 };
 
+/**
+ * Calculates a projected solution (Range/Bearing/AOB) relative to OwnShip at a given time.
+ * Used for Fire Control solutions.
+ */
 export const calculateProjectedSolution = (
   solution: TMASolution,
   currentOwnShip: OwnShipState,
