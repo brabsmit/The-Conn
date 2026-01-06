@@ -28,35 +28,43 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
         };
     }, [renderTexture]);
 
-    const lineGraphics = useMemo(() => new PIXI.Graphics(), []);
-
     useImperativeHandle(ref, () => ({
         drawRow: (scanlineIndex: number) => {
             if (!app || !renderTexture.valid) return;
 
-            lineGraphics.clear();
+            // Create Buffer (RGBA)
+            const buffer = new Uint8Array(width * 4);
+            const noiseFloor = 30; // 0-255 range, approx 0.1-0.2 intensity
 
-            // 1. Clear the line (draw black rect)
-            lineGraphics.beginFill(0x000000, 1.0);
-            lineGraphics.drawRect(0, scanlineIndex, width, 1);
-            lineGraphics.endFill();
+            // 1. Fill Noise
+            for (let i = 0; i < width; i++) {
+                const noise = Math.random() * noiseFloor;
+                buffer[i * 4 + 0] = 0;         // R
+                buffer[i * 4 + 1] = noise;     // G
+                buffer[i * 4 + 2] = 0;         // B
+                buffer[i * 4 + 3] = 255;       // A
+            }
 
             const { sensorReadings, torpedoes, x: ownX, y: ownY, heading: ownHeading } = useSubmarineStore.getState();
 
-            // 2. Draw Sensor Contacts
+            // 2. Draw Sensor Contacts (Green)
             sensorReadings.forEach((reading) => {
                 let signedBearing = reading.bearing;
                 if (signedBearing > 180) signedBearing -= 360;
 
                 if (signedBearing >= -150 && signedBearing <= 150) {
-                     const x = ((signedBearing + 150) / 300) * width;
-                     lineGraphics.beginFill(0xccffcc, 1.0);
-                     lineGraphics.drawRect(x, scanlineIndex, 4, 1);
-                     lineGraphics.endFill();
+                     const cx = Math.floor(((signedBearing + 150) / 300) * width);
+                     // Draw 4px wide
+                     for (let off = 0; off < 4; off++) {
+                         const x = cx + off;
+                         if (x >= 0 && x < width) {
+                             buffer[x * 4 + 1] = 255; // Max Green
+                         }
+                     }
                 }
             });
 
-            // 3. Draw Torpedoes
+            // 3. Draw Torpedoes (White)
             torpedoes.forEach((torp) => {
                 if (torp.status !== 'RUNNING') return;
 
@@ -67,18 +75,33 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 const relBearing = getShortestAngle(trueBearing, ownHeading);
 
                 if (relBearing >= -150 && relBearing <= 150) {
-                     const x = ((relBearing + 150) / 300) * width;
-                     lineGraphics.beginFill(0xFFFFFF, 1.0);
-                     lineGraphics.drawRect(x, scanlineIndex, 3, 1);
-                     lineGraphics.endFill();
+                     const cx = Math.floor(((relBearing + 150) / 300) * width);
+                     // Draw 3px wide
+                     for (let off = 0; off < 3; off++) {
+                         const x = cx + off;
+                         if (x >= 0 && x < width) {
+                             buffer[x * 4 + 0] = 255; // R
+                             buffer[x * 4 + 1] = 255; // G
+                             buffer[x * 4 + 2] = 255; // B
+                         }
+                     }
                 }
             });
 
             // Render to texture
-            app.renderer.render(lineGraphics, {
+            // PIXI.Texture.fromBuffer creates a new BaseTexture by default.
+            // We must destroy it after use to prevent memory leaks.
+            const texture = PIXI.Texture.fromBuffer(buffer, width, 1);
+            const sprite = new PIXI.Sprite(texture);
+            sprite.y = scanlineIndex;
+
+            app.renderer.render(sprite, {
                 renderTexture: renderTexture,
                 clear: false
             });
+
+            sprite.destroy();
+            texture.destroy(true); // true = destroy base texture
         }
     }));
 
