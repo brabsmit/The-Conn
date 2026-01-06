@@ -117,7 +117,7 @@ interface SubmarineState {
 
   // Sensor Data
   sensorReadings: SensorReading[];
-  logs: string[];
+  logs: { message: string; timestamp: number }[];
 
   // Tracker Data
   trackers: Tracker[];
@@ -222,7 +222,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
   setOrderedDepth: (depth) => set({ orderedDepth: Math.max(0, Math.min(1200, depth)) }),
 
-  addLog: (message) => set((state) => ({ logs: [...state.logs, message].slice(-50) })),
+  addLog: (message) => set((state) => ({ logs: [...state.logs, { message, timestamp: state.gameTime }].slice(-50) })),
 
   designateTracker: (bearing) => set((state) => {
     const id = `S${state.trackers.length + 1}`;
@@ -731,7 +731,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                 updatedTracker.classification = type;
 
                 // Log
-                newLogs = [...newLogs, `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`].slice(-50);
+                newLogs = [...newLogs, { message: `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`, timestamp: newGameTime }].slice(-50);
             }
         }
 

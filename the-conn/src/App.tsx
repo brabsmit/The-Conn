@@ -10,7 +10,6 @@ import { TMAControls } from './components/panels/TMAControls';
 import { ContactManager } from './components/panels/ContactManager';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
-import { MessageLog } from './components/ui/MessageLog';
 
 function App() {
   const tick = useSubmarineStore(state => state.tick);
@@ -30,7 +29,6 @@ function App() {
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
       <div className="flex-grow flex w-full overflow-hidden p-4 gap-4 relative">
-        <MessageLog />
         
         {/* PANE A: Sonar Panel (Left) */}
         <div className="w-[350px] flex-shrink-0 h-full flex flex-col gap-4">
