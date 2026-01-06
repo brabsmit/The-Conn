@@ -6,13 +6,11 @@ import TMADisplay from './components/screens/TMADisplay';
 import { TMAControls } from './components/panels/TMAControls';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
-import { SonarTimeScale } from './store/useSubmarineStore';
+import type { SonarTimeScale } from './store/useSubmarineStore';
 
 const SonarControls = () => {
-  const { sonarTimeScale, setSonarTimeScale } = useSubmarineStore(state => ({
-    sonarTimeScale: state.sonarTimeScale,
-    setSonarTimeScale: state.setSonarTimeScale
-  }));
+  const sonarTimeScale = useSubmarineStore(state => state.sonarTimeScale);
+  const setSonarTimeScale = useSubmarineStore(state => state.setSonarTimeScale);
 
   const scales: SonarTimeScale[] = ['FAST', 'MED', 'SLOW'];
 
