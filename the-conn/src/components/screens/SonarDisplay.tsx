@@ -1,7 +1,7 @@
-import { useRef, useMemo, useEffect, useState } from 'react';
-import { Stage, Container, Sprite, Text, Graphics, useTick, useApp } from '@pixi/react';
+import { useRef, useMemo, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { Stage, Container, Sprite, Graphics, Text, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
-import { CRTFilter } from 'pixi-filters';
+import { SonarSweepFilter } from './SonarShader';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
@@ -11,93 +11,39 @@ interface DimensionProps {
     height: number;
 }
 
-// Waterfall component to handle the shifting texture logic
-const Waterfall = ({ width, height }: DimensionProps) => {
+interface WaterfallRef {
+    drawRow: (scanlineIndex: number) => void;
+}
+
+const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, ref) => {
     const app = useApp();
 
-    // Graphics object for drawing the new line
-    const lineGraphics = useMemo(() => new PIXI.Graphics(), []);
-
-    // Triple Buffers
-    // FAST: 100ms
-    const rtFastA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const rtFastB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const idxFast = useRef(0);
-    const accFast = useRef(0);
-
-    // MED: 1000ms
-    const rtMedA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const rtMedB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const idxMed = useRef(0);
-    const accMed = useRef(0);
-
-    // SLOW: 3000ms
-    const rtSlowA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const rtSlowB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const idxSlow = useRef(0);
-    const accSlow = useRef(0);
-
-    // Visible Sprite
-    const spriteRef = useRef<PIXI.Sprite | null>(null);
-
-    // Effect to recreate textures if dimensions change
-    useEffect(() => {
-        // Destroy old textures
-        const textures = [rtFastA, rtFastB, rtMedA, rtMedB, rtSlowA, rtSlowB];
-        textures.forEach(rt => rt.current.destroy(true));
-
-        // Create new ones
-        rtFastA.current = PIXI.RenderTexture.create({ width, height });
-        rtFastB.current = PIXI.RenderTexture.create({ width, height });
-        rtMedA.current = PIXI.RenderTexture.create({ width, height });
-        rtMedB.current = PIXI.RenderTexture.create({ width, height });
-        rtSlowA.current = PIXI.RenderTexture.create({ width, height });
-        rtSlowB.current = PIXI.RenderTexture.create({ width, height });
-
-        // Reset sprite texture
-        if (spriteRef.current) {
-            spriteRef.current.texture = rtFastA.current;
-        }
-
+    const renderTexture = useMemo(() => {
+        return PIXI.RenderTexture.create({ width, height });
     }, [width, height]);
 
-    const designateTracker = useSubmarineStore(state => state.designateTracker);
+    useEffect(() => {
+        return () => {
+             renderTexture.destroy(true);
+        };
+    }, [renderTexture]);
 
-    useTick((delta) => {
-        if (!app) return;
+    const lineGraphics = useMemo(() => new PIXI.Graphics(), []);
 
-        // Common update logic
-        const updateBuffer = (
-            rtA: PIXI.RenderTexture,
-            rtB: PIXI.RenderTexture,
-            idxRef: React.MutableRefObject<number>
-        ) => {
-            const currentRt = idxRef.current === 0 ? rtA : rtB;
-            const nextRt = idxRef.current === 0 ? rtB : rtA;
+    useImperativeHandle(ref, () => ({
+        drawRow: (scanlineIndex: number) => {
+            if (!app || !renderTexture.valid) return;
 
-            if (!currentRt.valid || !nextRt.valid) return;
-
-            // Create a sprite from the current state (previous frame)
-            const prevSprite = new PIXI.Sprite(currentRt);
-            prevSprite.y = 1; // Shift down
-
-            // Create the new line
             lineGraphics.clear();
 
-            // Draw simulated random noise data for the line (Background noise)
-            for (let x = 0; x < width; x+=2) {
-                 // Phosphor green varying opacity
-                 const intensity = Math.random();
-                 if (intensity > 0.8) {
-                     lineGraphics.beginFill(0x33ff33, intensity * 0.8);
-                     lineGraphics.drawRect(x, 0, 2, 1);
-                     lineGraphics.endFill();
-                 }
-            }
+            // 1. Clear the line (draw black rect)
+            lineGraphics.beginFill(0x000000, 1.0);
+            lineGraphics.drawRect(0, scanlineIndex, width, 1);
+            lineGraphics.endFill();
 
-            // Draw Sensor Contacts
             const { sensorReadings, torpedoes, x: ownX, y: ownY, heading: ownHeading } = useSubmarineStore.getState();
 
+            // 2. Draw Sensor Contacts
             sensorReadings.forEach((reading) => {
                 let signedBearing = reading.bearing;
                 if (signedBearing > 180) signedBearing -= 360;
@@ -105,262 +51,150 @@ const Waterfall = ({ width, height }: DimensionProps) => {
                 if (signedBearing >= -150 && signedBearing <= 150) {
                      const x = ((signedBearing + 150) / 300) * width;
                      lineGraphics.beginFill(0xccffcc, 1.0);
-                     lineGraphics.drawRect(x, 0, 4, 3);
+                     lineGraphics.drawRect(x, scanlineIndex, 4, 1);
                      lineGraphics.endFill();
                 }
             });
 
-            // Draw Torpedoes (Acoustic Signature)
+            // 3. Draw Torpedoes
             torpedoes.forEach((torp) => {
                 if (torp.status !== 'RUNNING') return;
 
                 const dx = torp.position.x - ownX;
                 const dy = torp.position.y - ownY;
-
-                // Calculate True Bearing (Nav convention: 0 is North)
-                // atan2(dy, dx) gives angle from East (+X)
-                // Nav Bearing = 90 - MathAngle
                 const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
                 const trueBearing = normalizeAngle(90 - mathAngleDeg);
-
                 const relBearing = getShortestAngle(trueBearing, ownHeading);
 
                 if (relBearing >= -150 && relBearing <= 150) {
                      const x = ((relBearing + 150) / 300) * width;
-
-                     // Higher Brightness (White)
                      lineGraphics.beginFill(0xFFFFFF, 1.0);
-                     lineGraphics.drawRect(x, 0, 3, 3);
+                     lineGraphics.drawRect(x, scanlineIndex, 3, 1);
                      lineGraphics.endFill();
                 }
             });
 
-            // Render previous frame shifted down to next texture
-            app.renderer.render(prevSprite, {
-                renderTexture: nextRt,
-                clear: true
-            });
-
-            // Render new line on top
+            // Render to texture
             app.renderer.render(lineGraphics, {
-                renderTexture: nextRt,
-                clear: false // Do not clear, draw on top
+                renderTexture: renderTexture,
+                clear: false
             });
-
-            // Swap
-            idxRef.current = 1 - idxRef.current;
-            prevSprite.destroy({ children: true, texture: false, baseTexture: false });
-        };
-
-        // --- FAST UPDATE ---
-        accFast.current += delta;
-        const threshFast = 100 / 16.66;
-        if (accFast.current >= threshFast) {
-            accFast.current = 0;
-            updateBuffer(rtFastA.current, rtFastB.current, idxFast);
         }
-
-        // --- MED UPDATE ---
-        accMed.current += delta;
-        const threshMed = 1000 / 16.66;
-        if (accMed.current >= threshMed) {
-            accMed.current = 0;
-            updateBuffer(rtMedA.current, rtMedB.current, idxMed);
-        }
-
-        // --- SLOW UPDATE ---
-        accSlow.current += delta;
-        const threshSlow = 3000 / 16.66;
-        if (accSlow.current >= threshSlow) {
-            accSlow.current = 0;
-            updateBuffer(rtSlowA.current, rtSlowB.current, idxSlow);
-        }
-
-        // --- DISPLAY SELECTION ---
-        if (spriteRef.current) {
-            const { timeScale } = useSubmarineStore.getState();
-            let targetTexture;
-
-            if (timeScale === 'FAST') {
-                targetTexture = idxFast.current === 0 ? rtFastA.current : rtFastB.current; // Actually we want the ONE we just wrote to? No, the one that is currently "current" after swap?
-                // In logic above:
-                // current is A. Write to B. Swap idx to 1 (B).
-                // So now idx is 1 (B). We want B.
-                // Wait.
-                // Start: idx=0. current=A. Write to B. Swap idx=1.
-                // Next tick: idx=1. current=B. Write to A. Swap idx=0.
-                // So if idx=0, it means last write was to A (which became current).
-                // Yes.
-                targetTexture = idxFast.current === 0 ? rtFastA.current : rtFastB.current;
-            } else if (timeScale === 'MED') {
-                targetTexture = idxMed.current === 0 ? rtMedA.current : rtMedB.current;
-            } else {
-                targetTexture = idxSlow.current === 0 ? rtSlowA.current : rtSlowB.current;
-            }
-
-            // Only update if changed to avoid flicker? Sprite handles it.
-            spriteRef.current.texture = targetTexture;
-        }
-    });
+    }));
 
     return (
         <Sprite
-            ref={spriteRef}
-            texture={rtFastA.current}
+            texture={renderTexture}
             eventMode="static"
             pointerdown={(e) => {
-                if (!e.currentTarget) return;
-                const localPoint = e.currentTarget.toLocal(e.global);
-                const x = localPoint.x;
-                const signedBearing = (x / width) * 300 - 150;
-
-                let bearing = signedBearing;
-                if (bearing < 0) bearing += 360;
-
-                designateTracker(bearing);
+                 if (!e.currentTarget) return;
+                 const localPoint = e.currentTarget.toLocal(e.global);
+                 const x = localPoint.x;
+                 const signedBearing = (x / width) * 300 - 150;
+                 let bearing = signedBearing;
+                 if (bearing < 0) bearing += 360;
+                 useSubmarineStore.getState().designateTracker(bearing);
             }}
         />
     );
-};
+});
 
-const NoiseBackground = ({ width, height }: DimensionProps) => {
-    // A simple static noise background
-    const noiseTexture = useMemo(() => {
-        const canvas = document.createElement('canvas');
-        canvas.width = width || 100;
-        canvas.height = height || 100;
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-             ctx.fillStyle = '#000000';
-             ctx.fillRect(0,0, width, height);
-             // random noise
-             for(let i=0; i<width*height*0.05; i++) {
-                 const x = Math.random() * width;
-                 const y = Math.random() * height;
-                 ctx.fillStyle = 'rgba(51, 255, 51, 0.1)'; // Faint phosphor green
-                 ctx.fillRect(x,y,1,1);
-             }
-        }
-        return PIXI.Texture.from(canvas);
-    }, [width, height]);
-
-    return <Sprite texture={noiseTexture} />;
-};
+interface OverlayRef {
+    scrollAndAddRow: () => void;
+}
 
 interface SolutionOverlayProps extends DimensionProps {
     visible: boolean;
 }
 
-const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
-    const graphicsRef = useRef<PIXI.Graphics | null>(null);
+const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, height, visible }, ref) => {
+    const containerRef = useRef<PIXI.Container>(null);
+    const currentChunkRef = useRef<PIXI.Graphics | null>(null);
+    const chunkPixelCount = useRef(0);
+    const lastPointsRef = useRef<Map<string, number>>(new Map());
 
-    useTick(() => {
-        const graphics = graphicsRef.current;
-        if (!graphics) return;
+    const CHUNK_SIZE = 100;
 
-        graphics.clear();
-        if (!visible) return;
-
-        const store = useSubmarineStore.getState();
-        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading, timeScale } = store;
-
-        const STEP_Y = 10;
-
-        // Pixels Per Second calculation
-        let secondsPerPixel = 0.1;
-        if (timeScale === 'MED') secondsPerPixel = 1.0;
-        if (timeScale === 'SLOW') secondsPerPixel = 3.0;
-
-        graphics.lineStyle(2, 0xffffff, 0.5);
-
-        const getInterpolatedOwnShip = (time: number): { x: number, y: number, heading: number } | null => {
-            if (time >= gameTime) {
-                return { x: currentX, y: currentY, heading: currentHeading };
-            }
-
-            for (let i = ownShipHistory.length - 1; i >= 0; i--) {
-                const h1 = ownShipHistory[i];
-                if (h1.time <= time) {
-                    let h2: { time: number, x: number, y: number, heading: number };
-                    if (i === ownShipHistory.length - 1) {
-                        h2 = { time: gameTime, x: currentX, y: currentY, heading: currentHeading };
-                    } else {
-                        h2 = ownShipHistory[i + 1];
-                    }
-
-                    const range = h2.time - h1.time;
-                    if (range <= 0.0001) return h1;
-
-                    const t = (time - h1.time) / range;
-
-                    const x = h1.x + (h2.x - h1.x) * t;
-                    const y = h1.y + (h2.y - h1.y) * t;
-
-                    const diff = getShortestAngle(h2.heading, h1.heading);
-                    const heading = normalizeAngle(h1.heading + diff * t);
-
-                    return { x, y, heading };
-                }
-            }
-
-            if (ownShipHistory.length > 0) {
-                 return null;
-            }
-
-            return { x: currentX, y: currentY, heading: currentHeading };
-        };
-
-        // Pre-calculate ownship history for the visible range
-        const ownShipStates: ({ x: number, y: number, heading: number } | null)[] = [];
-        for (let y = 0; y <= height; y += STEP_Y) {
-            const timeOffset = y * secondsPerPixel;
-            const timeAtY = gameTime - timeOffset;
-            ownShipStates.push(getInterpolatedOwnShip(timeAtY));
+    useEffect(() => {
+        if (containerRef.current) {
+            containerRef.current.visible = visible;
         }
+    }, [visible]);
 
-        trackers.forEach(tracker => {
-            if (!tracker.solution) return;
-            const solution = tracker.solution;
+    useImperativeHandle(ref, () => {
+        return {
+            scrollAndAddRow: () => {
+                if (!containerRef.current) return;
 
-            let firstPoint = true;
-            let rowIndex = 0;
+                const container = containerRef.current;
 
-            for (let y = 0; y <= height; y += STEP_Y) {
-                const ownShip = ownShipStates[rowIndex++];
-                if (!ownShip) break;
+                // 1. Scroll Container Down
+                container.y += 1;
+                const localY = -container.y;
 
-                const timeOffset = y * secondsPerPixel;
-                const timeAtY = gameTime - timeOffset;
-
-                const targetPos = calculateTargetPosition(solution, timeAtY);
-
-                const dx = targetPos.x - ownShip.x;
-                const dy = targetPos.y - ownShip.y;
-
-                let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-                trueBearing = normalizeAngle(trueBearing);
-
-                const relBearing = getShortestAngle(trueBearing, ownShip.heading);
-
-                if (relBearing >= -150 && relBearing <= 150) {
-                     const x = ((relBearing + 150) / 300) * width;
-
-                     if (firstPoint) {
-                         graphics.moveTo(x, y);
-                         firstPoint = false;
-                     } else {
-                         graphics.lineTo(x, y);
-                     }
-                } else {
-                    firstPoint = true;
+                // 2. Manage Chunks
+                if (!currentChunkRef.current || chunkPixelCount.current >= CHUNK_SIZE) {
+                    const g = new PIXI.Graphics();
+                    (g as any).maxLocalY = localY;
+                    container.addChild(g);
+                    currentChunkRef.current = g;
+                    chunkPixelCount.current = 0;
                 }
+
+                // Pruning
+                const oldest = container.children[0] as any;
+                if (oldest && oldest.maxLocalY !== undefined) {
+                     const screenBottomLocal = -container.y + height;
+                     if ((oldest.maxLocalY - CHUNK_SIZE) > screenBottomLocal + 100) {
+                         oldest.destroy();
+                     }
+                 }
+
+                chunkPixelCount.current++;
+                const g = currentChunkRef.current!;
+
+                // 3. Draw Solutions
+                const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = useSubmarineStore.getState();
+                const ownShip = { x: currX, y: currY, heading: currHeading };
+
+                g.lineStyle(2, 0xffffff, 0.5);
+
+                trackers.forEach(tracker => {
+                    if (!tracker.solution) return;
+                    const targetPos = calculateTargetPosition(tracker.solution, gameTime);
+                    const dx = targetPos.x - ownShip.x;
+                    const dy = targetPos.y - ownShip.y;
+                    let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                    trueBearing = normalizeAngle(trueBearing);
+                    const relBearing = getShortestAngle(trueBearing, ownShip.heading);
+
+                    if (relBearing >= -150 && relBearing <= 150) {
+                        const x = ((relBearing + 150) / 300) * width;
+                        const lastX = lastPointsRef.current.get(tracker.id);
+                        const isNewChunk = chunkPixelCount.current === 1;
+
+                        if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
+                            g.moveTo(lastX, localY + 1);
+                            g.lineTo(x, localY);
+                        } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
+                            g.moveTo(lastX, localY + 1);
+                            g.lineTo(x, localY);
+                        } else {
+                            g.beginFill(0xffffff);
+                            g.drawRect(x, localY, 1, 1);
+                            g.endFill();
+                        }
+                        lastPointsRef.current.set(tracker.id, x);
+                    } else {
+                        lastPointsRef.current.delete(tracker.id);
+                    }
+                });
             }
-        });
+        }
     });
 
-    return <Graphics ref={graphicsRef} />;
-};
+    return <Container ref={containerRef} />;
+});
 
 const TrackerOverlay = ({ width }: { width: number }) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
@@ -368,18 +202,13 @@ const TrackerOverlay = ({ width }: { width: number }) => {
     useTick(() => {
         const graphics = graphicsRef.current;
         if (!graphics) return;
-
         graphics.clear();
-
         const { trackers } = useSubmarineStore.getState();
-
         trackers.forEach((tracker) => {
              let signedBearing = tracker.currentBearing;
              if (signedBearing > 180) signedBearing -= 360;
-
              if (signedBearing >= -150 && signedBearing <= 150) {
                  const x = ((signedBearing + 150) / 300) * width;
-
                  graphics.beginFill(0x33ff33);
                  graphics.moveTo(x, 0);
                  graphics.lineTo(x - 5, 10);
@@ -391,16 +220,13 @@ const TrackerOverlay = ({ width }: { width: number }) => {
     });
 
     const trackers = useSubmarineStore((state) => state.trackers);
-
     return (
         <Container>
             <Graphics ref={graphicsRef} />
             {trackers.map((tracker) => {
                  let signedBearing = tracker.currentBearing;
                  if (signedBearing > 180) signedBearing -= 360;
-
                  if (signedBearing < -150 || signedBearing > 150) return null;
-
                  const x = ((signedBearing + 150) / 300) * width;
                  return (
                      <Text
@@ -409,14 +235,7 @@ const TrackerOverlay = ({ width }: { width: number }) => {
                         x={x}
                         y={12}
                         anchor={0.5}
-                        style={
-                            new PIXI.TextStyle({
-                                fill: '#33ff33',
-                                fontSize: 14,
-                                fontFamily: 'monospace',
-                                fontWeight: 'bold'
-                            })
-                        }
+                        style={new PIXI.TextStyle({ fill: '#33ff33', fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold' })}
                      />
                  );
             })}
@@ -424,37 +243,82 @@ const TrackerOverlay = ({ width }: { width: number }) => {
     );
 };
 
+// Internal controller to handle the loop inside Stage context
+const SonarInternals = ({ width, height, showSolution }: { width: number, height: number, showSolution: boolean }) => {
+    const waterfallRef = useRef<WaterfallRef>(null);
+    const overlayRef = useRef<OverlayRef>(null);
+
+    // State for shader
+    const filterRef = useRef<SonarSweepFilter | null>(null);
+    const scanlineIndex = useRef(0);
+    const updateAccumulator = useRef(0);
+
+    // Create filter once
+    const filter = useMemo(() => {
+        const f = new SonarSweepFilter();
+        filterRef.current = f;
+        return f;
+    }, []);
+
+    // Update filter resolution on resize
+    useEffect(() => {
+        if (filter) filter.uniforms.uResolution = [width, height];
+    }, [width, height, filter]);
+
+    // Main Update Loop
+    useTick((delta) => {
+        if (!filterRef.current) return;
+
+        // Update Time for noise
+        filterRef.current.uniforms.uTime += delta * 0.01;
+
+        const { timeScale } = useSubmarineStore.getState();
+        let threshold = 60; // Default MED (1 sec)
+        if (timeScale === 'FAST') threshold = 6;
+        if (timeScale === 'SLOW') threshold = 180;
+
+        updateAccumulator.current += delta;
+
+        if (updateAccumulator.current >= threshold) {
+            let loops = 0;
+            while (updateAccumulator.current >= threshold && loops < 5) {
+                waterfallRef.current?.drawRow(scanlineIndex.current);
+                overlayRef.current?.scrollAndAddRow();
+
+                scanlineIndex.current += 1;
+                if (scanlineIndex.current >= height) {
+                    scanlineIndex.current = 0;
+                }
+
+                updateAccumulator.current -= threshold;
+                loops++;
+            }
+            if (updateAccumulator.current >= threshold) updateAccumulator.current = 0;
+
+            filterRef.current.uniforms.uScanline = scanlineIndex.current;
+        }
+    });
+
+    return (
+        <>
+            <Container filters={[filter]}>
+                <Waterfall ref={waterfallRef} width={width} height={height} />
+            </Container>
+            <SolutionOverlay ref={overlayRef} width={width} height={height} visible={showSolution} />
+            <TrackerOverlay width={width} />
+        </>
+    );
+};
+
 const SonarDisplay = () => {
     const { ref, width, height } = useResize();
     const [showSolution, setShowSolution] = useState(true);
-
-    const crtFilter = useMemo(() => {
-        try {
-            return new CRTFilter({
-                lineWidth: 1,
-                lineContrast: 0.3,
-                noise: 0.1,
-                noiseSize: 1.0,
-                vignetting: 0.3,
-                vignettingAlpha: 1.0,
-                vignettingBlur: 0.3,
-            });
-        } catch (e) {
-            console.error("Failed to init CRTFilter", e);
-            return null;
-        }
-    }, []);
 
     return (
         <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black overflow-hidden">
             {width > 0 && height > 0 && (
                 <Stage width={width} height={height} options={{ background: 0x001100 }}>
-                    <Container filters={crtFilter ? [crtFilter] : []}>
-                        <NoiseBackground width={width} height={height} />
-                        <Waterfall width={width} height={height} />
-                        <SolutionOverlay width={width} height={height} visible={showSolution} />
-                        <TrackerOverlay width={width} />
-                    </Container>
+                    <SonarInternals width={width} height={height} showSolution={showSolution} />
                 </Stage>
             )}
 
