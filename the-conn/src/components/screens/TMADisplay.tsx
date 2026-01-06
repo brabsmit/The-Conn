@@ -78,46 +78,17 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             sortedTrackers.forEach(tracker => {
                 const isSelected = tracker.id === selectedTrackerId;
 
-                // Set style based on selection
-                if (isSelected) {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
-                } else {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
-                }
-
-                // Draw Sensor History (Dots)
-                let osIndex = 0;
-                tracker.bearingHistory.forEach(history => {
-                    // Optimized lookup: fast forward osIndex
-                    while (osIndex < ownShipHistory.length && ownShipHistory[osIndex].time < history.time - 0.1) {
-                        osIndex++;
-                    }
-
-                    if (osIndex < ownShipHistory.length && Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
-                        const ownShipState = ownShipHistory[osIndex];
-                        const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
-                        const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
-
-                        if (angleDiff >= -180 && angleDiff <= 180) {
-                             const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
-                             const age = gameTime - history.time;
-                             const y = age * PIXELS_PER_SECOND;
-
-                             if (y >= -5 && y <= height + 5) {
-                                 graphics.drawCircle(x, y, 2.5);
-                             }
-                        }
-                    }
-                });
-                graphics.endFill();
-
-                // Draw Solution Line (ONLY SELECTED)
-                if (isSelected && tracker.solution) {
+                // 1. Draw Solution Line (First, so dots are on top)
+                if (tracker.solution) {
                      const solution = tracker.solution;
-                     // Bold Orange: 0xFFA500, thickness 2
-                     graphics.lineStyle(2, 0xFFA500, 1.0);
+
+                     if (isSelected) {
+                         // Selected: Bold Orange
+                         graphics.lineStyle(3, 0xFFA500, 1.0);
+                     } else {
+                         // Unselected: Thin White
+                         graphics.lineStyle(1, 0xffffff, 0.4);
+                     }
 
                      // 1. Current Point
                      const currentOwnShip = {
@@ -168,6 +139,41 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                         }
                      }
                 }
+
+                // 2. Draw Sensor History (Dots)
+                // Set style based on selection
+                if (isSelected) {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
+                } else {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
+                }
+
+                let osIndex = 0;
+                tracker.bearingHistory.forEach(history => {
+                    // Optimized lookup: fast forward osIndex
+                    while (osIndex < ownShipHistory.length && ownShipHistory[osIndex].time < history.time - 0.1) {
+                        osIndex++;
+                    }
+
+                    if (osIndex < ownShipHistory.length && Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                        const ownShipState = ownShipHistory[osIndex];
+                        const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
+                        const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
+
+                        if (angleDiff >= -180 && angleDiff <= 180) {
+                             const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
+                             const age = gameTime - history.time;
+                             const y = age * PIXELS_PER_SECOND;
+
+                             if (y >= -5 && y <= height + 5) {
+                                 graphics.drawCircle(x, y, 2.5);
+                             }
+                        }
+                    }
+                });
+                graphics.endFill();
             });
 
         } else {

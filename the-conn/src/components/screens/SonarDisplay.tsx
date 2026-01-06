@@ -265,13 +265,7 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         const store = useSubmarineStore.getState();
         const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading, timeScale } = store;
 
-        if (!selectedTrackerId) return;
-        const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
-        if (!selectedTracker || !selectedTracker.solution) return;
-
-        const solution = selectedTracker.solution;
-
-        const STEP_Y = 5;
+        const STEP_Y = 10;
 
         // Pixels Per Second calculation
         let secondsPerPixel = 0.1;
@@ -279,8 +273,6 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         if (timeScale === 'SLOW') secondsPerPixel = 3.0;
 
         graphics.lineStyle(2, 0xffffff, 0.5);
-
-        let firstPoint = true;
 
         const getInterpolatedOwnShip = (time: number): { x: number, y: number, heading: number } | null => {
             if (time >= gameTime) {
@@ -319,38 +311,52 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
             return { x: currentX, y: currentY, heading: currentHeading };
         };
 
+        // Pre-calculate ownship history for the visible range
+        const ownShipStates: ({ x: number, y: number, heading: number } | null)[] = [];
         for (let y = 0; y <= height; y += STEP_Y) {
             const timeOffset = y * secondsPerPixel;
             const timeAtY = gameTime - timeOffset;
-
-            const ownShip = getInterpolatedOwnShip(timeAtY);
-            if (!ownShip) {
-                break;
-            }
-
-            const targetPos = calculateTargetPosition(solution, timeAtY);
-
-            const dx = targetPos.x - ownShip.x;
-            const dy = targetPos.y - ownShip.y;
-
-            let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-            trueBearing = normalizeAngle(trueBearing);
-
-            const relBearing = getShortestAngle(trueBearing, ownShip.heading);
-
-            if (relBearing >= -150 && relBearing <= 150) {
-                 const x = ((relBearing + 150) / 300) * width;
-
-                 if (firstPoint) {
-                     graphics.moveTo(x, y);
-                     firstPoint = false;
-                 } else {
-                     graphics.lineTo(x, y);
-                 }
-            } else {
-                firstPoint = true;
-            }
+            ownShipStates.push(getInterpolatedOwnShip(timeAtY));
         }
+
+        trackers.forEach(tracker => {
+            if (!tracker.solution) return;
+            const solution = tracker.solution;
+
+            let firstPoint = true;
+            let rowIndex = 0;
+
+            for (let y = 0; y <= height; y += STEP_Y) {
+                const ownShip = ownShipStates[rowIndex++];
+                if (!ownShip) break;
+
+                const timeOffset = y * secondsPerPixel;
+                const timeAtY = gameTime - timeOffset;
+
+                const targetPos = calculateTargetPosition(solution, timeAtY);
+
+                const dx = targetPos.x - ownShip.x;
+                const dy = targetPos.y - ownShip.y;
+
+                let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                trueBearing = normalizeAngle(trueBearing);
+
+                const relBearing = getShortestAngle(trueBearing, ownShip.heading);
+
+                if (relBearing >= -150 && relBearing <= 150) {
+                     const x = ((relBearing + 150) / 300) * width;
+
+                     if (firstPoint) {
+                         graphics.moveTo(x, y);
+                         firstPoint = false;
+                     } else {
+                         graphics.lineTo(x, y);
+                     }
+                } else {
+                    firstPoint = true;
+                }
+            }
+        });
     });
 
     return <Graphics ref={graphicsRef} />;
