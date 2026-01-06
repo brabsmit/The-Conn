@@ -49,12 +49,17 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
 
             // Create Buffer (RGBA)
             const buffer = new Uint8Array(width * 4);
-            const noiseFloor = 30; // 0-255 range
+            const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel } = state;
+
+            // Dynamic Noise Floor based on Ownship Noise
+            // Base 30, add up to 200 based on noise level (0.1 to 1.5+)
+            const noiseFloor = Math.min(255, 30 + (ownshipNoiseLevel * 100));
+
+            // Self Noise Penalty (reduces effective signal)
+            const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
             // 0. Prepare Signal Buffer (Float32) for accumulation
             const signalBuffer = new Float32Array(width).fill(0);
-
-            const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading } = state;
 
             // 1. Calculate Signal from Contacts
             sensorReadings.forEach((reading) => {
@@ -78,7 +83,10 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
 
                 // Received Level = Source / (Distance * Scale)
                 const scaleFactor = 0.0002;
-                const signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+                let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+
+                // Apply Self Noise Penalty
+                signal = Math.max(0, signal - selfNoisePenalty);
 
                 // Map to Screen
                 let signedBearing = reading.bearing;
