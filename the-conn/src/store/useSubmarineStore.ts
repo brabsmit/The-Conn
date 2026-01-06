@@ -54,6 +54,7 @@ export interface WeaponData {
   runDepth: number;
   floor: number;
   ceiling: number;
+  searchMode: 'ACTIVE' | 'PASSIVE';
 }
 
 export interface Tube {
@@ -101,7 +102,7 @@ interface SubmarineState {
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
   setTimeScale: (scale: TimeScale) => void;
   setActiveStation: (station: Station) => void;
-  loadTube: (tubeId: number) => void;
+  loadTube: (tubeId: number, weaponData: WeaponData) => void;
   floodTube: (tubeId: number) => void;
   equalizeTube: (tubeId: number) => void;
   openTube: (tubeId: number) => void;
@@ -215,10 +216,10 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   setTimeScale: (scale) => set({ timeScale: scale }),
   setActiveStation: (station) => set({ activeStation: station }),
 
-  loadTube: (tubeId) => set((state) => ({
+  loadTube: (tubeId, weaponData) => set((state) => ({
     tubes: state.tubes.map(t =>
       t.id === tubeId && t.status === 'EMPTY'
-        ? { ...t, status: 'LOADING', progress: 0, weaponData: { runDepth: 50, floor: 1000, ceiling: 0 } }
+        ? { ...t, status: 'LOADING', progress: 0, weaponData }
         : t
     )
   })),
@@ -395,11 +396,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           if (newProgress >= 100) {
             // Transition
             switch (tube.status) {
-              case 'LOADING': return { ...tube, status: 'DRY', progress: 0 };
-              case 'FLOODING': return { ...tube, status: 'WET', progress: 0 };
-              case 'EQUALIZING': return { ...tube, status: 'EQUALIZED', progress: 0 };
-              case 'OPENING': return { ...tube, status: 'OPEN', progress: 0 };
-              case 'FIRING': return { ...tube, status: 'EMPTY', progress: 0, weaponData: null };
+              case 'LOADING': return { ...tube, status: 'DRY' as TubeStatus, progress: 0 };
+              case 'FLOODING': return { ...tube, status: 'WET' as TubeStatus, progress: 0 };
+              case 'EQUALIZING': return { ...tube, status: 'EQUALIZED' as TubeStatus, progress: 0 };
+              case 'OPENING': return { ...tube, status: 'OPEN' as TubeStatus, progress: 0 };
+              case 'FIRING': return { ...tube, status: 'EMPTY' as TubeStatus, progress: 0, weaponData: null };
               default: return tube;
             }
           } else {
