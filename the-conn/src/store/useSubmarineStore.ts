@@ -7,7 +7,7 @@ interface Contact {
   heading?: number;
   speed?: number;
   type?: 'ENEMY' | 'NEUTRAL';
-  classification?: 'MERCHANT' | 'ESCORT' | 'SUB';
+  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL';
   sourceLevel?: number;
   cavitationSpeed?: number;
 }
@@ -427,7 +427,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
         // --- Autonomy Logic ---
 
-        let finalStatus = torpedo.status;
+        let finalStatus: Torpedo['status'] = torpedo.status;
         let finalActiveTargetId = torpedo.activeTargetId;
 
         // Lifecycle: Fuel Exhaustion
