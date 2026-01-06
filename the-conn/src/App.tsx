@@ -4,6 +4,7 @@ import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import WCSDisplay from './components/screens/WCSDisplay';
+import GeoDisplay from './components/screens/GeoDisplay';
 import { TMAControls } from './components/panels/TMAControls';
 import { ContactManager } from './components/panels/ContactManager';
 import { TopBar } from './components/layout/TopBar';
@@ -51,9 +52,18 @@ function App() {
 
         {/* PANE B: Main Scope (Center) */}
         <div className="flex-grow h-full relative overflow-hidden flex flex-col">
-            <Panel title={activeStation === 'TMA' ? "Tactical Plot" : "Weapons Control"} className="h-full flex flex-col">
+            <Panel
+              title={
+                activeStation === 'TMA' ? "Tactical Plot" :
+                activeStation === 'WCS' ? "Weapons Control" :
+                "Navigation Plot"
+              }
+              className="h-full flex flex-col"
+            >
                <div className="flex-grow min-h-0 bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
-                   {activeStation === 'TMA' ? <TMADisplay /> : <WCSDisplay />}
+                   {activeStation === 'TMA' && <TMADisplay />}
+                   {activeStation === 'WCS' && <WCSDisplay />}
+                   {activeStation === 'NAV' && <GeoDisplay />}
                </div>
 
                {/* Mode Select Buttons */}
@@ -77,6 +87,16 @@ function App() {
                    }`}
                  >
                    WCS STATION
+                 </button>
+                 <button
+                   onClick={() => setActiveStation('NAV')}
+                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                     activeStation === 'NAV'
+                       ? 'bg-cyan-500/20 border-cyan-500 text-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                       : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
+                   }`}
+                 >
+                   NAV STATION
                  </button>
                </div>
             </Panel>

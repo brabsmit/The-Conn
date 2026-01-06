@@ -29,7 +29,7 @@ export interface OwnShipHistory {
   heading: number;
 }
 
-export type Station = 'TMA' | 'WCS';
+export type Station = 'TMA' | 'WCS' | 'NAV';
 
 export type TimeScale = 'FAST' | 'MED' | 'SLOW';
 
