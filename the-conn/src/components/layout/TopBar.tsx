@@ -3,6 +3,7 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { ScenarioManager } from '../debug/ScenarioManager';
 import { loadAmbushScenario } from '../../scenarios/Ambush';
 import type { ViewScale } from '../../store/useSubmarineStore';
+import { LogHistory } from './LogHistory';
 
 const formatTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600);
@@ -39,6 +40,20 @@ const TimeControls = () => {
 export const TopBar = () => {
   const [showScenarioManager, setShowScenarioManager] = useState(false);
   const [showScenarioMenu, setShowScenarioMenu] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [flash, setFlash] = useState(false);
+
+  // Subscribe to latest log for ticker
+  const latestLog = useSubmarineStore(state => state.logs[state.logs.length - 1]);
+
+  useEffect(() => {
+    if (latestLog) {
+      setFlash(true);
+      const timer = setTimeout(() => setFlash(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [latestLog]);
+
   const timeRef = useRef<HTMLSpanElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
@@ -104,6 +119,21 @@ export const TopBar = () => {
             <span className="text-xs text-zinc-500">FT</span>
          </div>
          <span className="text-[10px] text-zinc-500 leading-none">DEPTH</span>
+      </div>
+
+      {/* MESSAGE TICKER */}
+      <div className="flex-grow flex justify-center items-center relative h-full mx-4">
+        <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`font-mono text-sm truncate max-w-[600px] transition-all duration-300 outline-none ${
+                flash
+                  ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] scale-105'
+                  : 'text-amber-500 hover:text-amber-400'
+            }`}
+        >
+            {latestLog ? latestLog.message : "SYSTEM READY"}
+        </button>
+        {showHistory && <LogHistory onClose={() => setShowHistory(false)} />}
       </div>
 
       {/* TIME SCALE CONTROLS */}
