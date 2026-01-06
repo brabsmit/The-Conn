@@ -25,6 +25,7 @@ const Waterfall = ({ width, height }: DimensionProps) => {
     const rtA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
     const rtB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
     const currentRtIndex = useRef(0);
+    const accumulator = useRef(0);
 
     // Effect to recreate textures if dimensions change
     useEffect(() => {
@@ -57,79 +58,105 @@ const Waterfall = ({ width, height }: DimensionProps) => {
         };
     }, []);
 
-    useTick((_delta) => {
+    useTick((delta) => {
         if (!app) return;
 
-        const currentRt = currentRtIndex.current === 0 ? rtA.current : rtB.current;
-        const nextRt = currentRtIndex.current === 0 ? rtB.current : rtA.current;
+        // Get time scale from store
+        const { sonarTimeScale } = useSubmarineStore.getState();
 
-        // Check if textures are valid
-        if (!currentRt.valid || !nextRt.valid) return;
+        // Determine threshold in Ticks (assuming 1 tick = 16.6ms at 60fps)
+        // delta is passed as "lag" usually around 1.0 (1 frame).
+        // Pixi useTick delta is "ratio of time elapsed since last frame to expected frame time (1/60)".
+        // So 1 delta = 16.66ms.
 
-        // Create a sprite from the current state (previous frame)
-        const prevSprite = new PIXI.Sprite(currentRt);
-        prevSprite.y = 1; // Shift down
+        let thresholdMs = 100; // FAST: 100ms
+        if (sonarTimeScale === 'MED') thresholdMs = 1000;
+        if (sonarTimeScale === 'SLOW') thresholdMs = 3000;
 
-        // Create the new line
-        lineGraphics.clear();
+        // Convert threshold to delta units (approx)
+        // 1 unit = 16.66ms
+        // FAST: 6 ticks
+        // MED: 60 ticks
+        // SLOW: 180 ticks
+        const threshold = thresholdMs / 16.66;
 
-        // Draw simulated random noise data for the line (Background noise)
-        for (let x = 0; x < width; x+=2) {
-             // Phosphor green varying opacity
-             const intensity = Math.random();
-             if (intensity > 0.8) {
-                 lineGraphics.beginFill(0x33ff33, intensity * 0.8);
-                 lineGraphics.drawRect(x, 0, 2, 1);
-                 lineGraphics.endFill();
-             }
-        }
+        accumulator.current += delta;
 
-        // Draw Sensor Contacts
-        // Access store state directly to avoid re-renders
-        const { sensorReadings } = useSubmarineStore.getState();
+        if (accumulator.current >= threshold) {
+            accumulator.current = 0; // Or accumulator.current -= threshold to keep precise timing?
+                                     // Resetting to 0 is safer to prevent burst updates if we lag behind significantly.
 
-        sensorReadings.forEach((reading) => {
-            // Map bearing to X coordinate.
-            // Center (width/2) is 0 degrees (Dead Ahead).
-            // Left edge (0% X) is 210 Relative (-150).
-            // Right edge (100% X) is 150 Relative (+150).
-            // Total span = 300 degrees.
+            const currentRt = currentRtIndex.current === 0 ? rtA.current : rtB.current;
+            const nextRt = currentRtIndex.current === 0 ? rtB.current : rtA.current;
 
-            let signedBearing = reading.bearing;
-            if (signedBearing > 180) signedBearing -= 360;
+            // Check if textures are valid
+            if (!currentRt.valid || !nextRt.valid) return;
 
-            // Check if visible (within -150 to +150)
-            if (signedBearing >= -150 && signedBearing <= 150) {
-                 const x = ((signedBearing + 150) / 300) * width;
+            // Create a sprite from the current state (previous frame)
+            const prevSprite = new PIXI.Sprite(currentRt);
+            prevSprite.y = 1; // Shift down
 
-                 lineGraphics.beginFill(0xccffcc, 1.0);
-                 lineGraphics.drawRect(x, 0, 4, 3);
-                 lineGraphics.endFill();
+            // Create the new line
+            lineGraphics.clear();
+
+            // Draw simulated random noise data for the line (Background noise)
+            for (let x = 0; x < width; x+=2) {
+                 // Phosphor green varying opacity
+                 const intensity = Math.random();
+                 if (intensity > 0.8) {
+                     lineGraphics.beginFill(0x33ff33, intensity * 0.8);
+                     lineGraphics.drawRect(x, 0, 2, 1);
+                     lineGraphics.endFill();
+                 }
             }
-        });
 
-        // Render previous frame shifted down to next texture
-        app.renderer.render(prevSprite, {
-            renderTexture: nextRt,
-            clear: true
-        });
+            // Draw Sensor Contacts
+            // Access store state directly to avoid re-renders
+            const { sensorReadings } = useSubmarineStore.getState();
 
-        // Render new line on top
-        app.renderer.render(lineGraphics, {
-            renderTexture: nextRt,
-            clear: false // Do not clear, draw on top
-        });
+            sensorReadings.forEach((reading) => {
+                // Map bearing to X coordinate.
+                // Center (width/2) is 0 degrees (Dead Ahead).
+                // Left edge (0% X) is 210 Relative (-150).
+                // Right edge (100% X) is 150 Relative (+150).
+                // Total span = 300 degrees.
 
-        // Swap
-        currentRtIndex.current = 1 - currentRtIndex.current;
+                let signedBearing = reading.bearing;
+                if (signedBearing > 180) signedBearing -= 360;
 
-        // Update the visible sprite
-        if (spriteRef.current) {
-            spriteRef.current.texture = nextRt;
+                // Check if visible (within -150 to +150)
+                if (signedBearing >= -150 && signedBearing <= 150) {
+                     const x = ((signedBearing + 150) / 300) * width;
+
+                     lineGraphics.beginFill(0xccffcc, 1.0);
+                     lineGraphics.drawRect(x, 0, 4, 3);
+                     lineGraphics.endFill();
+                }
+            });
+
+            // Render previous frame shifted down to next texture
+            app.renderer.render(prevSprite, {
+                renderTexture: nextRt,
+                clear: true
+            });
+
+            // Render new line on top
+            app.renderer.render(lineGraphics, {
+                renderTexture: nextRt,
+                clear: false // Do not clear, draw on top
+            });
+
+            // Swap
+            currentRtIndex.current = 1 - currentRtIndex.current;
+
+            // Update the visible sprite
+            if (spriteRef.current) {
+                spriteRef.current.texture = nextRt;
+            }
+
+            // Cleanup created sprite to avoid memory leak?
+            prevSprite.destroy({ children: true, texture: false, baseTexture: false });
         }
-
-        // Cleanup created sprite to avoid memory leak?
-        prevSprite.destroy({ children: true, texture: false, baseTexture: false });
     });
 
     return (
@@ -201,7 +228,7 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         if (!visible) return;
 
         const store = useSubmarineStore.getState();
-        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading } = store;
+        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading, sonarTimeScale } = store;
 
         if (!selectedTrackerId) return;
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
@@ -211,6 +238,20 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
 
         // Settings
         const STEP_Y = 5; // Calculate every 5 pixels
+
+        // Pixels Per Second calculation
+        // FAST: 100ms/row -> 0.1s/pixel -> 10 pixels/sec.
+        // MED: 1000ms/row -> 1.0s/pixel -> 1 pixel/sec.
+        // SLOW: 3000ms/row -> 3.0s/pixel -> 0.33 pixel/sec.
+
+        // Wait, if 1 row = 1 pixel.
+        // FAST: 1 pixel represents 0.1s.
+        // MED: 1 pixel represents 1.0s.
+        // SLOW: 1 pixel represents 3.0s.
+
+        let secondsPerPixel = 0.1;
+        if (sonarTimeScale === 'MED') secondsPerPixel = 1.0;
+        if (sonarTimeScale === 'SLOW') secondsPerPixel = 3.0;
 
         graphics.lineStyle(2, 0xffffff, 0.5);
 
@@ -273,7 +314,10 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         };
 
         for (let y = 0; y <= height; y += STEP_Y) {
-            const timeOffset = y / 60; // 1 pixel = 1 tick = 1/60th sec
+            // Formula: Y = (CurrentTime - HistoryPointTime) / SecondsPerPixel
+            // HistoryPointTime = CurrentTime - (Y * SecondsPerPixel)
+
+            const timeOffset = y * secondsPerPixel;
             const timeAtY = gameTime - timeOffset;
 
             const ownShip = getInterpolatedOwnShip(timeAtY);
