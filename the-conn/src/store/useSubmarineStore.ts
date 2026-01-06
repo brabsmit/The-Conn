@@ -48,6 +48,21 @@ export interface Tracker {
   solution: TrackerSolution;
 }
 
+export type TubeStatus = 'EMPTY' | 'LOADING' | 'DRY' | 'FLOODING' | 'WET' | 'EQUALIZING' | 'EQUALIZED' | 'OPENING' | 'OPEN' | 'FIRING';
+
+export interface WeaponData {
+  runDepth: number;
+  floor: number;
+  ceiling: number;
+}
+
+export interface Tube {
+  id: number;
+  status: TubeStatus;
+  progress: number;
+  weaponData: WeaponData | null;
+}
+
 interface SubmarineState {
   // OwnShip Data
   heading: number; // 0-359
@@ -66,6 +81,7 @@ interface SubmarineState {
   // Tracker Data
   trackers: Tracker[];
   selectedTrackerId: string | null;
+  tubes: Tube[];
   tickCount: number;
   gameTime: number; // in seconds
   timeScale: TimeScale;
@@ -85,6 +101,11 @@ interface SubmarineState {
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
   setTimeScale: (scale: TimeScale) => void;
   setActiveStation: (station: Station) => void;
+  loadTube: (tubeId: number) => void;
+  floodTube: (tubeId: number) => void;
+  equalizeTube: (tubeId: number) => void;
+  openTube: (tubeId: number) => void;
+  fireTube: (tubeId: number) => void;
   tick: () => void;
 }
 
@@ -122,6 +143,12 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   sensorReadings: [],
   trackers: [],
   selectedTrackerId: null,
+  tubes: Array.from({ length: 4 }, (_, i) => ({
+    id: i + 1,
+    status: 'EMPTY',
+    progress: 0,
+    weaponData: null
+  })),
   tickCount: 0,
   gameTime: 0,
   timeScale: 'FAST',
@@ -187,6 +214,46 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
   setTimeScale: (scale) => set({ timeScale: scale }),
   setActiveStation: (station) => set({ activeStation: station }),
+
+  loadTube: (tubeId) => set((state) => ({
+    tubes: state.tubes.map(t =>
+      t.id === tubeId && t.status === 'EMPTY'
+        ? { ...t, status: 'LOADING', progress: 0, weaponData: { runDepth: 50, floor: 1000, ceiling: 0 } }
+        : t
+    )
+  })),
+
+  floodTube: (tubeId) => set((state) => ({
+    tubes: state.tubes.map(t =>
+      t.id === tubeId && t.status === 'DRY'
+        ? { ...t, status: 'FLOODING', progress: 0 }
+        : t
+    )
+  })),
+
+  equalizeTube: (tubeId) => set((state) => ({
+    tubes: state.tubes.map(t =>
+      t.id === tubeId && t.status === 'WET'
+        ? { ...t, status: 'EQUALIZING', progress: 0 }
+        : t
+    )
+  })),
+
+  openTube: (tubeId) => set((state) => ({
+    tubes: state.tubes.map(t =>
+      t.id === tubeId && t.status === 'EQUALIZED'
+        ? { ...t, status: 'OPENING', progress: 0 }
+        : t
+    )
+  })),
+
+  fireTube: (tubeId) => set((state) => ({
+    tubes: state.tubes.map(t =>
+      t.id === tubeId && t.status === 'OPEN'
+        ? { ...t, status: 'FIRING', progress: 0 }
+        : t
+    )
+  })),
 
   tick: () =>
     set((state) => {
@@ -321,6 +388,27 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         }
       }
 
+      // Update Tubes (Progress)
+      const newTubes = state.tubes.map(tube => {
+        if (['LOADING', 'FLOODING', 'EQUALIZING', 'OPENING', 'FIRING'].includes(tube.status)) {
+          const newProgress = tube.progress + 1;
+          if (newProgress >= 100) {
+            // Transition
+            switch (tube.status) {
+              case 'LOADING': return { ...tube, status: 'DRY', progress: 0 };
+              case 'FLOODING': return { ...tube, status: 'WET', progress: 0 };
+              case 'EQUALIZING': return { ...tube, status: 'EQUALIZED', progress: 0 };
+              case 'OPENING': return { ...tube, status: 'OPEN', progress: 0 };
+              case 'FIRING': return { ...tube, status: 'EMPTY', progress: 0, weaponData: null };
+              default: return tube;
+            }
+          } else {
+            return { ...tube, progress: newProgress };
+          }
+        }
+        return tube;
+      });
+
       return {
         heading: newHeading,
         speed: newSpeed,
@@ -331,7 +419,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         sensorReadings: newSensorReadings,
         tickCount: newTickCount,
         gameTime: newGameTime,
-        trackers: newTrackers
+        trackers: newTrackers,
+        tubes: newTubes
       };
     }),
 }));
