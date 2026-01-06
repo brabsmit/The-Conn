@@ -23,7 +23,7 @@ export interface OwnShipHistory {
   heading: number;
 }
 
-export type SonarTimeScale = 'FAST' | 'MED' | 'SLOW';
+export type TimeScale = 'FAST' | 'MED' | 'SLOW';
 
 export interface TrackerSolution {
   speed: number;
@@ -66,7 +66,7 @@ interface SubmarineState {
   selectedTrackerId: string | null;
   tickCount: number;
   gameTime: number; // in seconds
-  sonarTimeScale: SonarTimeScale;
+  timeScale: TimeScale;
 
   // Ordered Data (Controls)
   orderedHeading: number;
@@ -80,7 +80,7 @@ interface SubmarineState {
   designateTracker: (bearing: number) => void;
   setSelectedTracker: (id: string | null) => void;
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
-  setSonarTimeScale: (scale: SonarTimeScale) => void;
+  setTimeScale: (scale: TimeScale) => void;
   tick: () => void;
 }
 
@@ -120,7 +120,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   selectedTrackerId: null,
   tickCount: 0,
   gameTime: 0,
-  sonarTimeScale: 'FAST',
+  timeScale: 'FAST',
   orderedHeading: 0,
   orderedSpeed: 0,
   orderedDepth: 0,
@@ -180,7 +180,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     )
   })),
 
-  setSonarTimeScale: (scale) => set({ sonarTimeScale: scale }),
+  setTimeScale: (scale) => set({ timeScale: scale }),
 
   tick: () =>
     set((state) => {

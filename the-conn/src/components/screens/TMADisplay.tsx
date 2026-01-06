@@ -16,14 +16,18 @@ interface DisplayProps {
 
 const DotStack = ({ width, height, viewMode }: DisplayProps) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
-    const PIXELS_PER_SECOND = 10; // Speed of fall
 
     useTick(() => {
         const graphics = graphicsRef.current;
         if (!graphics) return;
 
         graphics.clear();
-        const { trackers, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId } = useSubmarineStore.getState();
+        const { trackers, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId, timeScale } = useSubmarineStore.getState();
+
+        // Calculate Pixels Per Second based on timeScale
+        let PIXELS_PER_SECOND = 10; // FAST: 100ms/pixel -> 10px/s
+        if (timeScale === 'MED') PIXELS_PER_SECOND = 1; // MED: 1000ms/pixel -> 1px/s
+        if (timeScale === 'SLOW') PIXELS_PER_SECOND = 1.0 / 3.0; // SLOW: 3000ms/pixel -> 0.33px/s
 
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
@@ -226,7 +230,7 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         // Grid Lines: Very dim green (alpha: 0.1)
         g.lineStyle(1, 0x33FF33, 0.1);
 
-        const currentHeading = useSubmarineStore.getState().heading;
+        const { heading: currentHeading, timeScale } = useSubmarineStore.getState();
         const PIXELS_PER_DEGREE = width / 360;
         const SCREEN_CENTER = width / 2;
 
@@ -249,6 +253,9 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         }
 
         // Horizontal lines (Time)
+        // Adjust grid line spacing based on timeScale?
+        // Or keep pixel spacing fixed and let time vary?
+        // Let's keep pixel spacing fixed (e.g. 50px).
         for (let y = 0; y <= height; y += 50) {
             g.moveTo(0, y);
             g.lineTo(width, y);
