@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 
 interface ScenarioManagerProps {
@@ -29,7 +29,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
     bearing: 0,
     heading: 90,
     speed: 10,
-    type: 'ENEMY' as 'ENEMY' | 'NEUTRAL'
+    type: 'ENEMY' as 'ENEMY' | 'NEUTRAL',
+    classification: 'MERCHANT' as 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL'
   });
 
   const handleSelect = (id: string, type: 'CONTACT' | 'OWNSHIP') => {
@@ -49,7 +50,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                   bearing: Math.round(bearing),
                   heading: contact.heading ?? 0,
                   speed: contact.speed ?? 0,
-                  type: contact.type || 'ENEMY'
+                  type: contact.type || 'ENEMY',
+                  classification: contact.classification || 'MERCHANT'
               });
           }
       }
@@ -67,13 +69,45 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
       const newX = ownShip.x + rangeFt * Math.sin(radBearing);
       const newY = ownShip.y + rangeFt * Math.cos(radBearing);
 
+      // Derive acoustic properties from classification
+      let sourceLevel = 1.0;
+      let cavitationSpeed = 10;
+      let type: 'ENEMY' | 'NEUTRAL' = formData.type; // Default to form
+
+      switch (formData.classification) {
+          case 'MERCHANT':
+              sourceLevel = 1.0;
+              cavitationSpeed = 10;
+              break;
+          case 'ESCORT': // MILITANT
+              sourceLevel = 0.9;
+              cavitationSpeed = 15;
+              type = 'ENEMY';
+              break;
+          case 'SUB':
+              sourceLevel = 0.3;
+              cavitationSpeed = 12;
+              type = 'ENEMY';
+              break;
+          case 'BIOLOGICAL':
+              sourceLevel = 0.5;
+              cavitationSpeed = 100; // No cavitation
+              type = 'NEUTRAL';
+              break;
+      }
+
       updateContact(selectedEntityId, {
           x: newX,
           y: newY,
           heading: formData.heading,
           speed: formData.speed,
-          type: formData.type
+          type: type, // Can be overridden by user selection if we wanted, but logic implies classification drives it. Keeping as derived.
+          classification: formData.classification,
+          sourceLevel,
+          cavitationSpeed
       });
+      // Ensure form type stays in sync with what we just set
+      setFormData(prev => ({ ...prev, type }));
   };
 
   const handleCreate = () => {
@@ -89,7 +123,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
           y: newY,
           heading: 270,
           speed: 5,
-          type: 'ENEMY'
+          type: 'ENEMY',
+          classification: 'MERCHANT',
+          sourceLevel: 1.0,
+          cavitationSpeed: 10
       });
       handleSelect(id, 'CONTACT');
   };
@@ -103,7 +140,6 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
 
   // Map Rendering
   const CANVAS_SIZE = 600;
-  const SCALE = 0.05; // pixels per foot? No, that's too zoom.
   // View range: let's say +/- 20,000 yards
   // 20,000 yds = 60,000 ft.
   // 600 px / 120,000 ft = 0.005 px/ft
@@ -254,14 +290,16 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                             onChange={e => setFormData({...formData, speed: Number(e.target.value)})}
                         />
 
-                        <label className="text-xs text-zinc-400">TYPE</label>
+                        <label className="text-xs text-zinc-400">CLASS</label>
                         <select
                             className="bg-zinc-900 text-white px-2 py-1 rounded border border-zinc-700"
-                            value={formData.type}
-                            onChange={e => setFormData({...formData, type: e.target.value as any})}
+                            value={formData.classification}
+                            onChange={e => setFormData({...formData, classification: e.target.value as any})}
                         >
-                            <option value="ENEMY">ENEMY</option>
-                            <option value="NEUTRAL">NEUTRAL</option>
+                            <option value="MERCHANT">MERCHANT</option>
+                            <option value="ESCORT">MILITANT (ESCORT)</option>
+                            <option value="SUB">SUBMARINE</option>
+                            <option value="BIOLOGICAL">BIOLOGICAL</option>
                         </select>
                     </div>
 

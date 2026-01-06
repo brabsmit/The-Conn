@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Container, Sprite, Graphics, useTick, useApp } from '@pixi/react';
+import { Stage, Container, Sprite, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { SonarSweepFilter } from './SonarShader';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
@@ -134,20 +134,22 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 const noise = Math.random() * noiseFloor;
                 const signalVal = processedBuffer[i];
 
-                // Color Mapping:
-                // Low signal: Green
-                // High signal (>0.5): Desaturate towards White
+                // Color Mapping (Green Rule):
+                // 0% Signal -> Black/Noise
+                // 50% Signal -> Dim Green (0, 128, 0)
+                // 100% Signal -> Bright Green (0, 255, 0)
 
                 const intensity = Math.min(255, noise + signalVal * 255);
 
                 let r = 0;
                 let b = 0;
 
-                if (signalVal > 0.5) {
-                    // Add R/B components as signal approaches 1.0 to create white
-                    const whiteness = (signalVal - 0.5) * 2 * 255;
-                    r = Math.min(255, whiteness);
-                    b = Math.min(255, whiteness);
+                // Saturation Clipping (Phosphor Burn)
+                // Only for extremely strong signals (> 0.9), allow slight desaturation
+                if (signalVal > 0.9) {
+                    const clip = (signalVal - 0.9) * 10 * 150; // 0 to 150
+                    r = Math.min(255, clip);
+                    b = Math.min(255, clip);
                 }
 
                 buffer[i * 4 + 0] = r;              // R
@@ -296,7 +298,7 @@ const SonarBezel = ({ width }: { width: number }) => {
     }, 1000);
 
     return (
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+        <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }}>
             {visibleTrackers.map((tracker) => {
                  let signedBearing = tracker.currentBearing;
                  if (signedBearing > 180) signedBearing -= 360;
@@ -397,14 +399,16 @@ const SonarDisplay = () => {
     const [showSolution, setShowSolution] = useState(true);
 
     return (
-        <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black overflow-hidden">
+        <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black">
             {width > 0 && height > 0 && (
-                <>
-                    <Stage width={width} height={height} options={{ background: 0x001100 }}>
-                        <SonarInternals width={width} height={height} showSolution={showSolution} />
-                    </Stage>
+                <div className="relative w-full h-full">
+                    <div className="relative w-full h-full overflow-hidden">
+                        <Stage width={width} height={height} options={{ background: 0x001100 }}>
+                            <SonarInternals width={width} height={height} showSolution={showSolution} />
+                        </Stage>
+                    </div>
                     <SonarBezel width={width} />
-                </>
+                </div>
             )}
 
             {/* UI Overlay */}
