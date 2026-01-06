@@ -230,7 +230,7 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         // Grid Lines: Very dim green (alpha: 0.1)
         g.lineStyle(1, 0x33FF33, 0.1);
 
-        const { heading: currentHeading, timeScale } = useSubmarineStore.getState();
+        const { heading: currentHeading } = useSubmarineStore.getState();
         const PIXELS_PER_DEGREE = width / 360;
         const SCREEN_CENTER = width / 2;
 
