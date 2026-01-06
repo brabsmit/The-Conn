@@ -1,7 +1,15 @@
+import { useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { useInterval } from '../../hooks/useInterval';
 
 export const ContactManager = () => {
-    const trackers = useSubmarineStore((state) => state.trackers);
+    const [trackers, setTrackers] = useState(() => useSubmarineStore.getState().trackers);
+
+    // Poll for tracker updates every 1000ms (1Hz) to stabilize UI values
+    useInterval(() => {
+        setTrackers(useSubmarineStore.getState().trackers);
+    }, 1000);
+
     const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
     const setSelectedTracker = useSubmarineStore((state) => state.setSelectedTracker);
     const deleteTracker = useSubmarineStore((state) => state.deleteTracker);

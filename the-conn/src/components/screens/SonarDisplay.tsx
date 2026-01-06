@@ -1,9 +1,10 @@
 import { useRef, useMemo, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Container, Sprite, Graphics, Text, useTick, useApp } from '@pixi/react';
+import { Stage, Container, Sprite, Graphics, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { SonarSweepFilter } from './SonarShader';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
+import { useInterval } from '../../hooks/useInterval';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
 
 interface DimensionProps {
@@ -219,50 +220,42 @@ const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, h
     return <Container ref={containerRef} />;
 });
 
-const TrackerOverlay = ({ width }: { width: number }) => {
-    const graphicsRef = useRef<PIXI.Graphics | null>(null);
+const SonarBezel = ({ width }: { width: number }) => {
+    // Throttled visual state (1Hz)
+    const [visibleTrackers, setVisibleTrackers] = useState(() => useSubmarineStore.getState().trackers);
 
-    useTick(() => {
-        const graphics = graphicsRef.current;
-        if (!graphics) return;
-        graphics.clear();
-        const { trackers } = useSubmarineStore.getState();
-        trackers.forEach((tracker) => {
-             let signedBearing = tracker.currentBearing;
-             if (signedBearing > 180) signedBearing -= 360;
-             if (signedBearing >= -150 && signedBearing <= 150) {
-                 const x = ((signedBearing + 150) / 300) * width;
-                 graphics.beginFill(0x33ff33);
-                 graphics.moveTo(x, 0);
-                 graphics.lineTo(x - 5, 10);
-                 graphics.lineTo(x + 5, 10);
-                 graphics.closePath();
-                 graphics.endFill();
-             }
-        });
-    });
+    useInterval(() => {
+        setVisibleTrackers(useSubmarineStore.getState().trackers);
+    }, 1000);
 
-    const trackers = useSubmarineStore((state) => state.trackers);
     return (
-        <Container>
-            <Graphics ref={graphicsRef} />
-            {trackers.map((tracker) => {
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+            {visibleTrackers.map((tracker) => {
                  let signedBearing = tracker.currentBearing;
                  if (signedBearing > 180) signedBearing -= 360;
+
+                 // Check visibility within the +/- 150 degree window
                  if (signedBearing < -150 || signedBearing > 150) return null;
+
                  const x = ((signedBearing + 150) / 300) * width;
+
                  return (
-                     <Text
+                     <div
                         key={tracker.id}
-                        text={tracker.id}
-                        x={x}
-                        y={12}
-                        anchor={0.5}
-                        style={new PIXI.TextStyle({ fill: '#33ff33', fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold' })}
-                     />
+                        className="absolute top-0 flex flex-col items-center"
+                        style={{ left: x, transform: 'translateX(-50%)' }}
+                     >
+                        {/* Triangle pointing DOWN */}
+                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[10px] border-t-[#33ff33]" />
+
+                        {/* Tracker ID */}
+                        <div className="text-[#33ff33] font-mono font-bold text-sm mt-0 shadow-black drop-shadow-md">
+                            {tracker.id}
+                        </div>
+                     </div>
                  );
             })}
-        </Container>
+        </div>
     );
 };
 
@@ -328,7 +321,6 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
                 <Waterfall ref={waterfallRef} width={width} height={height} />
             </Container>
             <SolutionOverlay ref={overlayRef} width={width} height={height} visible={showSolution} />
-            <TrackerOverlay width={width} />
         </>
     );
 };
@@ -340,9 +332,12 @@ const SonarDisplay = () => {
     return (
         <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black overflow-hidden">
             {width > 0 && height > 0 && (
-                <Stage width={width} height={height} options={{ background: 0x001100 }}>
-                    <SonarInternals width={width} height={height} showSolution={showSolution} />
-                </Stage>
+                <>
+                    <Stage width={width} height={height} options={{ background: 0x001100 }}>
+                        <SonarInternals width={width} height={height} showSolution={showSolution} />
+                    </Stage>
+                    <SonarBezel width={width} />
+                </>
             )}
 
             {/* UI Overlay */}
