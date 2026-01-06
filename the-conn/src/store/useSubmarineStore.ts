@@ -209,8 +209,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   viewScale: 'FAST',
   activeStation: 'TMA',
   orderedHeading: 0,
-  orderedSpeed: 0,
-  orderedDepth: 0,
+  orderedSpeed: 10,
+  orderedDepth: 150,
 
   setOrderedHeading: (heading) => set({ orderedHeading: normalizeAngle(heading) }),
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
