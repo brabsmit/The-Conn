@@ -3,8 +3,6 @@ import { calculateProjectedSolution } from '../../lib/tma';
 
 export const TMAControls = () => {
   const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
-  const selectedTrackerSpeed = useSubmarineStore((state) => state.trackers[0]?.solution.speed)
-  const selectedTrackerCourse = useSubmarineStore((state) => state.trackers[0]?.solution.course)
   const trackers = useSubmarineStore((state) => state.trackers);
   const updateTrackerSolution = useSubmarineStore((state) => state.updateTrackerSolution);
   const gameTime = useSubmarineStore((state) => state.gameTime);
@@ -74,13 +72,13 @@ export const TMAControls = () => {
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">COURSE</span>
                     <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {selectedTrackerCourse.toFixed(0).padStart(3, '0')}
+                        {course.toFixed(0).padStart(3, '0')}
                     </span>
                  </div>
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">SPEED</span>
                     <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {selectedTrackerSpeed.toFixed(1)}
+                        {speed.toFixed(1)}
                     </span>
                  </div>
             </div>

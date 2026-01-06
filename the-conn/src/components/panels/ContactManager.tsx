@@ -1,0 +1,71 @@
+import { useSubmarineStore } from '../../store/useSubmarineStore';
+
+export const ContactManager = () => {
+    const trackers = useSubmarineStore((state) => state.trackers);
+    const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
+    const setSelectedTracker = useSubmarineStore((state) => state.setSelectedTracker);
+    const deleteTracker = useSubmarineStore((state) => state.deleteTracker);
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden bg-black/80 font-mono text-xs">
+            {/* Header */}
+            <div className="flex items-center px-2 py-1 bg-white/5 border-b border-white/10 text-zinc-500 font-bold uppercase tracking-wider">
+                <div className="w-12 text-center">ID</div>
+                <div className="w-16 text-center">BRG</div>
+                <div className="flex-grow text-center">CLASS</div>
+                <div className="w-8"></div>
+            </div>
+
+            {/* List */}
+            <div className="flex-grow overflow-y-auto">
+                {trackers.length === 0 ? (
+                    <div className="p-4 text-center text-zinc-600 italic">No Active Contacts</div>
+                ) : (
+                    trackers.map((tracker) => {
+                        const isSelected = selectedTrackerId === tracker.id;
+                        return (
+                            <div
+                                key={tracker.id}
+                                onClick={() => setSelectedTracker(tracker.id)}
+                                className={`flex items-center px-2 py-2 border-b border-white/5 cursor-pointer transition-colors ${
+                                    isSelected
+                                        ? 'bg-amber-900/30 text-amber-200'
+                                        : 'hover:bg-white/5 text-zinc-400'
+                                }`}
+                            >
+                                {/* ID */}
+                                <div className={`w-12 font-bold text-center ${isSelected ? 'text-amber-400' : 'text-zinc-500'}`}>
+                                    {tracker.id}
+                                </div>
+
+                                {/* Bearing */}
+                                <div className="w-16 text-center tabular-nums font-mono text-zinc-300">
+                                    {tracker.currentBearing.toFixed(0).padStart(3, '0')}
+                                </div>
+
+                                {/* Class (Placeholder) */}
+                                <div className="flex-grow text-center text-zinc-500">
+                                    UNK
+                                </div>
+
+                                {/* Actions */}
+                                <div className="w-8 flex justify-center">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteTracker(tracker.id);
+                                        }}
+                                        className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-900/50 hover:text-red-400 text-zinc-600 transition-colors"
+                                        title="Drop Contact"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+};

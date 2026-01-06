@@ -5,6 +5,7 @@ import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import WCSDisplay from './components/screens/WCSDisplay';
 import { TMAControls } from './components/panels/TMAControls';
+import { ContactManager } from './components/panels/ContactManager';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
 
@@ -28,13 +29,22 @@ function App() {
       <div className="flex-grow flex w-full overflow-hidden p-4 gap-4">
         
         {/* PANE A: Sonar Panel (Left) */}
-        <div className="w-[350px] flex-shrink-0 h-full flex flex-col">
+        <div className="w-[350px] flex-shrink-0 h-full flex flex-col gap-4">
           <Panel
             title="Sonar Array"
-            className="h-full flex flex-col overflow-hidden"
+            className="h-[70%] flex flex-col overflow-hidden"
           >
              <div className="flex-grow w-full bg-black rounded shadow-inset border border-white/10 relative overflow-hidden">
                 <SonarDisplay />
+             </div>
+          </Panel>
+
+          <Panel
+            title="Contacts"
+            className="flex-grow flex flex-col overflow-hidden"
+          >
+             <div className="flex-grow w-full bg-zinc-900 rounded shadow-inset border border-white/10 relative overflow-hidden">
+                <ContactManager />
              </div>
           </Panel>
         </div>
