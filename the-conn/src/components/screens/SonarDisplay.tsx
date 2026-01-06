@@ -239,7 +239,9 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
                 tex: PIXI.Texture | null,
                 scanlineRef: React.MutableRefObject<number>
             ) => {
-                if (!tex) return;
+                // Fix: Check if texture is valid and not destroyed to prevent "reading 'width' of null" errors during resize
+                if (!tex || !tex.baseTexture || tex.baseTexture.destroyed || !tex.valid) return;
+
                 const offset = scanlineRef.current * width * 4;
                 if (offset + pixelBuffer.length <= buffer.length) {
                     buffer.set(pixelBuffer, offset);
