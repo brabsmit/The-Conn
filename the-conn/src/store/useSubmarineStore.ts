@@ -7,6 +7,9 @@ interface Contact {
   heading?: number;
   speed?: number;
   type?: 'ENEMY' | 'NEUTRAL';
+  classification?: 'MERCHANT' | 'ESCORT' | 'SUB';
+  sourceLevel?: number;
+  cavitationSpeed?: number;
 }
 
 interface SensorReading {
@@ -165,7 +168,15 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   x: 0,
   y: 0,
   ownShipHistory: [],
-  contacts: [{ id: 'Sierra-1', x: 5000, y: 5000, type: 'ENEMY' }],
+  contacts: [{
+    id: 'Sierra-1',
+    x: 5000,
+    y: 5000,
+    type: 'ENEMY',
+    classification: 'MERCHANT',
+    sourceLevel: 1.0,
+    cavitationSpeed: 10
+  }],
   sensorReadings: [],
   trackers: [],
   selectedTrackerId: null,
