@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Stage, Container, Graphics, Text } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
@@ -20,11 +20,12 @@ const GeoDisplay: React.FC = () => {
     const { ref: parentRef, width, height } = useResize();
 
     // Subscribe to store
-    const ownShip = useSubmarineStore(state => ({
-        x: state.x,
-        y: state.y,
-        heading: state.heading
-    }));
+    const x = useSubmarineStore(state => state.x);
+    const y = useSubmarineStore(state => state.y);
+    const heading = useSubmarineStore(state => state.heading);
+
+    const ownShip = React.useMemo(() => ({ x, y, heading }), [x, y, heading]);
+
     const trackers = useSubmarineStore(state => state.trackers);
     const selectedTrackerId = useSubmarineStore(state => state.selectedTrackerId);
     const torpedoes = useSubmarineStore(state => state.torpedoes);
@@ -264,7 +265,7 @@ const TrackerSymbol: React.FC<{
             // We can't easily render text in Graphics, assume overlay or just symbol is enough.
         }
 
-    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, color]);
+    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected]);
 
     return (
         <React.Fragment>
