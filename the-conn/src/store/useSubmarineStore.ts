@@ -119,7 +119,7 @@ interface SubmarineState {
   equalizeTube: (tubeId: number) => void;
   openTube: (tubeId: number) => void;
   fireTube: (tubeId: number) => void;
-  tick: () => void;
+  tick: (delta?: number) => void;
 }
 
 // Helper to normalize angle to 0-359
@@ -298,7 +298,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     };
   }),
 
-  tick: () =>
+  tick: (delta = 1) =>
     set((state) => {
       let newHeading = state.heading;
       let newSpeed = state.speed;
@@ -307,16 +307,17 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Update Heading
       if (state.heading !== state.orderedHeading) {
         const diff = state.orderedHeading - state.heading;
-        let delta = diff;
+        let turnAmount = diff;
 
         // Handle wrapping for shortest turn
-        if (diff > 180) delta = diff - 360;
-        if (diff < -180) delta = diff + 360;
+        if (diff > 180) turnAmount = diff - 360;
+        if (diff < -180) turnAmount = diff + 360;
 
-        if (Math.abs(delta) < TURN_RATE) {
+        const maxTurn = TURN_RATE * delta;
+        if (Math.abs(turnAmount) < maxTurn) {
           newHeading = state.orderedHeading;
         } else {
-          newHeading += Math.sign(delta) * TURN_RATE;
+          newHeading += Math.sign(turnAmount) * maxTurn;
         }
         newHeading = normalizeAngle(newHeading);
       }
@@ -324,7 +325,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Update Speed
       if (state.speed !== state.orderedSpeed) {
         const diff = state.orderedSpeed - state.speed;
-        const rate = diff > 0 ? ACCELERATION : DECELERATION;
+        const rate = (diff > 0 ? ACCELERATION : DECELERATION) * delta;
         if (Math.abs(diff) < rate) {
           newSpeed = state.orderedSpeed;
         } else {
@@ -335,7 +336,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Update Depth
       if (state.depth !== state.orderedDepth) {
         const diff = state.orderedDepth - state.depth;
-        const rate = diff > 0 ? DIVE_RATE : ASCENT_RATE;
+        const rate = (diff > 0 ? DIVE_RATE : ASCENT_RATE) * delta;
         if (Math.abs(diff) < rate) {
           newDepth = state.orderedDepth;
         } else {
@@ -350,7 +351,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // dx = speed * sin(heading)
       // dy = speed * cos(heading)
       const radHeading = (newHeading * Math.PI) / 180;
-      const distance = newSpeed * FEET_PER_KNOT_PER_TICK;
+      const distance = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
       const newX = state.x + distance * Math.sin(radHeading);
       const newY = state.y + distance * Math.cos(radHeading);
 
@@ -358,12 +359,12 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const newTorpedoes = state.torpedoes.map(torpedo => {
         let newSpeed = torpedo.speed;
         if (newSpeed < 45) {
-          newSpeed += 0.5; // Accelerate
+          newSpeed += 0.5 * delta; // Accelerate
           if (newSpeed > 45) newSpeed = 45;
         }
 
         const torpRadHeading = (torpedo.heading * Math.PI) / 180;
-        const torpDist = newSpeed * FEET_PER_KNOT_PER_TICK;
+        const torpDist = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
         const torpNewX = torpedo.position.x + torpDist * Math.sin(torpRadHeading);
         const torpNewY = torpedo.position.y + torpDist * Math.cos(torpRadHeading);
 
