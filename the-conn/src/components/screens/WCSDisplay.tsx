@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import type { Tube, TubeStatus } from '../../store/useSubmarineStore';
+import { calculateProjectedSolution } from '../../lib/tma';
 
 const TubeStatusLight = ({ status }: { status: TubeStatus }) => {
   let color = 'bg-zinc-800';
@@ -78,13 +79,27 @@ const TubeStrip = ({ tube, isSelected, onClick }: { tube: Tube; isSelected: bool
 
 const WCSDisplay = () => {
     const tubes = useSubmarineStore(state => state.tubes);
-    const { loadTube, floodTube, equalizeTube, openTube } = useSubmarineStore.getState();
+    const trackers = useSubmarineStore(state => state.trackers);
+    // Use shallow selector or individual to avoid object creation if possible,
+    // but without 'shallow', we just accept re-renders or pull direct values.
+    // For now, let's keep it simple but stable.
+    const x = useSubmarineStore(state => state.x);
+    const y = useSubmarineStore(state => state.y);
+    const heading = useSubmarineStore(state => state.heading);
+    const gameTime = useSubmarineStore(state => state.gameTime);
+
+    const ownShip = { x, y, heading };
+
+    const { loadTube, floodTube, equalizeTube, openTube, fireTube } = useSubmarineStore.getState();
     const [selectedTubeId, setSelectedTubeId] = useState<number>(1);
 
     // Preset State
     const [searchCeiling, setSearchCeiling] = useState(50);
     const [searchFloor, setSearchFloor] = useState(1000);
     const [searchMode, setSearchMode] = useState<'ACTIVE' | 'PASSIVE'>('PASSIVE');
+
+    // Target Selection
+    const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
     const selectedTube = tubes.find(t => t.id === selectedTubeId);
 
@@ -110,7 +125,24 @@ const WCSDisplay = () => {
                 openTube(selectedTube.id);
                 break;
             case 'FIRE':
-                useSubmarineStore.getState().fireTube(selectedTube.id);
+                {
+                    let targetId = undefined;
+                    let enableRange = undefined;
+                    let gyroAngle = undefined;
+
+                    if (selectedTargetId) {
+                        const tracker = trackers.find(t => t.id === selectedTargetId);
+                        if (tracker) {
+                            targetId = selectedTargetId;
+                            const proj = calculateProjectedSolution(tracker.solution, ownShip, gameTime);
+                            // RTE: Distance - 1000yds. Minimum 500yds.
+                            enableRange = Math.max(500, proj.calcRange - 1000);
+                            gyroAngle = proj.calcBearing;
+                        }
+                    }
+
+                    fireTube(selectedTube.id, targetId, enableRange, gyroAngle);
+                }
                 break;
         }
     };
@@ -197,6 +229,21 @@ const WCSDisplay = () => {
                                  onChange={(e) => setSearchFloor(Number(e.target.value))}
                                  className="w-full accent-amber-600 cursor-pointer"
                              />
+                         </div>
+                         <div className="flex flex-col gap-2">
+                            <div className="text-xs text-zinc-500 font-bold tracking-widest">TARGET SELECT</div>
+                            <select
+                                className="bg-black/50 border border-white/10 rounded text-xs p-1 text-zinc-300 outline-none focus:border-amber-500"
+                                value={selectedTargetId || ''}
+                                onChange={(e) => setSelectedTargetId(e.target.value || null)}
+                            >
+                                <option value="">NO TARGET</option>
+                                {trackers.map(tracker => (
+                                    <option key={tracker.id} value={tracker.id}>
+                                        {tracker.id} {tracker.contactId ? `(${tracker.contactId})` : ''}
+                                    </option>
+                                ))}
+                            </select>
                          </div>
                      </div>
                 </div>
