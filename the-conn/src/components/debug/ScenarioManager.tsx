@@ -249,7 +249,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
         {/* SIDEBAR */}
         <div className="flex-1 bg-zinc-800 p-4 flex flex-col">
             <div className="flex justify-between items-center mb-6 border-b border-zinc-700 pb-2">
-                <h2 className="text-white font-bold">SCENARIO MGR</h2>
+                <h2 className="text-white font-bold">Scenario Manager</h2>
                 <button onClick={onClose} className="text-zinc-400 hover:text-white">✕</button>
             </div>
 

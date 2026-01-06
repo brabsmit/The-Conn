@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { ScenarioManager } from '../debug/ScenarioManager';
+import { loadAmbushScenario } from '../../scenarios/Ambush';
 import type { TimeScale } from '../../store/useSubmarineStore';
 
 const formatTime = (seconds: number) => {
@@ -37,6 +38,7 @@ const TimeControls = () => {
 
 export const TopBar = () => {
   const [showScenarioManager, setShowScenarioManager] = useState(false);
+  const [showScenarioMenu, setShowScenarioMenu] = useState(false);
   const timeRef = useRef<HTMLSpanElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
@@ -107,8 +109,40 @@ export const TopBar = () => {
       {/* TIME SCALE CONTROLS */}
       <div className="ml-auto flex flex-col items-end justify-center h-full border-l border-white/5 pl-6">
           <span className="text-[10px] text-zinc-500 leading-none mb-1">TIMESCALE</span>
-          <div className="flex gap-4 items-center">
+          <div className="flex gap-4 items-center relative">
             <TimeControls />
+
+            <div className="relative">
+                <button
+                    onClick={() => setShowScenarioMenu(!showScenarioMenu)}
+                    className="text-[10px] bg-blue-900/50 text-blue-300 border border-blue-800 px-2 py-0.5 rounded hover:bg-blue-900 hover:text-white"
+                >
+                    SCENARIO
+                </button>
+                {showScenarioMenu && (
+                    <div className="absolute top-full right-0 mt-2 w-32 bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1 z-50">
+                        <button
+                            onClick={() => {
+                                useSubmarineStore.getState().loadScenario({ contacts: [] });
+                                setShowScenarioMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                        >
+                            Clear World
+                        </button>
+                        <button
+                            onClick={() => {
+                                loadAmbushScenario();
+                                setShowScenarioMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                        >
+                            Ambush
+                        </button>
+                    </div>
+                )}
+            </div>
+
             <button
                 onClick={() => setShowScenarioManager(true)}
                 className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
