@@ -10,6 +10,9 @@ interface Contact {
   classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL';
   sourceLevel?: number;
   cavitationSpeed?: number;
+  aiMode?: 'IDLE' | 'ATTACK' | 'EVADE';
+  aiLastUpdate?: number;
+  sensitivity?: number;
 }
 
 interface SensorReading {
@@ -145,6 +148,7 @@ interface SubmarineState {
   addContact: (contact: Contact) => void;
   updateContact: (id: string, updates: Partial<Contact>) => void;
   removeContact: (id: string) => void;
+  loadScenario: (state: Partial<SubmarineState>) => void;
   tick: (delta?: number) => void;
 }
 
@@ -317,6 +321,21 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     contacts: state.contacts.filter(c => c.id !== id)
   })),
 
+  loadScenario: (newState) => set((state) => ({
+    ...state,
+    ...newState,
+    // Ensure deep merge or reset of complex objects if needed, but simple replacement works for now
+    // Reset history if not provided
+    ownShipHistory: newState.ownShipHistory || [],
+    trackers: newState.trackers || [],
+    contacts: newState.contacts || [],
+    torpedoes: newState.torpedoes || [],
+    transients: newState.transients || [],
+    sensorReadings: newState.sensorReadings || [],
+    tickCount: 0,
+    gameTime: 0
+  })),
+
   fireTube: (tubeId, designatedTargetId, enableRange, gyroAngle) => set((state) => {
     const tube = state.tubes.find(t => t.id === tubeId);
     if (!tube || tube.status !== 'OPEN' || !tube.weaponData) {
@@ -431,18 +450,70 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
       const totalNoise = baseNoise + flowNoise + cavitationNoise + transientNoise;
 
-      // Update Contacts (Truth movement)
+      // Update Contacts (Truth movement & AI)
       const newContactsInitial = state.contacts.map(contact => {
-        if (contact.speed !== undefined && contact.heading !== undefined) {
-            const radHeading = (contact.heading * Math.PI) / 180;
-            const distance = contact.speed * FEET_PER_KNOT_PER_TICK * delta;
+        let currentContact = { ...contact };
+
+        // AI Logic (Only for ENEMY)
+        if (currentContact.type === 'ENEMY') {
+            const timeSinceLastUpdate = state.gameTime - (currentContact.aiLastUpdate || 0);
+
+            // Run AI every 1 second
+            if (timeSinceLastUpdate >= 1.0) {
+                currentContact.aiLastUpdate = state.gameTime;
+
+                // 1. Detection
+                const dx = state.x - currentContact.x;
+                const dy = state.y - currentContact.y;
+                const distSquared = (dx * dx + dy * dy);
+
+                // Sensitivity heuristic:
+                // OwnshipNoise ~ 0.1 to 1.0. Dist ~ 8000yds -> DistSq ~ 64,000,000.
+                // Ratio ~ 1.5e-9.
+                // Sensitivity ~ 1e8 to get alertLevel ~ 0.15.
+                // If Alert > 0.5 triggers Attack.
+                // Let's default sensitivity to 300,000,000.
+                const sensitivity = currentContact.sensitivity || 300000000;
+                const alertLevel = (totalNoise / Math.max(1, distSquared)) * sensitivity;
+
+                // 2. Triggers
+                // Trigger Attack?
+                if (alertLevel > 0.5) {
+                    currentContact.aiMode = 'ATTACK';
+                }
+
+                // Trigger Evade? (Torpedo Launch Transient)
+                const launchTransient = state.transients.find(t => t.type === 'LAUNCH' && (state.gameTime - t.startTime) < 5);
+                if (launchTransient) {
+                    currentContact.aiMode = 'EVADE';
+                }
+
+                // 3. Behavior
+                if (currentContact.aiMode === 'EVADE') {
+                    // Sprint
+                    currentContact.speed = 25;
+
+                    // Turn Away (Reciprocal Bearing)
+                    // Angle from Enemy to Ownship
+                    const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
+                    // Bearing is 90 - angle (Nav convention)
+                    const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
+                    // Turn away (+180)
+                    currentContact.heading = normalizeAngle(bearingToOwnship + 180);
+                }
+            }
+        }
+
+        if (currentContact.speed !== undefined && currentContact.heading !== undefined) {
+            const radHeading = (currentContact.heading * Math.PI) / 180;
+            const distance = currentContact.speed * FEET_PER_KNOT_PER_TICK * delta;
             return {
-                ...contact,
-                x: contact.x + distance * Math.sin(radHeading),
-                y: contact.y + distance * Math.cos(radHeading)
+                ...currentContact,
+                x: currentContact.x + distance * Math.sin(radHeading),
+                y: currentContact.y + distance * Math.cos(radHeading)
             };
         }
-        return contact;
+        return currentContact;
       });
 
       // Update Torpedoes
