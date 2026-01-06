@@ -51,11 +51,23 @@ export const TMAControls = () => {
 
   const sliderClass = "w-full h-4 bg-zinc-900 rounded-none appearance-none cursor-pointer border border-green-900/50 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-green-600 [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-green-400 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:bg-green-600 [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-green-400";
 
+  const getTrackerLabel = () => {
+     if (selectedTracker.classificationStatus === 'PENDING') return `${selectedTrackerId} (PENDING)`;
+     if (selectedTracker.classification) {
+         // Shorten classification
+         const short = selectedTracker.classification === 'MERCHANT' ? '(M)' :
+                       selectedTracker.classification === 'ESCORT' ? '(E)' :
+                       selectedTracker.classification === 'SUB' ? '(S)' : '(B)';
+         return `${selectedTrackerId} ${short}`;
+     }
+     return selectedTrackerId;
+  };
+
   return (
     <div className="flex flex-col gap-4 p-4 h-full bg-white/5 border-l border-white/10 overflow-y-auto font-mono">
         {/* Section 1: Readout */}
         <div className="flex flex-col gap-2 p-3 bg-black/40 rounded border border-white/10 shadow-inner shadow-black/50">
-            <div className="text-[10px] text-zinc-400 font-bold tracking-widest border-b border-white/5 pb-1 mb-1">{selectedTrackerId}</div>
+            <div className="text-[10px] text-zinc-400 font-bold tracking-widest border-b border-white/5 pb-1 mb-1">{getTrackerLabel()}</div>
             <div className="grid grid-cols-2 gap-4">
                  <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">BEARING</span>
