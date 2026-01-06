@@ -28,7 +28,16 @@ We are using a **Web-Native Sim** approach. The simulation logic runs "headless"
 
 ## 4. Current Status
 * [x] **Phase 1: Skeleton:** Project initialized. Grid layout established. `Panel` components created. Tailwind theme configured.
-* [ ] **Phase 2: The Brain:** Implementing the simulation loop and physics (Zustand).
-* [ ] **Phase 3: The Eyes:** Implementing the active PixiJS Sonar screen.
+* [x] **Phase 2: The Brain:** Implementing the simulation loop and physics (Zustand).
+* [x] **Phase 3: The Eyes:** Implementing the active PixiJS Sonar screen.
+* [ ] **Phase 4: The UI:** Implementing Multi Function Displays (MFDs).
+* [ ] **Phase 5: The Teeth:** Weapons Launch.
+
+# 5. Weapon Control System (WCS)
+
+## 1. Mission Overview
+**Objective:** Implement a high-fidelity "Tube Board" simulation.
+* **UI Pattern:** The Center Console becomes a Multi-Function Display (Swappable between TMA/WCS).
+* **Core Mechanic:** The "Make Ready" procedure (Load -> Flood -> Equalize -> Open).
 
 ---
