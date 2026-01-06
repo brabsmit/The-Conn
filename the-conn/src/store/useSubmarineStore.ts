@@ -4,6 +4,9 @@ interface Contact {
   id: string;
   x: number;
   y: number;
+  heading?: number;
+  speed?: number;
+  type?: 'ENEMY' | 'NEUTRAL';
 }
 
 interface SensorReading {
@@ -125,6 +128,9 @@ interface SubmarineState {
   equalizeTube: (tubeId: number) => void;
   openTube: (tubeId: number) => void;
   fireTube: (tubeId: number, designatedTargetId?: string, enableRange?: number, gyroAngle?: number) => void;
+  addContact: (contact: Contact) => void;
+  updateContact: (id: string, updates: Partial<Contact>) => void;
+  removeContact: (id: string) => void;
   tick: (delta?: number) => void;
 }
 
@@ -158,7 +164,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   x: 0,
   y: 0,
   ownShipHistory: [],
-  contacts: [{ id: 'Sierra-1', x: 5000, y: 5000 }],
+  contacts: [{ id: 'Sierra-1', x: 5000, y: 5000, type: 'ENEMY' }],
   sensorReadings: [],
   trackers: [],
   selectedTrackerId: null,
@@ -267,6 +273,18 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     )
   })),
 
+  addContact: (contact) => set((state) => ({
+    contacts: [...state.contacts, contact]
+  })),
+
+  updateContact: (id, updates) => set((state) => ({
+    contacts: state.contacts.map(c => c.id === id ? { ...c, ...updates } : c)
+  })),
+
+  removeContact: (id) => set((state) => ({
+    contacts: state.contacts.filter(c => c.id !== id)
+  })),
+
   fireTube: (tubeId, designatedTargetId, enableRange, gyroAngle) => set((state) => {
     const tube = state.tubes.find(t => t.id === tubeId);
     if (!tube || tube.status !== 'OPEN' || !tube.weaponData) {
@@ -360,6 +378,20 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const distance = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
       const newX = state.x + distance * Math.sin(radHeading);
       const newY = state.y + distance * Math.cos(radHeading);
+
+      // Update Contacts (Truth movement)
+      const newContactsInitial = state.contacts.map(contact => {
+        if (contact.speed !== undefined && contact.heading !== undefined) {
+            const radHeading = (contact.heading * Math.PI) / 180;
+            const distance = contact.speed * FEET_PER_KNOT_PER_TICK * delta;
+            return {
+                ...contact,
+                x: contact.x + distance * Math.sin(radHeading),
+                y: contact.y + distance * Math.cos(radHeading)
+            };
+        }
+        return contact;
+      });
 
       // Update Torpedoes
       const newTorpedoes = state.torpedoes.map(torpedo => {
@@ -491,7 +523,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       });
 
       // Handle Detonation Effects (Remove Targets)
-      let newContacts = state.contacts;
+      let newContacts = newContactsInitial;
       newTorpedoes.forEach(t => {
           if (t.status === 'EXPLODED' && t.activeTargetId) {
               newContacts = newContacts.filter(c => c.id !== t.activeTargetId);

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { ScenarioManager } from '../debug/ScenarioManager';
 import type { TimeScale } from '../../store/useSubmarineStore';
 
 const formatTime = (seconds: number) => {
@@ -35,6 +36,7 @@ const TimeControls = () => {
 };
 
 export const TopBar = () => {
+  const [showScenarioManager, setShowScenarioManager] = useState(false);
   const timeRef = useRef<HTMLSpanElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
@@ -60,6 +62,7 @@ export const TopBar = () => {
 
   return (
     <div className="w-full h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none flex-shrink-0">
+      {showScenarioManager && <ScenarioManager onClose={() => setShowScenarioManager(false)} />}
 
       {/* TIME */}
       <div className="flex flex-col mr-8">
@@ -104,7 +107,15 @@ export const TopBar = () => {
       {/* TIME SCALE CONTROLS */}
       <div className="ml-auto flex flex-col items-end justify-center h-full border-l border-white/5 pl-6">
           <span className="text-[10px] text-zinc-500 leading-none mb-1">TIMESCALE</span>
-          <TimeControls />
+          <div className="flex gap-4 items-center">
+            <TimeControls />
+            <button
+                onClick={() => setShowScenarioManager(true)}
+                className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+            >
+                DEV
+            </button>
+          </div>
       </div>
 
     </div>
