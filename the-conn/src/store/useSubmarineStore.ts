@@ -120,6 +120,7 @@ interface SubmarineState {
   setOrderedDepth: (depth: number) => void;
   designateTracker: (bearing: number) => void;
   setSelectedTracker: (id: string | null) => void;
+  deleteTracker: (id: string) => void;
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
   setTimeScale: (scale: TimeScale) => void;
   setActiveStation: (station: Station) => void;
@@ -229,6 +230,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   }),
 
   setSelectedTracker: (id) => set({ selectedTrackerId: id }),
+
+  deleteTracker: (id) => set((state) => ({
+    trackers: state.trackers.filter(t => t.id !== id),
+    selectedTrackerId: state.selectedTrackerId === id ? null : state.selectedTrackerId
+  })),
 
   updateTrackerSolution: (trackerId, solution) => set((state) => ({
     trackers: state.trackers.map(t =>
