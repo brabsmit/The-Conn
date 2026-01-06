@@ -34,7 +34,7 @@ export interface OwnShipHistory {
 
 export type Station = 'TMA' | 'WCS' | 'NAV';
 
-export type TimeScale = 'FAST' | 'MED' | 'SLOW';
+export type ViewScale = 'FAST' | 'MED' | 'SLOW';
 
 export interface TrackerSolution {
   speed: number;
@@ -122,7 +122,7 @@ interface SubmarineState {
   torpedoes: Torpedo[];
   tickCount: number;
   gameTime: number; // in seconds
-  timeScale: TimeScale;
+  viewScale: ViewScale;
   activeStation: Station;
 
   // Ordered Data (Controls)
@@ -138,7 +138,7 @@ interface SubmarineState {
   setSelectedTracker: (id: string | null) => void;
   deleteTracker: (id: string) => void;
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
-  setTimeScale: (scale: TimeScale) => void;
+  setViewScale: (scale: ViewScale) => void;
   setActiveStation: (station: Station) => void;
   loadTube: (tubeId: number, weaponData: WeaponData) => void;
   floodTube: (tubeId: number) => void;
@@ -206,7 +206,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   torpedoes: [],
   tickCount: 0,
   gameTime: 0,
-  timeScale: 'FAST',
+  viewScale: 'FAST',
   activeStation: 'TMA',
   orderedHeading: 0,
   orderedSpeed: 0,
@@ -272,7 +272,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     )
   })),
 
-  setTimeScale: (scale) => set({ timeScale: scale }),
+  setViewScale: (scale) => set({ viewScale: scale }),
   setActiveStation: (station) => set({ activeStation: station }),
 
   loadTube: (tubeId, weaponData) => set((state) => ({

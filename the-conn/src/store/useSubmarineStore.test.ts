@@ -4,28 +4,28 @@ import { useSubmarineStore } from './useSubmarineStore';
 describe('useSubmarineStore', () => {
   beforeEach(() => {
     useSubmarineStore.setState({
-      timeScale: 'FAST',
+      viewScale: 'FAST',
       trackers: [],
       sensorReadings: [],
       contacts: []
     });
   });
 
-  it('should have default timeScale as FAST', () => {
+  it('should have default viewScale as FAST', () => {
     const state = useSubmarineStore.getState();
-    expect(state.timeScale).toBe('FAST');
+    expect(state.viewScale).toBe('FAST');
   });
 
-  it('should update timeScale correctly', () => {
-    const { setTimeScale } = useSubmarineStore.getState();
+  it('should update viewScale correctly', () => {
+    const { setViewScale } = useSubmarineStore.getState();
 
-    setTimeScale('MED');
-    expect(useSubmarineStore.getState().timeScale).toBe('MED');
+    setViewScale('MED');
+    expect(useSubmarineStore.getState().viewScale).toBe('MED');
 
-    setTimeScale('SLOW');
-    expect(useSubmarineStore.getState().timeScale).toBe('SLOW');
+    setViewScale('SLOW');
+    expect(useSubmarineStore.getState().viewScale).toBe('SLOW');
 
-    setTimeScale('FAST');
-    expect(useSubmarineStore.getState().timeScale).toBe('FAST');
+    setViewScale('FAST');
+    expect(useSubmarineStore.getState().viewScale).toBe('FAST');
   });
 });
