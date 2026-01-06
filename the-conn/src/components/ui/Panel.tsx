@@ -5,9 +5,10 @@ interface PanelProps {
   children: React.ReactNode;
   className?: string;
   variant?: 'default' | 'danger';
+  headerRight?: React.ReactNode;
 }
 
-export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default' }) => {
+export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default', headerRight }) => {
   const borderColor = variant === 'danger' ? 'border-alert/50' : 'border-panel-border';
   
   return (
@@ -22,10 +23,15 @@ export const Panel: React.FC<PanelProps> = ({ title, children, className = '', v
       <div className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-zinc-700 shadow-inner" />
 
       {/* The Header Plate */}
-      <div className="relative z-10 px-4 py-1 border-b-2 border-panel-border bg-black/20 text-center">
+      <div className="relative z-10 px-4 py-1 border-b-2 border-panel-border bg-black/20 text-center flex justify-center items-center">
         <h2 className="text-xs font-mono font-bold tracking-widest text-zinc-400 uppercase">
           {title}
         </h2>
+        {headerRight && (
+          <div className="absolute right-2 top-0 bottom-0 flex items-center">
+            {headerRight}
+          </div>
+        )}
       </div>
 
       {/* The Content Area */}
