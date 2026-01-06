@@ -96,7 +96,7 @@ const Waterfall = ({ width, height }: DimensionProps) => {
             }
 
             // Draw Sensor Contacts
-            const { sensorReadings } = useSubmarineStore.getState();
+            const { sensorReadings, torpedoes, x: ownX, y: ownY, heading: ownHeading } = useSubmarineStore.getState();
 
             sensorReadings.forEach((reading) => {
                 let signedBearing = reading.bearing;
@@ -106,6 +106,31 @@ const Waterfall = ({ width, height }: DimensionProps) => {
                      const x = ((signedBearing + 150) / 300) * width;
                      lineGraphics.beginFill(0xccffcc, 1.0);
                      lineGraphics.drawRect(x, 0, 4, 3);
+                     lineGraphics.endFill();
+                }
+            });
+
+            // Draw Torpedoes (Acoustic Signature)
+            torpedoes.forEach((torp) => {
+                if (torp.status !== 'RUNNING') return;
+
+                const dx = torp.position.x - ownX;
+                const dy = torp.position.y - ownY;
+
+                // Calculate True Bearing (Nav convention: 0 is North)
+                // atan2(dy, dx) gives angle from East (+X)
+                // Nav Bearing = 90 - MathAngle
+                const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+                const trueBearing = normalizeAngle(90 - mathAngleDeg);
+
+                const relBearing = getShortestAngle(trueBearing, ownHeading);
+
+                if (relBearing >= -150 && relBearing <= 150) {
+                     const x = ((relBearing + 150) / 300) * width;
+
+                     // Higher Brightness (White)
+                     lineGraphics.beginFill(0xFFFFFF, 1.0);
+                     lineGraphics.drawRect(x, 0, 3, 3);
                      lineGraphics.endFill();
                 }
             });
