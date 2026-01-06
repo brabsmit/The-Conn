@@ -395,7 +395,9 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
 };
 
 const TMADisplay = () => {
-    const { ref, width, height } = useResize();
+    const { ref, width: rawWidth, height: rawHeight } = useResize();
+    const width = Math.floor(rawWidth);
+    const height = Math.floor(rawHeight);
     const [viewMode, setViewMode] = useState<ViewMode>('GEO');
     const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
 

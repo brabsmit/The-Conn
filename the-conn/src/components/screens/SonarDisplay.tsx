@@ -503,7 +503,10 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
 };
 
 const SonarDisplay = () => {
-    const { ref, width, height } = useResize();
+    const { ref, width: rawWidth, height: rawHeight } = useResize();
+    // Ensure integer dimensions for WebGL buffers to prevent "ArrayBufferView not big enough" errors
+    const width = Math.floor(rawWidth);
+    const height = Math.floor(rawHeight);
     const [showSolution, setShowSolution] = useState(true);
 
     return (
