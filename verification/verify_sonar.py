@@ -1,56 +1,28 @@
-from playwright.sync_api import Page, expect, sync_playwright
-import time
 
-def verify_sonar_view_scaling(page: Page):
-    # 1. Arrange: Go to the app
-    # Use localhost as 127.0.0.1 failed
-    page.goto("http://localhost:5173")
+import asyncio
+from playwright.async_api import async_playwright, expect
 
-    # Wait for the app to load - wait for body to be visible? No, body exists.
-    # Just wait for a known element.
-    try:
-        page.wait_for_selector("#root", timeout=30000)
-    except:
-        print(page.content())
-        raise
+async def verify_sonar_update():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-    # Wait for something that is definitely there
-    page.wait_for_selector("text=TIMESCALE", timeout=10000)
+        # Navigate to the app
+        await page.goto("http://localhost:5173")
 
-    # 2. Verify Time Scale Controls exist
-    # Be more flexible with selectors
-    fast_btn = page.get_by_role("button", name="FAST")
-    med_btn = page.get_by_role("button", name="MED")
-    slow_btn = page.get_by_role("button", name="SLOW")
+        # Wait for the Sonar Display to be visible (canvas)
+        await page.wait_for_selector("canvas")
 
-    expect(fast_btn).to_be_visible()
-    expect(med_btn).to_be_visible()
-    expect(slow_btn).to_be_visible()
+        # Wait for simulation to run for a bit (10 seconds) to accumulate history
+        # We want to see if history is being generated.
+        print("Waiting for simulation to run...")
+        await asyncio.sleep(10)
 
-    # 4. Act: Switch to MED
-    med_btn.click()
-    time.sleep(1)
+        # Take a screenshot
+        await page.screenshot(path="verification/sonar_display.png")
+        print("Screenshot taken.")
 
-    # 5. Act: Switch to SLOW
-    slow_btn.click()
-    time.sleep(1)
-
-    # Take screenshot
-    page.screenshot(path="/home/jules/verification/sonar_scaling.png")
-
-    print("Verification complete")
+        await browser.close()
 
 if __name__ == "__main__":
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        try:
-            verify_sonar_view_scaling(page)
-        except Exception as e:
-            try:
-                page.screenshot(path="/home/jules/verification/error.png")
-            except:
-                pass
-            print(f"Error: {e}")
-        finally:
-            browser.close()
+    asyncio.run(verify_sonar_update())

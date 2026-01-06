@@ -11,13 +11,18 @@ import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../..
 // Types for data passing (Decoupled from store implementation)
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
 
+// Update Rates
+const RATE_FAST = 0; // Every tick
+const RATE_MED = 1000; // 1 second
+const RATE_SLOW = 6000; // 6 seconds
+
 interface DimensionProps {
     width: number;
     height: number;
 }
 
 interface WaterfallRef {
-    processTick: (state: SubmarineState, fastTickCount: number) => void;
+    processTick: (state: SubmarineState, updateMed: boolean, updateSlow: boolean) => void;
     getCurrentScanline: () => number;
 }
 
@@ -80,11 +85,9 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
     };
 
     useImperativeHandle(ref, () => ({
-        processTick: (state: SubmarineState, fastTickCount: number) => {
+        processTick: (state: SubmarineState, updateMed: boolean, updateSlow: boolean) => {
             // Check which buffers need updates
-            const updateFast = true;
-            const updateMed = fastTickCount % 5 === 0;
-            const updateSlow = fastTickCount % 20 === 0;
+            const updateFast = true; // Always update FAST
 
             if (!updateFast && !updateMed && !updateSlow) return;
 
@@ -227,7 +230,7 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
 });
 
 interface OverlayRef {
-    scrollAndAddRow: (state: SubmarineState, fastTickCount: number) => void;
+    scrollAndAddRow: (state: SubmarineState, updateMed: boolean, updateSlow: boolean) => void;
 }
 
 interface SolutionOverlayProps extends DimensionProps {
@@ -319,11 +322,8 @@ const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, h
     };
 
     useImperativeHandle(ref, () => ({
-        scrollAndAddRow: (state: SubmarineState, fastTickCount: number) => {
+        scrollAndAddRow: (state: SubmarineState, updateMed: boolean, updateSlow: boolean) => {
             const updateFast = true;
-            const updateMed = fastTickCount % 5 === 0;
-            const updateSlow = fastTickCount % 20 === 0;
-
             if (updateFast && containerFastRef.current) processContainer(containerFastRef.current, contextFast.current, state);
             if (updateMed && containerMedRef.current) processContainer(containerMedRef.current, contextMed.current, state);
             if (updateSlow && containerSlowRef.current) processContainer(containerSlowRef.current, contextSlow.current, state);
@@ -380,13 +380,16 @@ const SonarBezel = ({ width }: { width: number }) => {
 
 // Internal controller to handle the loop inside Stage context
 const SonarInternals = ({ width, height, showSolution }: { width: number, height: number, showSolution: boolean }) => {
+    const app = useApp();
     const waterfallRef = useRef<WaterfallRef>(null);
     const overlayRef = useRef<OverlayRef>(null);
 
     // State for shader
     const filterRef = useRef<SonarSweepFilter | null>(null);
-    const updateAccumulator = useRef(0);
-    const fastTickCounter = useRef(0);
+
+    // Independent accumulators
+    const accMed = useRef(0);
+    const accSlow = useRef(0);
 
     const latestStateRef = useRef<SubmarineState>(useSubmarineStore.getState());
 
@@ -412,27 +415,21 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
 
         filterRef.current.uniforms.uTime += delta * 0.01;
 
-        // FIXED Update Rate: approx 1 sec (60 ticks at 60fps)
-        // We always update bufferFast every ~1s.
-        const threshold = 60;
+        const deltaMS = app.ticker.deltaMS;
 
-        updateAccumulator.current += delta;
+        // Accumulate time
+        accMed.current += deltaMS;
+        accSlow.current += deltaMS;
 
-        // Process loops
-        if (updateAccumulator.current >= threshold) {
-            let loops = 0;
-            // Limit loops to prevent death spiral
-            while (updateAccumulator.current >= threshold && loops < 5) {
+        const updateMed = accMed.current >= RATE_MED;
+        const updateSlow = accSlow.current >= RATE_SLOW;
 
-                waterfallRef.current?.processTick(latestStateRef.current, fastTickCounter.current);
-                overlayRef.current?.scrollAndAddRow(latestStateRef.current, fastTickCounter.current);
+        if (updateMed) accMed.current -= RATE_MED;
+        if (updateSlow) accSlow.current -= RATE_SLOW;
 
-                fastTickCounter.current++;
-                updateAccumulator.current -= threshold;
-                loops++;
-            }
-            if (updateAccumulator.current >= threshold) updateAccumulator.current = 0;
-        }
+        // Always update FAST, conditionally update MED/SLOW
+        waterfallRef.current?.processTick(latestStateRef.current, updateMed, updateSlow);
+        overlayRef.current?.scrollAndAddRow(latestStateRef.current, updateMed, updateSlow);
 
         // Update Shader Scanline based on current VIEW
         if (waterfallRef.current && waterfallRef.current.getCurrentScanline) {
