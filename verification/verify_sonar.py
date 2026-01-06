@@ -1,47 +1,56 @@
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import Page, expect, sync_playwright
 import time
 
-def verify_sonar(page):
+def verify_sonar_view_scaling(page: Page):
+    # 1. Arrange: Go to the app
+    # Use localhost as 127.0.0.1 failed
     page.goto("http://localhost:5173")
 
-    # Wait for the app to load
-    page.wait_for_selector("text=Helm")
-
-    # Check if Sonar Display is visible (it's part of the default layout)
-    # The SonarDisplay renders into a canvas.
-    canvas = page.locator("canvas").first
-    expect(canvas).to_be_visible()
-
-    # We want to see the waterfall scrolling.
-    # The noise should be visible.
-    # We can take a screenshot now, then wait a few seconds and take another to see movement.
-
-    page.screenshot(path="verification/sonar_initial.png")
-
-    # Wait for simulation ticks (approx 3 seconds)
-    # We need to ensure the simulation is running.
-    # The default state might be paused or slow?
-    # Memory says "Simulation loop is throttled... requires extended wait times".
-    # And "Global timeScale state (FAST/MED/SLOW)". Default is MED (1s per row).
-    # We should speed it up to see scrolling faster.
-
-    # Click "FAST" time control if available.
-    # Time controls are in TopBar.
+    # Wait for the app to load - wait for body to be visible? No, body exists.
+    # Just wait for a known element.
     try:
-        page.get_by_text("FAST").click()
-        print("Clicked FAST")
+        page.wait_for_selector("#root", timeout=30000)
     except:
-        print("Could not find FAST button")
+        print(page.content())
+        raise
 
-    time.sleep(5)
+    # Wait for something that is definitely there
+    page.wait_for_selector("text=TIMESCALE", timeout=10000)
 
-    page.screenshot(path="verification/sonar_later.png")
+    # 2. Verify Time Scale Controls exist
+    # Be more flexible with selectors
+    fast_btn = page.get_by_role("button", name="FAST")
+    med_btn = page.get_by_role("button", name="MED")
+    slow_btn = page.get_by_role("button", name="SLOW")
+
+    expect(fast_btn).to_be_visible()
+    expect(med_btn).to_be_visible()
+    expect(slow_btn).to_be_visible()
+
+    # 4. Act: Switch to MED
+    med_btn.click()
+    time.sleep(1)
+
+    # 5. Act: Switch to SLOW
+    slow_btn.click()
+    time.sleep(1)
+
+    # Take screenshot
+    page.screenshot(path="/home/jules/verification/sonar_scaling.png")
+
+    print("Verification complete")
 
 if __name__ == "__main__":
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         try:
-            verify_sonar(page)
+            verify_sonar_view_scaling(page)
+        except Exception as e:
+            try:
+                page.screenshot(path="/home/jules/verification/error.png")
+            except:
+                pass
+            print(f"Error: {e}")
         finally:
             browser.close()

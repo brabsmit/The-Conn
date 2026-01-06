@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { ScenarioManager } from '../debug/ScenarioManager';
 import { loadAmbushScenario } from '../../scenarios/Ambush';
-import type { TimeScale } from '../../store/useSubmarineStore';
+import type { ViewScale } from '../../store/useSubmarineStore';
 
 const formatTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600);
@@ -12,19 +12,19 @@ const formatTime = (seconds: number) => {
 };
 
 const TimeControls = () => {
-  const timeScale = useSubmarineStore(state => state.timeScale);
-  const setTimeScale = useSubmarineStore(state => state.setTimeScale);
+  const viewScale = useSubmarineStore(state => state.viewScale);
+  const setViewScale = useSubmarineStore(state => state.setViewScale);
 
-  const scales: TimeScale[] = ['FAST', 'MED', 'SLOW'];
+  const scales: ViewScale[] = ['FAST', 'MED', 'SLOW'];
 
   return (
     <div className="flex gap-1">
       {scales.map(scale => (
         <button
           key={scale}
-          onClick={() => setTimeScale(scale)}
+          onClick={() => setViewScale(scale)}
           className={`px-1.5 py-0.5 text-[10px] font-mono border rounded ${
-            timeScale === scale
+            viewScale === scale
               ? 'bg-amber-900/50 text-amber-500 border-amber-700'
               : 'bg-transparent text-zinc-600 border-zinc-800 hover:text-zinc-400'
           }`}

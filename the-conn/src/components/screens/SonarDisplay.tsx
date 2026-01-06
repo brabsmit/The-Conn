@@ -3,6 +3,7 @@ import { Stage, Container, Sprite, useTick, useApp } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { SonarSweepFilter } from './SonarShader';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import type { ViewScale } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { useInterval } from '../../hooks/useInterval';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
@@ -16,49 +17,83 @@ interface DimensionProps {
 }
 
 interface WaterfallRef {
-    drawRow: (scanlineIndex: number, state: SubmarineState) => void;
+    processTick: (state: SubmarineState, fastTickCount: number) => void;
+    getCurrentScanline: () => number;
 }
 
-const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, ref) => {
+interface WaterfallProps extends DimensionProps {
+    viewScale: ViewScale;
+}
+
+const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, viewScale }, ref) => {
     const app = useApp();
 
-    const renderTextureRef = useRef<PIXI.RenderTexture | null>(null);
+    const renderTextureFastRef = useRef<PIXI.RenderTexture | null>(null);
+    const renderTextureMedRef = useRef<PIXI.RenderTexture | null>(null);
+    const renderTextureSlowRef = useRef<PIXI.RenderTexture | null>(null);
 
-    // Initialize once on mount
-    if (!renderTextureRef.current) {
-        renderTextureRef.current = PIXI.RenderTexture.create({ width, height });
-    }
-    const renderTexture = renderTextureRef.current;
+    // Indices for each buffer
+    const scanlineFastRef = useRef(0);
+    const scanlineMedRef = useRef(0);
+    const scanlineSlowRef = useRef(0);
+
+    // Initialize textures
+    if (!renderTextureFastRef.current) renderTextureFastRef.current = PIXI.RenderTexture.create({ width, height });
+    if (!renderTextureMedRef.current) renderTextureMedRef.current = PIXI.RenderTexture.create({ width, height });
+    if (!renderTextureSlowRef.current) renderTextureSlowRef.current = PIXI.RenderTexture.create({ width, height });
 
     useEffect(() => {
         return () => {
-             renderTexture.destroy(true);
+             renderTextureFastRef.current?.destroy(true);
+             renderTextureMedRef.current?.destroy(true);
+             renderTextureSlowRef.current?.destroy(true);
         };
     }, []);
 
-    // Handle resize without recreating texture (preserves history)
+    // Handle resize
     useEffect(() => {
-        if (renderTexture.width !== width || renderTexture.height !== height) {
-             renderTexture.resize(width, height);
-        }
-    }, [width, height, renderTexture]);
+        const resize = (tex: PIXI.RenderTexture | null) => {
+             if (tex && (tex.width !== width || tex.height !== height)) {
+                 tex.resize(width, height);
+             }
+        };
+        resize(renderTextureFastRef.current);
+        resize(renderTextureMedRef.current);
+        resize(renderTextureSlowRef.current);
+    }, [width, height]);
+
+    // Internal helper to render a buffer to a texture
+    const renderToTexture = (texture: PIXI.RenderTexture, buffer: Uint8Array, scanline: number) => {
+        if (!app || !texture.valid) return;
+
+        const lineTexture = PIXI.Texture.fromBuffer(buffer, width, 1);
+        const sprite = new PIXI.Sprite(lineTexture);
+        sprite.y = scanline;
+
+        app.renderer.render(sprite, {
+            renderTexture: texture,
+            clear: false
+        });
+
+        sprite.destroy();
+        lineTexture.destroy(true);
+    };
 
     useImperativeHandle(ref, () => ({
-        drawRow: (scanlineIndex: number, state: SubmarineState) => {
-            if (!app || !renderTexture.valid) return;
+        processTick: (state: SubmarineState, fastTickCount: number) => {
+            // Check which buffers need updates
+            const updateFast = true;
+            const updateMed = fastTickCount % 5 === 0;
+            const updateSlow = fastTickCount % 20 === 0;
 
-            // Create Buffer (RGBA)
-            const buffer = new Uint8Array(width * 4);
+            if (!updateFast && !updateMed && !updateSlow) return;
+
+            // Generate Pixel Buffer ONCE
+            const pixelBuffer = new Uint8Array(width * 4);
             const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel } = state;
 
-            // Dynamic Noise Floor based on Ownship Noise
-            // Base 30, add up to 200 based on noise level (0.1 to 1.5+)
             const noiseFloor = Math.min(255, 30 + (ownshipNoiseLevel * 100));
-
-            // Self Noise Penalty (reduces effective signal)
             const selfNoisePenalty = ownshipNoiseLevel * 0.5;
-
-            // 0. Prepare Signal Buffer (Float32) for accumulation
             const signalBuffer = new Float32Array(width).fill(0);
 
             // 1. Calculate Signal from Contacts
@@ -66,35 +101,26 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 const contact = contacts.find(c => c.id === reading.contactId);
                 if (!contact) return;
 
-                // Acoustic Profile
                 let sourceLevel = contact.sourceLevel || 1.0;
                 const cavitationSpeed = contact.cavitationSpeed || 100;
-
-                // Dynamic Noise (Cavitation)
                 if (contact.speed !== undefined && contact.speed > cavitationSpeed) {
                     sourceLevel += 0.5;
                 }
 
-                // Transmission Loss
                 const dx = contact.x - ownX;
                 const dy = contact.y - ownY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 const distYards = distance / 3;
 
-                // Received Level = Source / (Distance * Scale)
                 const scaleFactor = 0.0002;
                 let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
-
-                // Apply Self Noise Penalty
                 signal = Math.max(0, signal - selfNoisePenalty);
 
-                // Map to Screen
                 let signedBearing = reading.bearing;
                 if (signedBearing > 180) signedBearing -= 360;
 
                 if (signedBearing >= -150 && signedBearing <= 150) {
                      const cx = Math.floor(((signedBearing + 150) / 300) * width);
-                     // Draw 4px wide
                      for (let off = -1; off <= 2; off++) {
                          const x = cx + off;
                          if (x >= 0 && x < width) {
@@ -107,13 +133,11 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
             // 2. Calculate Signal from Torpedoes
             torpedoes.forEach((torp) => {
                 if (torp.status !== 'RUNNING') return;
-
                 const dx = torp.position.x - ownX;
                 const dy = torp.position.y - ownY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 const distYards = distance / 3;
-
-                const sourceLevel = 1.2; // Screaming Loud
+                const sourceLevel = 1.2;
                 const scaleFactor = 0.0002;
                 const signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
 
@@ -123,7 +147,6 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
 
                 if (relBearing >= -150 && relBearing <= 150) {
                      const cx = Math.floor(((relBearing + 150) / 300) * width);
-                     // Draw 3px wide
                      for (let off = -1; off <= 1; off++) {
                          const x = cx + off;
                          if (x >= 0 && x < width) {
@@ -133,7 +156,7 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 }
             });
 
-            // 3. BQQ Processing (Shouldering / AGC)
+            // 3. BQQ Processing
             const processedBuffer = new Float32Array(signalBuffer);
             for (let i = 1; i < width - 1; i++) {
                 if (signalBuffer[i] > 0.8) {
@@ -146,43 +169,49 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
             for (let i = 0; i < width; i++) {
                 const noise = Math.random() * noiseFloor;
                 const signalVal = processedBuffer[i];
-
                 const intensity = Math.min(255, noise + signalVal * 255);
-
                 let r = 0;
                 let b = 0;
-
-                // Saturation Clipping
                 if (signalVal > 0.9) {
                     const clip = (signalVal - 0.9) * 10 * 150;
                     r = Math.min(255, clip);
                     b = Math.min(255, clip);
                 }
-
-                buffer[i * 4 + 0] = r;
-                buffer[i * 4 + 1] = intensity;
-                buffer[i * 4 + 2] = b;
-                buffer[i * 4 + 3] = 255;
+                pixelBuffer[i * 4 + 0] = r;
+                pixelBuffer[i * 4 + 1] = intensity;
+                pixelBuffer[i * 4 + 2] = b;
+                pixelBuffer[i * 4 + 3] = 255;
             }
 
-            // Render to texture
-            const texture = PIXI.Texture.fromBuffer(buffer, width, 1);
-            const sprite = new PIXI.Sprite(texture);
-            sprite.y = scanlineIndex;
-
-            app.renderer.render(sprite, {
-                renderTexture: renderTexture,
-                clear: false
-            });
-
-            sprite.destroy();
-            texture.destroy(true);
+            // Write to appropriate textures
+            if (updateFast && renderTextureFastRef.current) {
+                renderToTexture(renderTextureFastRef.current, pixelBuffer, scanlineFastRef.current);
+                scanlineFastRef.current = (scanlineFastRef.current + 1) % height;
+            }
+            if (updateMed && renderTextureMedRef.current) {
+                renderToTexture(renderTextureMedRef.current, pixelBuffer, scanlineMedRef.current);
+                scanlineMedRef.current = (scanlineMedRef.current + 1) % height;
+            }
+            if (updateSlow && renderTextureSlowRef.current) {
+                renderToTexture(renderTextureSlowRef.current, pixelBuffer, scanlineSlowRef.current);
+                scanlineSlowRef.current = (scanlineSlowRef.current + 1) % height;
+            }
+        },
+        // Expose current scanline based on viewScale for shader
+        getCurrentScanline: () => {
+            if (viewScale === 'FAST') return scanlineFastRef.current;
+            if (viewScale === 'MED') return scanlineMedRef.current;
+            return scanlineSlowRef.current;
         }
     }));
 
+    let activeTexture = renderTextureFastRef.current;
+    if (viewScale === 'MED') activeTexture = renderTextureMedRef.current;
+    if (viewScale === 'SLOW') activeTexture = renderTextureSlowRef.current;
+
     return (
         <Sprite
-            texture={renderTexture}
+            texture={activeTexture || PIXI.Texture.EMPTY}
             eventMode="static"
             pointerdown={(e) => {
                  if (!e.currentTarget) return;
@@ -198,100 +227,116 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
 });
 
 interface OverlayRef {
-    scrollAndAddRow: (state: SubmarineState) => void;
+    scrollAndAddRow: (state: SubmarineState, fastTickCount: number) => void;
 }
 
 interface SolutionOverlayProps extends DimensionProps {
     visible: boolean;
+    viewScale: ViewScale;
 }
 
-const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, height, visible }, ref) => {
-    const containerRef = useRef<PIXI.Container>(null);
-    const currentChunkRef = useRef<PIXI.Graphics | null>(null);
-    const chunkPixelCount = useRef(0);
-    const lastPointsRef = useRef<Map<string, number>>(new Map());
+const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, height, visible, viewScale }, ref) => {
+    // Separate containers for each speed
+    const containerFastRef = useRef<PIXI.Container>(null);
+    const containerMedRef = useRef<PIXI.Container>(null);
+    const containerSlowRef = useRef<PIXI.Container>(null);
+
+    // Track chunking for each speed
+    const contextFast = useRef({ currentChunk: null as PIXI.Graphics | null, pixelCount: 0, lastPoints: new Map<string, number>() });
+    const contextMed = useRef({ currentChunk: null as PIXI.Graphics | null, pixelCount: 0, lastPoints: new Map<string, number>() });
+    const contextSlow = useRef({ currentChunk: null as PIXI.Graphics | null, pixelCount: 0, lastPoints: new Map<string, number>() });
 
     const CHUNK_SIZE = 100;
 
     useEffect(() => {
-        if (containerRef.current) {
-            containerRef.current.visible = visible;
+        if (containerFastRef.current) containerFastRef.current.visible = visible && viewScale === 'FAST';
+        if (containerMedRef.current) containerMedRef.current.visible = visible && viewScale === 'MED';
+        if (containerSlowRef.current) containerSlowRef.current.visible = visible && viewScale === 'SLOW';
+    }, [visible, viewScale]);
+
+    const processContainer = (container: PIXI.Container, context: any, state: SubmarineState) => {
+        // 1. Scroll Container Down
+        container.y += 1;
+        const localY = -container.y;
+
+        // 2. Manage Chunks
+        if (!context.currentChunk || context.pixelCount >= CHUNK_SIZE) {
+            const g = new PIXI.Graphics();
+            (g as any).maxLocalY = localY;
+            container.addChild(g);
+            context.currentChunk = g;
+            context.pixelCount = 0;
         }
-    }, [visible]);
 
-    useImperativeHandle(ref, () => {
-        return {
-            scrollAndAddRow: (state: SubmarineState) => {
-                if (!containerRef.current) return;
+        // Pruning
+        const oldest = container.children[0] as any;
+        if (oldest && oldest.maxLocalY !== undefined) {
+             const screenBottomLocal = -container.y + height;
+             if ((oldest.maxLocalY - CHUNK_SIZE) > screenBottomLocal + 100) {
+                 oldest.destroy();
+             }
+         }
 
-                const container = containerRef.current;
+        context.pixelCount++;
+        const g = context.currentChunk!;
 
-                // 1. Scroll Container Down
-                container.y += 1;
-                const localY = -container.y;
+        // 3. Draw Solutions
+        const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = state;
+        const ownShip = { x: currX, y: currY, heading: currHeading };
 
-                // 2. Manage Chunks
-                if (!currentChunkRef.current || chunkPixelCount.current >= CHUNK_SIZE) {
-                    const g = new PIXI.Graphics();
-                    (g as any).maxLocalY = localY;
-                    container.addChild(g);
-                    currentChunkRef.current = g;
-                    chunkPixelCount.current = 0;
+        g.lineStyle(2, 0xffffff, 0.5);
+
+        trackers.forEach((tracker) => {
+            if (!tracker.solution) return;
+            const targetPos = calculateTargetPosition(tracker.solution, gameTime);
+            const dx = targetPos.x - ownShip.x;
+            const dy = targetPos.y - ownShip.y;
+            let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+            trueBearing = normalizeAngle(trueBearing);
+            const relBearing = getShortestAngle(trueBearing, ownShip.heading);
+
+            if (relBearing >= -150 && relBearing <= 150) {
+                const x = ((relBearing + 150) / 300) * width;
+                const lastX = context.lastPoints.get(tracker.id);
+                const isNewChunk = context.pixelCount === 1;
+
+                if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
+                    g.moveTo(lastX, localY + 1);
+                    g.lineTo(x, localY);
+                } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
+                    g.moveTo(lastX, localY + 1);
+                    g.lineTo(x, localY);
+                } else {
+                    g.beginFill(0xffffff);
+                    g.drawRect(x, localY, 1, 1);
+                    g.endFill();
                 }
-
-                // Pruning
-                const oldest = container.children[0] as any;
-                if (oldest && oldest.maxLocalY !== undefined) {
-                     const screenBottomLocal = -container.y + height;
-                     if ((oldest.maxLocalY - CHUNK_SIZE) > screenBottomLocal + 100) {
-                         oldest.destroy();
-                     }
-                 }
-
-                chunkPixelCount.current++;
-                const g = currentChunkRef.current!;
-
-                // 3. Draw Solutions
-                const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = state;
-                const ownShip = { x: currX, y: currY, heading: currHeading };
-
-                g.lineStyle(2, 0xffffff, 0.5);
-
-                trackers.forEach(tracker => {
-                    if (!tracker.solution) return;
-                    const targetPos = calculateTargetPosition(tracker.solution, gameTime);
-                    const dx = targetPos.x - ownShip.x;
-                    const dy = targetPos.y - ownShip.y;
-                    let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-                    trueBearing = normalizeAngle(trueBearing);
-                    const relBearing = getShortestAngle(trueBearing, ownShip.heading);
-
-                    if (relBearing >= -150 && relBearing <= 150) {
-                        const x = ((relBearing + 150) / 300) * width;
-                        const lastX = lastPointsRef.current.get(tracker.id);
-                        const isNewChunk = chunkPixelCount.current === 1;
-
-                        if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
-                            g.moveTo(lastX, localY + 1);
-                            g.lineTo(x, localY);
-                        } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
-                            g.moveTo(lastX, localY + 1);
-                            g.lineTo(x, localY);
-                        } else {
-                            g.beginFill(0xffffff);
-                            g.drawRect(x, localY, 1, 1);
-                            g.endFill();
-                        }
-                        lastPointsRef.current.set(tracker.id, x);
-                    } else {
-                        lastPointsRef.current.delete(tracker.id);
-                    }
-                });
+                context.lastPoints.set(tracker.id, x);
+            } else {
+                context.lastPoints.delete(tracker.id);
             }
-        }
-    });
+        });
+    };
 
-    return <Container ref={containerRef} />;
+    useImperativeHandle(ref, () => ({
+        scrollAndAddRow: (state: SubmarineState, fastTickCount: number) => {
+            const updateFast = true;
+            const updateMed = fastTickCount % 5 === 0;
+            const updateSlow = fastTickCount % 20 === 0;
+
+            if (updateFast && containerFastRef.current) processContainer(containerFastRef.current, contextFast.current, state);
+            if (updateMed && containerMedRef.current) processContainer(containerMedRef.current, contextMed.current, state);
+            if (updateSlow && containerSlowRef.current) processContainer(containerSlowRef.current, contextSlow.current, state);
+        }
+    }));
+
+    return (
+        <>
+            <Container ref={containerFastRef} visible={visible && viewScale === 'FAST'} />
+            <Container ref={containerMedRef} visible={visible && viewScale === 'MED'} />
+            <Container ref={containerSlowRef} visible={visible && viewScale === 'SLOW'} />
+        </>
+    );
 });
 
 const SonarBezel = ({ width }: { width: number }) => {
@@ -340,12 +385,9 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
 
     // State for shader
     const filterRef = useRef<SonarSweepFilter | null>(null);
-    const scanlineIndex = useRef(0);
     const updateAccumulator = useRef(0);
+    const fastTickCounter = useRef(0);
 
-    // [Ref Pattern] Hold latest state in a ref to avoid stale closures and re-renders
-    // This decouples the initialization (component mount) from the tracker state updates.
-    // We use subscribe() instead of useSelector to prevent re-renders of the SonarInternals component.
     const latestStateRef = useRef<SubmarineState>(useSubmarineStore.getState());
 
     useEffect(() => {
@@ -355,59 +397,57 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
         return unsub;
     }, []);
 
-    // Create filter once
     const filter = useMemo(() => {
         const f = new SonarSweepFilter();
         filterRef.current = f;
         return f;
     }, []);
 
-    // Update filter resolution on resize
     useEffect(() => {
         if (filter) filter.uniforms.uResolution = [width, height];
     }, [width, height, filter]);
 
-    // Main Update Loop
     useTick((delta) => {
         if (!filterRef.current) return;
 
-        // Update Time for noise
         filterRef.current.uniforms.uTime += delta * 0.01;
 
-        const { timeScale } = latestStateRef.current;
-        let threshold = 60; // Default MED (1 sec)
-        if (timeScale === 'FAST') threshold = 6;
-        if (timeScale === 'SLOW') threshold = 180;
+        // FIXED Update Rate: approx 1 sec (60 ticks at 60fps)
+        // We always update bufferFast every ~1s.
+        const threshold = 60;
 
         updateAccumulator.current += delta;
 
+        // Process loops
         if (updateAccumulator.current >= threshold) {
             let loops = 0;
+            // Limit loops to prevent death spiral
             while (updateAccumulator.current >= threshold && loops < 5) {
-                // Pass the latest state explicitly from the ref
-                waterfallRef.current?.drawRow(scanlineIndex.current, latestStateRef.current);
-                overlayRef.current?.scrollAndAddRow(latestStateRef.current);
 
-                scanlineIndex.current += 1;
-                if (scanlineIndex.current >= height) {
-                    scanlineIndex.current = 0;
-                }
+                waterfallRef.current?.processTick(latestStateRef.current, fastTickCounter.current);
+                overlayRef.current?.scrollAndAddRow(latestStateRef.current, fastTickCounter.current);
 
+                fastTickCounter.current++;
                 updateAccumulator.current -= threshold;
                 loops++;
             }
             if (updateAccumulator.current >= threshold) updateAccumulator.current = 0;
+        }
 
-            filterRef.current.uniforms.uScanline = scanlineIndex.current;
+        // Update Shader Scanline based on current VIEW
+        if (waterfallRef.current && waterfallRef.current.getCurrentScanline) {
+             filterRef.current.uniforms.uScanline = waterfallRef.current.getCurrentScanline();
         }
     });
+
+    const viewScale = useSubmarineStore(state => state.viewScale);
 
     return (
         <>
             <Container filters={[filter]}>
-                <Waterfall ref={waterfallRef} width={width} height={height} />
+                <Waterfall ref={waterfallRef} width={width} height={height} viewScale={viewScale} />
             </Container>
-            <SolutionOverlay ref={overlayRef} width={width} height={height} visible={showSolution} />
+            <SolutionOverlay ref={overlayRef} width={width} height={height} visible={showSolution} viewScale={viewScale} />
         </>
     );
 };

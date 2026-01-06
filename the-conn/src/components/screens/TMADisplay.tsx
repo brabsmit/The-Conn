@@ -22,12 +22,16 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
         if (!graphics) return;
 
         graphics.clear();
-        const { trackers, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId, timeScale } = useSubmarineStore.getState();
+        const { trackers, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId, viewScale } = useSubmarineStore.getState();
 
-        // Calculate Pixels Per Second based on timeScale
-        let PIXELS_PER_SECOND = 10; // FAST: 100ms/pixel -> 10px/s
-        if (timeScale === 'MED') PIXELS_PER_SECOND = 1; // MED: 1000ms/pixel -> 1px/s
-        if (timeScale === 'SLOW') PIXELS_PER_SECOND = 1.0 / 3.0; // SLOW: 3000ms/pixel -> 0.33px/s
+        // Calculate Pixels Per Second based on viewScale
+        // Sonar Update Rates:
+        // FAST: 1s/pixel -> 1.0 px/s
+        // MED:  5s/pixel -> 0.2 px/s
+        // SLOW: 20s/pixel -> 0.05 px/s
+        let PIXELS_PER_SECOND = 1.0;
+        if (viewScale === 'MED') PIXELS_PER_SECOND = 0.2;
+        if (viewScale === 'SLOW') PIXELS_PER_SECOND = 0.05;
 
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
