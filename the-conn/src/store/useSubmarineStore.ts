@@ -55,6 +55,9 @@ export interface Tracker {
   currentBearing: number;
   bearingHistory: TrackerHistory[];
   solution: TrackerSolution;
+  classificationStatus: 'PENDING' | 'CLASSIFIED';
+  timeToClassify: number;
+  classification?: string;
 }
 
 export type TubeStatus = 'EMPTY' | 'LOADING' | 'DRY' | 'FLOODING' | 'WET' | 'EQUALIZING' | 'EQUALIZED' | 'OPENING' | 'OPEN' | 'FIRING';
@@ -114,6 +117,7 @@ interface SubmarineState {
 
   // Sensor Data
   sensorReadings: SensorReading[];
+  logs: string[];
 
   // Tracker Data
   trackers: Tracker[];
@@ -134,6 +138,7 @@ interface SubmarineState {
   setOrderedHeading: (heading: number) => void;
   setOrderedSpeed: (speed: number) => void;
   setOrderedDepth: (depth: number) => void;
+  addLog: (message: string) => void;
   designateTracker: (bearing: number) => void;
   setSelectedTracker: (id: string | null) => void;
   deleteTracker: (id: string) => void;
@@ -195,6 +200,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     cavitationSpeed: 10
   }],
   sensorReadings: [],
+  logs: [],
   trackers: [],
   selectedTrackerId: null,
   tubes: Array.from({ length: 4 }, (_, i) => ({
@@ -215,6 +221,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   setOrderedHeading: (heading) => set({ orderedHeading: normalizeAngle(heading) }),
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
   setOrderedDepth: (depth) => set({ orderedDepth: Math.max(0, Math.min(1200, depth)) }),
+
+  addLog: (message) => set((state) => ({ logs: [...state.logs, message].slice(-50) })),
 
   designateTracker: (bearing) => set((state) => {
     const id = `S${state.trackers.length + 1}`;
@@ -249,7 +257,9 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         bearing: normalizeAngle(bearing + state.heading),
         anchorTime: state.gameTime,
         anchorOwnShip: { x: state.x, y: state.y, heading: state.heading }
-      }
+      },
+      classificationStatus: 'PENDING',
+      timeToClassify: 15
     };
     return {
       trackers: [...state.trackers, newTracker],
@@ -696,15 +706,36 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Update Trackers
       const newTickCount = state.tickCount + 1;
       const newGameTime = state.gameTime + (1/60);
+      let newLogs = state.logs;
+
       let newTrackers = state.trackers.map(tracker => {
+        let updatedTracker = { ...tracker };
+
         // Follow contact if locked
-        if (tracker.contactId) {
-          const reading = newSensorReadings.find(r => r.contactId === tracker.contactId);
+        if (updatedTracker.contactId) {
+          const reading = newSensorReadings.find(r => r.contactId === updatedTracker.contactId);
           if (reading) {
-             return { ...tracker, currentBearing: reading.bearing };
+             updatedTracker.currentBearing = reading.bearing;
           }
         }
-        return tracker;
+
+        // Classification Logic
+        if (updatedTracker.classificationStatus === 'PENDING') {
+            updatedTracker.timeToClassify -= (1/60) * delta;
+            if (updatedTracker.timeToClassify <= 0) {
+                updatedTracker.classificationStatus = 'CLASSIFIED';
+
+                // Reveal Truth
+                const contact = state.contacts.find(c => c.id === updatedTracker.contactId);
+                const type = contact?.classification || 'UNKNOWN';
+                updatedTracker.classification = type;
+
+                // Log
+                newLogs = [...newLogs, `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`].slice(-50);
+            }
+        }
+
+        return updatedTracker;
       });
 
       // Every 60 ticks (approx 1 sec), record history
@@ -763,6 +794,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         ownShipHistory: newOwnShipHistory,
         contacts: newContacts, // Update truth data
         sensorReadings: newSensorReadings,
+        logs: newLogs,
         tickCount: newTickCount,
         gameTime: newGameTime,
         trackers: newTrackers,

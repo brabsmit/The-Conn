@@ -51,9 +51,14 @@ export const ContactManager = () => {
                                     {tracker.currentBearing.toFixed(0).padStart(3, '0')}
                                 </div>
 
-                                {/* Class (Placeholder) */}
-                                <div className="flex-grow text-center text-zinc-500">
-                                    UNK
+                                {/* Class */}
+                                <div className={`flex-grow text-center ${
+                                    tracker.classificationStatus === 'PENDING' ? 'text-zinc-600 italic' :
+                                    tracker.classification === 'MERCHANT' ? 'text-blue-400' :
+                                    tracker.classification === 'ESCORT' || tracker.classification === 'SUB' ? 'text-red-400' :
+                                    'text-green-400'
+                                }`}>
+                                    {tracker.classificationStatus === 'PENDING' ? 'PENDING...' : tracker.classification || 'UNKNOWN'}
                                 </div>
 
                                 {/* Actions */}
