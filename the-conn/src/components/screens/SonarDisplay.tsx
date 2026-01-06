@@ -212,7 +212,7 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         // Settings
         const STEP_Y = 5; // Calculate every 5 pixels
 
-        graphics.lineStyle(2, 0xffffff, 0.5);
+        graphics.lineStyle(2, 0x880808, 0.5);
 
         let firstPoint = true;
 
