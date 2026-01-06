@@ -87,6 +87,13 @@ export interface Torpedo {
   distanceTraveled: number;
 }
 
+interface Transient {
+  type: string;
+  startTime: number;
+  duration: number;
+  magnitude: number;
+}
+
 interface SubmarineState {
   // OwnShip Data
   heading: number; // 0-359
@@ -95,6 +102,9 @@ interface SubmarineState {
   x: number;
   y: number;
   ownShipHistory: OwnShipHistory[];
+  ownshipNoiseLevel: number;
+  cavitating: boolean;
+  transients: Transient[];
 
   // Truth Data
   contacts: Contact[];
@@ -168,6 +178,9 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   x: 0,
   y: 0,
   ownShipHistory: [],
+  ownshipNoiseLevel: 0.1,
+  cavitating: false,
+  transients: [],
   contacts: [{
     id: 'Sierra-1',
     x: 5000,
@@ -271,7 +284,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       t.id === tubeId && t.status === 'DRY'
         ? { ...t, status: 'FLOODING', progress: 0 }
         : t
-    )
+    ),
+    transients: [...state.transients, { type: 'TUBE_FLOOD', startTime: state.gameTime, duration: 10, magnitude: 0.2 }]
   })),
 
   equalizeTube: (tubeId) => set((state) => ({
@@ -287,7 +301,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       t.id === tubeId && t.status === 'EQUALIZED'
         ? { ...t, status: 'OPENING', progress: 0 }
         : t
-    )
+    ),
+    transients: [...state.transients, { type: 'MUZZLE_OPEN', startTime: state.gameTime, duration: 10, magnitude: 0.3 }]
   })),
 
   addContact: (contact) => set((state) => ({
@@ -335,7 +350,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           ? { ...t, status: 'FIRING', progress: 0, torpedoId }
           : t
       ),
-      torpedoes: [...state.torpedoes, newTorpedo]
+      torpedoes: [...state.torpedoes, newTorpedo],
+      transients: [...state.transients, { type: 'LAUNCH', startTime: state.gameTime, duration: 5, magnitude: 1.0 }]
     };
   }),
 
@@ -395,6 +411,25 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const distance = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
       const newX = state.x + distance * Math.sin(radHeading);
       const newY = state.y + distance * Math.cos(radHeading);
+
+      // --- Noise Calculation ---
+      // Base Noise
+      const baseNoise = 0.1;
+
+      // Flow Noise (Linear with speed)
+      // Assuming Max Speed ~30kts = 0.4 noise addition
+      const flowNoise = (newSpeed / 30.0) * 0.4;
+
+      // Cavitation (Threshold)
+      const cavitationThreshold = 12.0;
+      const isCavitating = newSpeed > cavitationThreshold;
+      const cavitationNoise = isCavitating ? 0.5 : 0;
+
+      // Transients
+      const activeTransients = state.transients.filter(t => (state.gameTime - t.startTime) < t.duration);
+      const transientNoise = activeTransients.reduce((sum, t) => sum + t.magnitude, 0);
+
+      const totalNoise = baseNoise + flowNoise + cavitationNoise + transientNoise;
 
       // Update Contacts (Truth movement)
       const newContactsInitial = state.contacts.map(contact => {
@@ -661,7 +696,10 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         gameTime: newGameTime,
         trackers: newTrackers,
         tubes: newTubes,
-        torpedoes: activeTorpedoes
+        torpedoes: activeTorpedoes,
+        ownshipNoiseLevel: totalNoise,
+        cavitating: isCavitating,
+        transients: activeTransients
       };
     }),
 }));

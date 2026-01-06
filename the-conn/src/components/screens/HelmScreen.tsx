@@ -13,10 +13,13 @@ export const HelmScreen = () => {
   const setOrderedSpeed = useSubmarineStore(state => state.setOrderedSpeed);
   const setOrderedDepth = useSubmarineStore(state => state.setOrderedDepth);
 
+  const cavitating = useSubmarineStore(state => state.cavitating);
+
   // Use refs for high-frequency updates (actual values)
   const headingRef = useRef<HTMLSpanElement>(null);
   const depthRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
+  const noiseBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Initial Update
@@ -24,11 +27,13 @@ export const HelmScreen = () => {
     if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
     if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
     if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
+    if (noiseBarRef.current) noiseBarRef.current.style.width = `${Math.min(100, state.ownshipNoiseLevel * 100)}%`;
 
     const unsub = useSubmarineStore.subscribe((state) => {
         if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
         if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
         if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
+        if (noiseBarRef.current) noiseBarRef.current.style.width = `${Math.min(100, state.ownshipNoiseLevel * 100)}%`;
     });
 
     return unsub;
@@ -37,6 +42,28 @@ export const HelmScreen = () => {
   return (
     <Panel title="Helm" className="h-full">
         <div className="flex flex-row gap-4 h-full items-center px-4">
+
+            {/* Noise Control */}
+            <div className={`flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-center h-14 ${cavitating ? 'animate-pulse border-red-500/50' : ''}`}>
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] text-zinc-500">NOISE</span>
+                    {cavitating && <span className="text-[10px] text-red-500 font-bold">CAVITATING</span>}
+                </div>
+                <div className="w-full h-4 bg-black/50 rounded-full relative overflow-hidden border border-white/10">
+                    {/* Gradient Bar */}
+                    <div
+                        ref={noiseBarRef}
+                        className="h-full transition-all duration-200 ease-out"
+                        style={{
+                            width: '10%',
+                            background: 'linear-gradient(90deg, #22c55e 0%, #eab308 60%, #ef4444 100%)'
+                        }}
+                    />
+                    {/* Threshold Marker (e.g. at 50% relative to max likely noise) */}
+                    {/* Let's assume ambient/threshold is around 0.5 noise level, which maps to 50% width if max is 1.0 */}
+                    <div className="absolute top-0 bottom-0 w-[2px] bg-white/50 left-[50%]" title="Ambient Threshold" />
+                </div>
+            </div>
 
             {/* Heading Control */}
             <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
