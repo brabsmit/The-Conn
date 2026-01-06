@@ -31,6 +31,13 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
+        // Sort trackers: unselected first, selected last (so it draws on top)
+        const sortedTrackers = [...trackers].sort((a, b) => {
+            if (a.id === selectedTrackerId) return 1;
+            if (b.id === selectedTrackerId) return -1;
+            return 0;
+        });
+
         if (viewMode === 'GEO') {
             const PIXELS_PER_DEGREE = width / 360;
             const SCREEN_CENTER = width / 2;
@@ -67,15 +74,22 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                 }
             });
 
-            // Reset line style for dots
-            graphics.lineStyle(0);
+            // Iterate over all sorted trackers
+            sortedTrackers.forEach(tracker => {
+                const isSelected = tracker.id === selectedTrackerId;
 
-        // Draw Tracker History (ONLY SELECTED)
-        if (selectedTracker) {
-            // Color: Green (0x33ff33)
-            graphics.beginFill(0x33ff33, 0.8);
+                // Set style based on selection
+                if (isSelected) {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
+                } else {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
+                }
+
+                // Draw Sensor History (Dots)
                 let osIndex = 0;
-            selectedTracker.bearingHistory.forEach(history => {
+                tracker.bearingHistory.forEach(history => {
                     // Optimized lookup: fast forward osIndex
                     while (osIndex < ownShipHistory.length && ownShipHistory[osIndex].time < history.time - 0.1) {
                         osIndex++;
@@ -97,63 +111,65 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                         }
                     }
                 });
-            graphics.endFill();
-        }
+                graphics.endFill();
 
-            // Draw Solution Line
-            if (selectedTracker && selectedTracker.solution) {
-                 const solution = selectedTracker.solution;
-                 graphics.lineStyle(2, 0xffffff, 0.8);
+                // Draw Solution Line (ONLY SELECTED)
+                if (isSelected && tracker.solution) {
+                     const solution = tracker.solution;
+                     // Bold Orange: 0xFFA500, thickness 2
+                     graphics.lineStyle(2, 0xFFA500, 1.0);
 
-                 // 1. Current Point
-                 const currentOwnShip = {
-                     x: useSubmarineStore.getState().x,
-                     y: useSubmarineStore.getState().y,
-                     heading: currentHeading
-                 };
+                     // 1. Current Point
+                     const currentOwnShip = {
+                         x: useSubmarineStore.getState().x,
+                         y: useSubmarineStore.getState().y,
+                         heading: currentHeading
+                     };
 
-                 const targetPosNow = calculateTargetPosition(solution, gameTime);
-                 const dxNow = targetPosNow.x - currentOwnShip.x;
-                 const dyNow = targetPosNow.y - currentOwnShip.y;
-                 let trueBearingNow = Math.atan2(dxNow, dyNow) * (180 / Math.PI);
-                 trueBearingNow = normalizeAngle(trueBearingNow);
+                     const targetPosNow = calculateTargetPosition(solution, gameTime);
+                     const dxNow = targetPosNow.x - currentOwnShip.x;
+                     const dyNow = targetPosNow.y - currentOwnShip.y;
+                     let trueBearingNow = Math.atan2(dxNow, dyNow) * (180 / Math.PI);
+                     trueBearingNow = normalizeAngle(trueBearingNow);
 
-                 const angleDiffNow = getShortestAngle(trueBearingNow, currentHeading);
-                 const xNow = SCREEN_CENTER + (angleDiffNow * PIXELS_PER_DEGREE);
+                     const angleDiffNow = getShortestAngle(trueBearingNow, currentHeading);
+                     const xNow = SCREEN_CENTER + (angleDiffNow * PIXELS_PER_DEGREE);
 
-                 graphics.moveTo(xNow, 0);
-                 let lastX = xNow;
+                     graphics.moveTo(xNow, 0);
+                     let lastX = xNow;
 
-                 // 2. History Points
-                 for (let i = selectedTracker.bearingHistory.length - 1; i >= 0; i--) {
-                    const h = selectedTracker.bearingHistory[i];
-                    const age = gameTime - h.time;
-                    const y = age * PIXELS_PER_SECOND;
+                     // 2. History Points
+                     for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
+                        const h = tracker.bearingHistory[i];
+                        const age = gameTime - h.time;
+                        const y = age * PIXELS_PER_SECOND;
 
-                    if (y > height + 5) continue;
+                        if (y > height + 5) continue;
 
-                    const ownShipState = ownShipHistory.find(os => Math.abs(os.time - h.time) < 0.1);
+                        const ownShipState = ownShipHistory.find(os => Math.abs(os.time - h.time) < 0.1);
 
-                    if (ownShipState) {
-                        const targetPos = calculateTargetPosition(solution, h.time);
-                        const dx = targetPos.x - ownShipState.x;
-                        const dy = targetPos.y - ownShipState.y;
+                        if (ownShipState) {
+                            const targetPos = calculateTargetPosition(solution, h.time);
+                            const dx = targetPos.x - ownShipState.x;
+                            const dy = targetPos.y - ownShipState.y;
 
-                        let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-                        trueBearing = normalizeAngle(trueBearing);
+                            let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                            trueBearing = normalizeAngle(trueBearing);
 
-                        const angleDiff = getShortestAngle(trueBearing, currentHeading);
-                        const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
+                            const angleDiff = getShortestAngle(trueBearing, currentHeading);
+                            const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
 
-                         if (Math.abs(x - lastX) > width / 3) {
-                             graphics.moveTo(x, y);
-                         } else {
-                             graphics.lineTo(x, y);
-                         }
-                         lastX = x;
-                    }
-                 }
-            }
+                             if (Math.abs(x - lastX) > width / 3) {
+                                 graphics.moveTo(x, y);
+                             } else {
+                                 graphics.lineTo(x, y);
+                             }
+                             lastX = x;
+                        }
+                     }
+                }
+            });
+
         } else {
             // DOTS Mode (Residuals)
             const RANGE_DEGREES = 20; // +/- 10
@@ -165,44 +181,54 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             graphics.moveTo(SCREEN_CENTER, 0);
             graphics.lineTo(SCREEN_CENTER, height);
 
-            // Draw Residuals
-            if (selectedTracker) {
-                graphics.lineStyle(0);
-                graphics.beginFill(0x33ff33, 0.8);
+            // Iterate over all sorted trackers
+            sortedTrackers.forEach(tracker => {
+                const isSelected = tracker.id === selectedTrackerId;
 
-                selectedTracker.bearingHistory.forEach(history => {
-                    const ownShipState = ownShipHistory.find(os => Math.abs(os.time - history.time) < 0.1);
+                // Set style based on selection
+                if (isSelected) {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
+                } else {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
+                }
 
-                    if (ownShipState && selectedTracker.solution) {
-                        // Sensor True Bearing
-                        const sensorTrueBearing = normalizeAngle(history.bearing + ownShipState.heading);
+                // In DOTS mode, we compare ALL tracks against the SELECTED tracker's solution.
+                // This shows how well the current solution fits other tracks (or the same track).
+                if (selectedTracker && selectedTracker.solution) {
+                     tracker.bearingHistory.forEach(history => {
+                        const ownShipState = ownShipHistory.find(os => Math.abs(os.time - history.time) < 0.1);
 
-                        // Solution True Bearing
-                        const targetPos = calculateTargetPosition(selectedTracker.solution, history.time);
-                        const dx = targetPos.x - ownShipState.x;
-                        const dy = targetPos.y - ownShipState.y;
-                        let solutionTrueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-                        solutionTrueBearing = normalizeAngle(solutionTrueBearing);
+                        if (ownShipState) {
+                             // Sensor True Bearing (of THIS tracker)
+                            const sensorTrueBearing = normalizeAngle(history.bearing + ownShipState.heading);
 
-                        // Residual
-                        const residual = getShortestAngle(sensorTrueBearing, solutionTrueBearing);
+                            // Solution True Bearing (of SELECTED solution)
+                            const targetPos = calculateTargetPosition(selectedTracker.solution!, history.time);
+                            const dx = targetPos.x - ownShipState.x;
+                            const dy = targetPos.y - ownShipState.y;
+                            let solutionTrueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                            solutionTrueBearing = normalizeAngle(solutionTrueBearing);
 
-                        // Plot
-                        // x corresponds to residual. Center is 0.
-                        const x = SCREEN_CENTER + (residual * PIXELS_PER_DEGREE);
-                        const age = gameTime - history.time;
-                        const y = age * PIXELS_PER_SECOND;
+                            // Residual
+                            const residual = getShortestAngle(sensorTrueBearing, solutionTrueBearing);
 
-                        if (y >= -5 && y <= height + 5) {
-                            // Clip to screen width to avoid drawing outside if error is huge
-                            if (x >= 0 && x <= width) {
-                                graphics.drawCircle(x, y, 2.5);
-                            }
+                             const x = SCREEN_CENTER + (residual * PIXELS_PER_DEGREE);
+                             const age = gameTime - history.time;
+                             const y = age * PIXELS_PER_SECOND;
+
+                             if (y >= -5 && y <= height + 5) {
+                                 // Clip to screen width to avoid drawing outside if error is huge
+                                 if (x >= 0 && x <= width) {
+                                     graphics.drawCircle(x, y, 2.5);
+                                 }
+                             }
                         }
-                    }
-                });
+                     });
+                }
                 graphics.endFill();
-            }
+            });
         }
     });
 
