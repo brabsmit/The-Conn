@@ -117,7 +117,7 @@ const WCSDisplay = () => {
     };
 
     return (
-        <div className="w-full h-full flex flex-col p-4 bg-zinc-900/80 font-mono text-zinc-300 select-none">
+        <div className="w-full h-full flex flex-col p-4 bg-zinc-900/80 font-mono text-zinc-300 select-none overflow-y-auto">
 
             <div className="flex-grow flex gap-4">
 

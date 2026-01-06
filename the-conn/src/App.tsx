@@ -42,7 +42,7 @@ function App() {
         {/* PANE B: Main Scope (Center) */}
         <div className="flex-grow h-full relative overflow-hidden flex flex-col">
             <Panel title={activeStation === 'TMA' ? "Tactical Plot" : "Weapons Control"} className="h-full flex flex-col">
-               <div className="flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
+               <div className="flex-grow min-h-0 bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
                    {activeStation === 'TMA' ? <TMADisplay /> : <WCSDisplay />}
                </div>
 
