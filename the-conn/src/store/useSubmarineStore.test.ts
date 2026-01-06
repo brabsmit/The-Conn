@@ -4,28 +4,28 @@ import { useSubmarineStore } from './useSubmarineStore';
 describe('useSubmarineStore', () => {
   beforeEach(() => {
     useSubmarineStore.setState({
-      sonarTimeScale: 'FAST',
+      timeScale: 'FAST',
       trackers: [],
       sensorReadings: [],
       contacts: []
     });
   });
 
-  it('should have default sonarTimeScale as FAST', () => {
+  it('should have default timeScale as FAST', () => {
     const state = useSubmarineStore.getState();
-    expect(state.sonarTimeScale).toBe('FAST');
+    expect(state.timeScale).toBe('FAST');
   });
 
-  it('should update sonarTimeScale correctly', () => {
-    const { setSonarTimeScale } = useSubmarineStore.getState();
+  it('should update timeScale correctly', () => {
+    const { setTimeScale } = useSubmarineStore.getState();
 
-    setSonarTimeScale('MED');
-    expect(useSubmarineStore.getState().sonarTimeScale).toBe('MED');
+    setTimeScale('MED');
+    expect(useSubmarineStore.getState().timeScale).toBe('MED');
 
-    setSonarTimeScale('SLOW');
-    expect(useSubmarineStore.getState().sonarTimeScale).toBe('SLOW');
+    setTimeScale('SLOW');
+    expect(useSubmarineStore.getState().timeScale).toBe('SLOW');
 
-    setSonarTimeScale('FAST');
-    expect(useSubmarineStore.getState().sonarTimeScale).toBe('FAST');
+    setTimeScale('FAST');
+    expect(useSubmarineStore.getState().timeScale).toBe('FAST');
   });
 });

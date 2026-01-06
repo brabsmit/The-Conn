@@ -1,11 +1,37 @@
 import { useEffect, useRef } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import type { TimeScale } from '../../store/useSubmarineStore';
 
 const formatTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const TimeControls = () => {
+  const timeScale = useSubmarineStore(state => state.timeScale);
+  const setTimeScale = useSubmarineStore(state => state.setTimeScale);
+
+  const scales: TimeScale[] = ['FAST', 'MED', 'SLOW'];
+
+  return (
+    <div className="flex gap-1">
+      {scales.map(scale => (
+        <button
+          key={scale}
+          onClick={() => setTimeScale(scale)}
+          className={`px-1.5 py-0.5 text-[10px] font-mono border rounded ${
+            timeScale === scale
+              ? 'bg-amber-900/50 text-amber-500 border-amber-700'
+              : 'bg-transparent text-zinc-600 border-zinc-800 hover:text-zinc-400'
+          }`}
+        >
+          {scale}
+        </button>
+      ))}
+    </div>
+  );
 };
 
 export const TopBar = () => {
@@ -73,6 +99,12 @@ export const TopBar = () => {
             <span className="text-xs text-zinc-500">FT</span>
          </div>
          <span className="text-[10px] text-zinc-500 leading-none">DEPTH</span>
+      </div>
+
+      {/* TIME SCALE CONTROLS */}
+      <div className="ml-auto flex flex-col items-end justify-center h-full border-l border-white/5 pl-6">
+          <span className="text-[10px] text-zinc-500 leading-none mb-1">TIMESCALE</span>
+          <TimeControls />
       </div>
 
     </div>

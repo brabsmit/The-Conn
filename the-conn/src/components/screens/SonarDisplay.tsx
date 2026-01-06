@@ -15,81 +15,66 @@ interface DimensionProps {
 const Waterfall = ({ width, height }: DimensionProps) => {
     const app = useApp();
 
-    // Use useRef to hold the render texture so it persists across renders
-    const spriteRef = useRef<PIXI.Sprite | null>(null);
-
     // Graphics object for drawing the new line
     const lineGraphics = useMemo(() => new PIXI.Graphics(), []);
 
-    // Ping-pong render textures
-    const rtA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const rtB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
-    const currentRtIndex = useRef(0);
-    const accumulator = useRef(0);
+    // Triple Buffers
+    // FAST: 100ms
+    const rtFastA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const rtFastB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const idxFast = useRef(0);
+    const accFast = useRef(0);
+
+    // MED: 1000ms
+    const rtMedA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const rtMedB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const idxMed = useRef(0);
+    const accMed = useRef(0);
+
+    // SLOW: 3000ms
+    const rtSlowA = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const rtSlowB = useRef<PIXI.RenderTexture>(PIXI.RenderTexture.create({ width, height }));
+    const idxSlow = useRef(0);
+    const accSlow = useRef(0);
+
+    // Visible Sprite
+    const spriteRef = useRef<PIXI.Sprite | null>(null);
 
     // Effect to recreate textures if dimensions change
     useEffect(() => {
         // Destroy old textures
-        rtA.current.destroy(true);
-        rtB.current.destroy(true);
+        const textures = [rtFastA, rtFastB, rtMedA, rtMedB, rtSlowA, rtSlowB];
+        textures.forEach(rt => rt.current.destroy(true));
 
         // Create new ones
-        rtA.current = PIXI.RenderTexture.create({ width, height });
-        rtB.current = PIXI.RenderTexture.create({ width, height });
+        rtFastA.current = PIXI.RenderTexture.create({ width, height });
+        rtFastB.current = PIXI.RenderTexture.create({ width, height });
+        rtMedA.current = PIXI.RenderTexture.create({ width, height });
+        rtMedB.current = PIXI.RenderTexture.create({ width, height });
+        rtSlowA.current = PIXI.RenderTexture.create({ width, height });
+        rtSlowB.current = PIXI.RenderTexture.create({ width, height });
 
         // Reset sprite texture
         if (spriteRef.current) {
-            spriteRef.current.texture = rtA.current;
+            spriteRef.current.texture = rtFastA.current;
         }
 
     }, [width, height]);
 
     const designateTracker = useSubmarineStore(state => state.designateTracker);
 
-    // Cleanup textures on unmount (only once)
-    useEffect(() => {
-        return () => {
-             // We don't want to destroy if just resizing, but here we do simple destroy/recreate in the other effect.
-             // But on unmount we should clean up.
-             // We rely on the other effect to manage RT lifecycle during resize.
-             // This cleanup is for component unmount.
-             // However, React strict mode or rapid updates might cause issues if we double destroy.
-             // Let's trust PIXI's garbage collection or handle it carefully.
-        };
-    }, []);
-
     useTick((delta) => {
         if (!app) return;
 
-        // Get time scale from store
-        const { sonarTimeScale } = useSubmarineStore.getState();
+        // Common update logic
+        const updateBuffer = (
+            rtA: PIXI.RenderTexture,
+            rtB: PIXI.RenderTexture,
+            idxRef: React.MutableRefObject<number>
+        ) => {
+            const currentRt = idxRef.current === 0 ? rtA : rtB;
+            const nextRt = idxRef.current === 0 ? rtB : rtA;
 
-        // Determine threshold in Ticks (assuming 1 tick = 16.6ms at 60fps)
-        // delta is passed as "lag" usually around 1.0 (1 frame).
-        // Pixi useTick delta is "ratio of time elapsed since last frame to expected frame time (1/60)".
-        // So 1 delta = 16.66ms.
-
-        let thresholdMs = 100; // FAST: 100ms
-        if (sonarTimeScale === 'MED') thresholdMs = 1000;
-        if (sonarTimeScale === 'SLOW') thresholdMs = 3000;
-
-        // Convert threshold to delta units (approx)
-        // 1 unit = 16.66ms
-        // FAST: 6 ticks
-        // MED: 60 ticks
-        // SLOW: 180 ticks
-        const threshold = thresholdMs / 16.66;
-
-        accumulator.current += delta;
-
-        if (accumulator.current >= threshold) {
-            accumulator.current = 0; // Or accumulator.current -= threshold to keep precise timing?
-                                     // Resetting to 0 is safer to prevent burst updates if we lag behind significantly.
-
-            const currentRt = currentRtIndex.current === 0 ? rtA.current : rtB.current;
-            const nextRt = currentRtIndex.current === 0 ? rtB.current : rtA.current;
-
-            // Check if textures are valid
             if (!currentRt.valid || !nextRt.valid) return;
 
             // Create a sprite from the current state (previous frame)
@@ -111,23 +96,14 @@ const Waterfall = ({ width, height }: DimensionProps) => {
             }
 
             // Draw Sensor Contacts
-            // Access store state directly to avoid re-renders
             const { sensorReadings } = useSubmarineStore.getState();
 
             sensorReadings.forEach((reading) => {
-                // Map bearing to X coordinate.
-                // Center (width/2) is 0 degrees (Dead Ahead).
-                // Left edge (0% X) is 210 Relative (-150).
-                // Right edge (100% X) is 150 Relative (+150).
-                // Total span = 300 degrees.
-
                 let signedBearing = reading.bearing;
                 if (signedBearing > 180) signedBearing -= 360;
 
-                // Check if visible (within -150 to +150)
                 if (signedBearing >= -150 && signedBearing <= 150) {
                      const x = ((signedBearing + 150) / 300) * width;
-
                      lineGraphics.beginFill(0xccffcc, 1.0);
                      lineGraphics.drawRect(x, 0, 4, 3);
                      lineGraphics.endFill();
@@ -147,33 +123,70 @@ const Waterfall = ({ width, height }: DimensionProps) => {
             });
 
             // Swap
-            currentRtIndex.current = 1 - currentRtIndex.current;
+            idxRef.current = 1 - idxRef.current;
+            prevSprite.destroy({ children: true, texture: false, baseTexture: false });
+        };
 
-            // Update the visible sprite
-            if (spriteRef.current) {
-                spriteRef.current.texture = nextRt;
+        // --- FAST UPDATE ---
+        accFast.current += delta;
+        const threshFast = 100 / 16.66;
+        if (accFast.current >= threshFast) {
+            accFast.current = 0;
+            updateBuffer(rtFastA.current, rtFastB.current, idxFast);
+        }
+
+        // --- MED UPDATE ---
+        accMed.current += delta;
+        const threshMed = 1000 / 16.66;
+        if (accMed.current >= threshMed) {
+            accMed.current = 0;
+            updateBuffer(rtMedA.current, rtMedB.current, idxMed);
+        }
+
+        // --- SLOW UPDATE ---
+        accSlow.current += delta;
+        const threshSlow = 3000 / 16.66;
+        if (accSlow.current >= threshSlow) {
+            accSlow.current = 0;
+            updateBuffer(rtSlowA.current, rtSlowB.current, idxSlow);
+        }
+
+        // --- DISPLAY SELECTION ---
+        if (spriteRef.current) {
+            const { timeScale } = useSubmarineStore.getState();
+            let targetTexture;
+
+            if (timeScale === 'FAST') {
+                targetTexture = idxFast.current === 0 ? rtFastA.current : rtFastB.current; // Actually we want the ONE we just wrote to? No, the one that is currently "current" after swap?
+                // In logic above:
+                // current is A. Write to B. Swap idx to 1 (B).
+                // So now idx is 1 (B). We want B.
+                // Wait.
+                // Start: idx=0. current=A. Write to B. Swap idx=1.
+                // Next tick: idx=1. current=B. Write to A. Swap idx=0.
+                // So if idx=0, it means last write was to A (which became current).
+                // Yes.
+                targetTexture = idxFast.current === 0 ? rtFastA.current : rtFastB.current;
+            } else if (timeScale === 'MED') {
+                targetTexture = idxMed.current === 0 ? rtMedA.current : rtMedB.current;
+            } else {
+                targetTexture = idxSlow.current === 0 ? rtSlowA.current : rtSlowB.current;
             }
 
-            // Cleanup created sprite to avoid memory leak?
-            prevSprite.destroy({ children: true, texture: false, baseTexture: false });
+            // Only update if changed to avoid flicker? Sprite handles it.
+            spriteRef.current.texture = targetTexture;
         }
     });
 
     return (
         <Sprite
             ref={spriteRef}
-            texture={rtA.current}
+            texture={rtFastA.current}
             eventMode="static"
             pointerdown={(e) => {
                 if (!e.currentTarget) return;
                 const localPoint = e.currentTarget.toLocal(e.global);
                 const x = localPoint.x;
-
-                // Inverse Formula:
-                // x = ((signedBearing + 150) / 300) * width
-                // signedBearing + 150 = (x / width) * 300
-                // signedBearing = (x / width) * 300 - 150
-
                 const signedBearing = (x / width) * 300 - 150;
 
                 let bearing = signedBearing;
@@ -189,9 +202,6 @@ const NoiseBackground = ({ width, height }: DimensionProps) => {
     // A simple static noise background
     const noiseTexture = useMemo(() => {
         const canvas = document.createElement('canvas');
-        canvas.width = 800; // Generate at fixed resolution and scale, or regenerate? Regenerate is safer for quality.
-        // Actually, let's regenerate if dimensions change drastically, but for noise, scaling is fine.
-        // For now, let's just make it dynamic.
         canvas.width = width || 100;
         canvas.height = height || 100;
 
@@ -228,7 +238,7 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
         if (!visible) return;
 
         const store = useSubmarineStore.getState();
-        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading, sonarTimeScale } = store;
+        const { trackers, selectedTrackerId, ownShipHistory, gameTime, x: currentX, y: currentY, heading: currentHeading, timeScale } = store;
 
         if (!selectedTrackerId) return;
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
@@ -236,47 +246,25 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
 
         const solution = selectedTracker.solution;
 
-        // Settings
-        const STEP_Y = 5; // Calculate every 5 pixels
+        const STEP_Y = 5;
 
         // Pixels Per Second calculation
-        // FAST: 100ms/row -> 0.1s/pixel -> 10 pixels/sec.
-        // MED: 1000ms/row -> 1.0s/pixel -> 1 pixel/sec.
-        // SLOW: 3000ms/row -> 3.0s/pixel -> 0.33 pixel/sec.
-
-        // Wait, if 1 row = 1 pixel.
-        // FAST: 1 pixel represents 0.1s.
-        // MED: 1 pixel represents 1.0s.
-        // SLOW: 1 pixel represents 3.0s.
-
         let secondsPerPixel = 0.1;
-        if (sonarTimeScale === 'MED') secondsPerPixel = 1.0;
-        if (sonarTimeScale === 'SLOW') secondsPerPixel = 3.0;
+        if (timeScale === 'MED') secondsPerPixel = 1.0;
+        if (timeScale === 'SLOW') secondsPerPixel = 3.0;
 
         graphics.lineStyle(2, 0xffffff, 0.5);
 
         let firstPoint = true;
 
-        // Helper to interpolate ownship history
         const getInterpolatedOwnShip = (time: number): { x: number, y: number, heading: number } | null => {
-            // If time is future (shouldn't happen with history logic), return current
             if (time >= gameTime) {
                 return { x: currentX, y: currentY, heading: currentHeading };
             }
 
-            // Find history points surrounding 'time'
-            // ownShipHistory is ordered oldest to newest
-            // We search from end backwards
             for (let i = ownShipHistory.length - 1; i >= 0; i--) {
                 const h1 = ownShipHistory[i];
                 if (h1.time <= time) {
-                    // h1 is just before or at time.
-                    // h2 (the next one) is just after time.
-
-                    // If h1 is the last element, and time < gameTime, then we are between h1 and current state?
-                    // Wait, ownShipHistory is pushed every 60 ticks.
-                    // Between last history and now is the "live" gap.
-
                     let h2: { time: number, x: number, y: number, heading: number };
                     if (i === ownShipHistory.length - 1) {
                         h2 = { time: gameTime, x: currentX, y: currentY, heading: currentHeading };
@@ -284,17 +272,14 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
                         h2 = ownShipHistory[i + 1];
                     }
 
-                    // Interpolate between h1 and h2
                     const range = h2.time - h1.time;
-                    if (range <= 0.0001) return h1; // Avoid divide by zero
+                    if (range <= 0.0001) return h1;
 
-                    const t = (time - h1.time) / range; // 0 to 1
+                    const t = (time - h1.time) / range;
 
                     const x = h1.x + (h2.x - h1.x) * t;
                     const y = h1.y + (h2.y - h1.y) * t;
 
-                    // Angular interpolation for heading
-                    // Use getShortestAngle to find diff
                     const diff = getShortestAngle(h2.heading, h1.heading);
                     const heading = normalizeAngle(h1.heading + diff * t);
 
@@ -302,49 +287,32 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
                 }
             }
 
-            // If time is older than oldest history
             if (ownShipHistory.length > 0) {
-                 // Clamp to oldest? Or return null?
-                 // If we return null, the line stops.
                  return null;
             }
 
-            // Fallback if no history but we have current state
             return { x: currentX, y: currentY, heading: currentHeading };
         };
 
         for (let y = 0; y <= height; y += STEP_Y) {
-            // Formula: Y = (CurrentTime - HistoryPointTime) / SecondsPerPixel
-            // HistoryPointTime = CurrentTime - (Y * SecondsPerPixel)
-
             const timeOffset = y * secondsPerPixel;
             const timeAtY = gameTime - timeOffset;
 
             const ownShip = getInterpolatedOwnShip(timeAtY);
             if (!ownShip) {
-                // Out of history range, stop drawing
                 break;
             }
 
-            // Calculate solution position at this time
             const targetPos = calculateTargetPosition(solution, timeAtY);
 
-            // Calculate Relative Bearing
             const dx = targetPos.x - ownShip.x;
             const dy = targetPos.y - ownShip.y;
 
-            // True Bearing to Target
-            // Math.atan2(dx, dy) gives angle from +Y (North)
             let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
             trueBearing = normalizeAngle(trueBearing);
 
-            // Relative Bearing
-            // Rel = True - OwnHeading
-            // e.g. True 090, Head 000 -> Rel 090
-            // e.g. True 000, Head 090 -> Rel -090 (270)
             const relBearing = getShortestAngle(trueBearing, ownShip.heading);
 
-            // Check visibility (-150 to +150)
             if (relBearing >= -150 && relBearing <= 150) {
                  const x = ((relBearing + 150) / 300) * width;
 
@@ -352,30 +320,6 @@ const SolutionOverlay = ({ width, height, visible }: SolutionOverlayProps) => {
                      graphics.moveTo(x, y);
                      firstPoint = false;
                  } else {
-                     // Check for wrap-around artifacts (if it jumped from left to right)
-                     // Since we check bounds -150 to 150, there shouldn't be a wrap unless it crossed the rear 60 deg blind spot.
-                     // If it crossed the blind spot, relBearing would go outside [-150, 150].
-                     // But we are inside the 'if'.
-                     // Wait, if consecutive points are valid but separated by the blind spot?
-                     // E.g. 150 -> 210 (invalid) -> -150.
-                     // The loop would skip the invalid ones, and connect 150 to -150. That's a huge line across the screen.
-                     // We should check distance from previous point.
-                     // Screen width is 'width'.
-                     // If distance > width / 2, probably a wrap/jump.
-
-                     // Get previous position? Graphics api doesn't expose easily.
-                     // We trust that small STEP_Y means small changes.
-                     // A jump across the screen means crossing the baffles.
-                     // But we only draw if INSIDE baffles.
-                     // If we skipped points, 'lineTo' will connect across the gap.
-                     // We need to 'moveTo' if we had a gap.
-
-                     // Optimization: Track 'lastValidY'.
-                     // If y - lastValidY > STEP_Y * 2, then we had a gap.
-                     // But I'm local variables inside loop.
-                     // Actually, if we just check visibility:
-                     // If invalid, we set firstPoint = true (so next valid point is a moveTo).
-
                      graphics.lineTo(x, y);
                  }
             } else {
@@ -396,18 +340,15 @@ const TrackerOverlay = ({ width }: { width: number }) => {
 
         graphics.clear();
 
-        // Access store directly
         const { trackers } = useSubmarineStore.getState();
 
         trackers.forEach((tracker) => {
-             // Map bearing to X coordinate.
              let signedBearing = tracker.currentBearing;
              if (signedBearing > 180) signedBearing -= 360;
 
              if (signedBearing >= -150 && signedBearing <= 150) {
                  const x = ((signedBearing + 150) / 300) * width;
 
-                 // Draw a triangle pointing down at the top
                  graphics.beginFill(0x33ff33);
                  graphics.moveTo(x, 0);
                  graphics.lineTo(x - 5, 10);
