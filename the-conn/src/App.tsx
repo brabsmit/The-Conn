@@ -3,12 +3,15 @@ import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
+import WCSDisplay from './components/screens/WCSDisplay';
 import { TMAControls } from './components/panels/TMAControls';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
 
 function App() {
   const tick = useSubmarineStore(state => state.tick);
+  const activeStation = useSubmarineStore(state => state.activeStation);
+  const setActiveStation = useSubmarineStore(state => state.setActiveStation);
 
   useInterval(() => {
     tick();
@@ -38,9 +41,33 @@ function App() {
 
         {/* PANE B: Main Scope (Center) */}
         <div className="flex-grow h-full relative overflow-hidden flex flex-col">
-            <Panel title="Tactical Plot" className="h-full flex flex-col">
+            <Panel title={activeStation === 'TMA' ? "Tactical Plot" : "Weapons Control"} className="h-full flex flex-col">
                <div className="flex-grow bg-zinc-900/50 rounded border border-white/10 relative overflow-hidden">
-                   <TMADisplay />
+                   {activeStation === 'TMA' ? <TMADisplay /> : <WCSDisplay />}
+               </div>
+
+               {/* Mode Select Buttons */}
+               <div className="mt-4 flex justify-center gap-2">
+                 <button
+                   onClick={() => setActiveStation('TMA')}
+                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                     activeStation === 'TMA'
+                       ? 'bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                       : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
+                   }`}
+                 >
+                   TMA STATION
+                 </button>
+                 <button
+                   onClick={() => setActiveStation('WCS')}
+                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                     activeStation === 'WCS'
+                       ? 'bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                       : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
+                   }`}
+                 >
+                   WCS STATION
+                 </button>
                </div>
             </Panel>
         </div>

@@ -23,6 +23,8 @@ export interface OwnShipHistory {
   heading: number;
 }
 
+export type Station = 'TMA' | 'WCS';
+
 export type TimeScale = 'FAST' | 'MED' | 'SLOW';
 
 export interface TrackerSolution {
@@ -67,6 +69,7 @@ interface SubmarineState {
   tickCount: number;
   gameTime: number; // in seconds
   timeScale: TimeScale;
+  activeStation: Station;
 
   // Ordered Data (Controls)
   orderedHeading: number;
@@ -81,6 +84,7 @@ interface SubmarineState {
   setSelectedTracker: (id: string | null) => void;
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
   setTimeScale: (scale: TimeScale) => void;
+  setActiveStation: (station: Station) => void;
   tick: () => void;
 }
 
@@ -121,6 +125,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   tickCount: 0,
   gameTime: 0,
   timeScale: 'FAST',
+  activeStation: 'TMA',
   orderedHeading: 0,
   orderedSpeed: 0,
   orderedDepth: 0,
@@ -181,6 +186,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   })),
 
   setTimeScale: (scale) => set({ timeScale: scale }),
+  setActiveStation: (station) => set({ activeStation: station }),
 
   tick: () =>
     set((state) => {
