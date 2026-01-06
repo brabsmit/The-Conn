@@ -7,13 +7,16 @@ import { useResize } from '../../hooks/useResize';
 import { useInterval } from '../../hooks/useInterval';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../../lib/tma';
 
+// Types for data passing (Decoupled from store implementation)
+type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
+
 interface DimensionProps {
     width: number;
     height: number;
 }
 
 interface WaterfallRef {
-    drawRow: (scanlineIndex: number) => void;
+    drawRow: (scanlineIndex: number, state: SubmarineState) => void;
 }
 
 const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, ref) => {
@@ -41,17 +44,17 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
     }, [width, height, renderTexture]);
 
     useImperativeHandle(ref, () => ({
-        drawRow: (scanlineIndex: number) => {
+        drawRow: (scanlineIndex: number, state: SubmarineState) => {
             if (!app || !renderTexture.valid) return;
 
             // Create Buffer (RGBA)
             const buffer = new Uint8Array(width * 4);
-            const noiseFloor = 30; // 0-255 range, approx 0.1-0.2 intensity
+            const noiseFloor = 30; // 0-255 range
 
             // 0. Prepare Signal Buffer (Float32) for accumulation
             const signalBuffer = new Float32Array(width).fill(0);
 
-            const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading } = useSubmarineStore.getState();
+            const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading } = state;
 
             // 1. Calculate Signal from Contacts
             sensorReadings.forEach((reading) => {
@@ -70,16 +73,10 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 // Transmission Loss
                 const dx = contact.x - ownX;
                 const dy = contact.y - ownY;
-                const distance = Math.sqrt(dx * dx + dy * dy); // yards * 3? No wait, store positions are feet?
-                // Looking at updatePosition: distance = newSpeed * FEET_PER_KNOT_PER_TICK
-                // So x, y are in Feet.
-                // Distance in yards = distance / 3.
+                const distance = Math.sqrt(dx * dx + dy * dy);
                 const distYards = distance / 3;
 
                 // Received Level = Source / (Distance * Scale)
-                // Tuning:
-                // 5k yards -> Bright (1.0). 1.0 / (5000 * S) = 1.0 => S = 1/5000 = 0.0002.
-                // 20k yards -> Faint. 1.0 / (20000 * 0.0002) = 1.0 / 4 = 0.25 (Visible but faint).
                 const scaleFactor = 0.0002;
                 const signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
 
@@ -129,14 +126,11 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
             });
 
             // 3. BQQ Processing (Shouldering / AGC)
-            // Contrast Pass: Suppress neighbors of strong signals
-            // Guard against self-suppression in wide signals by only suppressing weaker neighbors.
             const processedBuffer = new Float32Array(signalBuffer);
             for (let i = 1; i < width - 1; i++) {
                 if (signalBuffer[i] > 0.8) {
-                    // Only suppress if the neighbor is significantly weaker (not part of the peak)
-                    if (signalBuffer[i-1] < 0.8) processedBuffer[i-1] *= 0.1; // Darken left hard
-                    if (signalBuffer[i+1] < 0.8) processedBuffer[i+1] *= 0.1; // Darken right hard
+                    if (signalBuffer[i-1] < 0.8) processedBuffer[i-1] *= 0.1;
+                    if (signalBuffer[i+1] < 0.8) processedBuffer[i+1] *= 0.1;
                 }
             }
 
@@ -145,33 +139,25 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
                 const noise = Math.random() * noiseFloor;
                 const signalVal = processedBuffer[i];
 
-                // Color Mapping (Green Rule):
-                // 0% Signal -> Black/Noise
-                // 50% Signal -> Dim Green (0, 128, 0)
-                // 100% Signal -> Bright Green (0, 255, 0)
-
                 const intensity = Math.min(255, noise + signalVal * 255);
 
                 let r = 0;
                 let b = 0;
 
-                // Saturation Clipping (Phosphor Burn)
-                // Only for extremely strong signals (> 0.9), allow slight desaturation
+                // Saturation Clipping
                 if (signalVal > 0.9) {
-                    const clip = (signalVal - 0.9) * 10 * 150; // 0 to 150
+                    const clip = (signalVal - 0.9) * 10 * 150;
                     r = Math.min(255, clip);
                     b = Math.min(255, clip);
                 }
 
-                buffer[i * 4 + 0] = r;              // R
-                buffer[i * 4 + 1] = intensity;      // G
-                buffer[i * 4 + 2] = b;              // B
-                buffer[i * 4 + 3] = 255;            // A
+                buffer[i * 4 + 0] = r;
+                buffer[i * 4 + 1] = intensity;
+                buffer[i * 4 + 2] = b;
+                buffer[i * 4 + 3] = 255;
             }
 
             // Render to texture
-            // PIXI.Texture.fromBuffer creates a new BaseTexture by default.
-            // We must destroy it after use to prevent memory leaks.
             const texture = PIXI.Texture.fromBuffer(buffer, width, 1);
             const sprite = new PIXI.Sprite(texture);
             sprite.y = scanlineIndex;
@@ -182,7 +168,7 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
             });
 
             sprite.destroy();
-            texture.destroy(true); // true = destroy base texture
+            texture.destroy(true);
         }
     }));
 
@@ -204,7 +190,7 @@ const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, r
 });
 
 interface OverlayRef {
-    scrollAndAddRow: () => void;
+    scrollAndAddRow: (state: SubmarineState) => void;
 }
 
 interface SolutionOverlayProps extends DimensionProps {
@@ -227,7 +213,7 @@ const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, h
 
     useImperativeHandle(ref, () => {
         return {
-            scrollAndAddRow: () => {
+            scrollAndAddRow: (state: SubmarineState) => {
                 if (!containerRef.current) return;
 
                 const container = containerRef.current;
@@ -258,7 +244,7 @@ const SolutionOverlay = forwardRef<OverlayRef, SolutionOverlayProps>(({ width, h
                 const g = currentChunkRef.current!;
 
                 // 3. Draw Solutions
-                const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = useSubmarineStore.getState();
+                const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = state;
                 const ownShip = { x: currX, y: currY, heading: currHeading };
 
                 g.lineStyle(2, 0xffffff, 0.5);
@@ -349,6 +335,18 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
     const scanlineIndex = useRef(0);
     const updateAccumulator = useRef(0);
 
+    // [Ref Pattern] Hold latest state in a ref to avoid stale closures and re-renders
+    // This decouples the initialization (component mount) from the tracker state updates.
+    // We use subscribe() instead of useSelector to prevent re-renders of the SonarInternals component.
+    const latestStateRef = useRef<SubmarineState>(useSubmarineStore.getState());
+
+    useEffect(() => {
+        const unsub = useSubmarineStore.subscribe((state) => {
+            latestStateRef.current = state;
+        });
+        return unsub;
+    }, []);
+
     // Create filter once
     const filter = useMemo(() => {
         const f = new SonarSweepFilter();
@@ -368,7 +366,7 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
         // Update Time for noise
         filterRef.current.uniforms.uTime += delta * 0.01;
 
-        const { timeScale } = useSubmarineStore.getState();
+        const { timeScale } = latestStateRef.current;
         let threshold = 60; // Default MED (1 sec)
         if (timeScale === 'FAST') threshold = 6;
         if (timeScale === 'SLOW') threshold = 180;
@@ -378,8 +376,9 @@ const SonarInternals = ({ width, height, showSolution }: { width: number, height
         if (updateAccumulator.current >= threshold) {
             let loops = 0;
             while (updateAccumulator.current >= threshold && loops < 5) {
-                waterfallRef.current?.drawRow(scanlineIndex.current);
-                overlayRef.current?.scrollAndAddRow();
+                // Pass the latest state explicitly from the ref
+                waterfallRef.current?.drawRow(scanlineIndex.current, latestStateRef.current);
+                overlayRef.current?.scrollAndAddRow(latestStateRef.current);
 
                 scanlineIndex.current += 1;
                 if (scanlineIndex.current >= height) {
