@@ -19,15 +19,26 @@ interface WaterfallRef {
 const Waterfall = forwardRef<WaterfallRef, DimensionProps>(({ width, height }, ref) => {
     const app = useApp();
 
-    const renderTexture = useMemo(() => {
-        return PIXI.RenderTexture.create({ width, height });
-    }, [width, height]);
+    const renderTextureRef = useRef<PIXI.RenderTexture | null>(null);
+
+    // Initialize once on mount
+    if (!renderTextureRef.current) {
+        renderTextureRef.current = PIXI.RenderTexture.create({ width, height });
+    }
+    const renderTexture = renderTextureRef.current;
 
     useEffect(() => {
         return () => {
              renderTexture.destroy(true);
         };
-    }, [renderTexture]);
+    }, []);
+
+    // Handle resize without recreating texture (preserves history)
+    useEffect(() => {
+        if (renderTexture.width !== width || renderTexture.height !== height) {
+             renderTexture.resize(width, height);
+        }
+    }, [width, height, renderTexture]);
 
     useImperativeHandle(ref, () => ({
         drawRow: (scanlineIndex: number) => {
