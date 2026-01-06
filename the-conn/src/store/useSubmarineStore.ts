@@ -62,6 +62,17 @@ export interface Tube {
   status: TubeStatus;
   progress: number;
   weaponData: WeaponData | null;
+  torpedoId?: string;
+}
+
+export interface Torpedo {
+  id: string;
+  position: { x: number; y: number };
+  heading: number;
+  targetHeading: number;
+  speed: number;
+  status: 'RUNNING' | 'DUD' | 'EXPLODED';
+  launchTime: number;
 }
 
 interface SubmarineState {
@@ -83,6 +94,7 @@ interface SubmarineState {
   trackers: Tracker[];
   selectedTrackerId: string | null;
   tubes: Tube[];
+  torpedoes: Torpedo[];
   tickCount: number;
   gameTime: number; // in seconds
   timeScale: TimeScale;
@@ -150,6 +162,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     progress: 0,
     weaponData: null
   })),
+  torpedoes: [],
   tickCount: 0,
   gameTime: 0,
   timeScale: 'FAST',
@@ -219,7 +232,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   loadTube: (tubeId, weaponData) => set((state) => ({
     tubes: state.tubes.map(t =>
       t.id === tubeId && t.status === 'EMPTY'
-        ? { ...t, status: 'LOADING', progress: 0, weaponData }
+        ? { ...t, status: 'LOADING', progress: 0, weaponData, torpedoId: undefined }
         : t
     )
   })),
@@ -248,13 +261,42 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     )
   })),
 
-  fireTube: (tubeId) => set((state) => ({
-    tubes: state.tubes.map(t =>
-      t.id === tubeId && t.status === 'OPEN'
-        ? { ...t, status: 'FIRING', progress: 0 }
-        : t
-    )
-  })),
+  fireTube: (tubeId) => set((state) => {
+    const tube = state.tubes.find(t => t.id === tubeId);
+    if (!tube || tube.status !== 'OPEN' || !tube.weaponData) {
+      return {};
+    }
+
+    const torpedoId = `T-${Date.now()}-${tube.id}`;
+
+    // Get Target Heading from Solution
+    let targetHeading = state.heading;
+    if (state.selectedTrackerId) {
+      const tracker = state.trackers.find(t => t.id === state.selectedTrackerId);
+      if (tracker) {
+        targetHeading = tracker.solution.bearing;
+      }
+    }
+
+    const newTorpedo: Torpedo = {
+      id: torpedoId,
+      position: { x: state.x, y: state.y },
+      heading: state.heading,
+      targetHeading: targetHeading,
+      speed: 20, // Launch speed
+      status: 'RUNNING',
+      launchTime: state.gameTime
+    };
+
+    return {
+      tubes: state.tubes.map(t =>
+        t.id === tubeId
+          ? { ...t, status: 'FIRING', progress: 0, torpedoId }
+          : t
+      ),
+      torpedoes: [...state.torpedoes, newTorpedo]
+    };
+  }),
 
   tick: () =>
     set((state) => {
@@ -311,6 +353,26 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const distance = newSpeed * FEET_PER_KNOT_PER_TICK;
       const newX = state.x + distance * Math.sin(radHeading);
       const newY = state.y + distance * Math.cos(radHeading);
+
+      // Update Torpedoes
+      const newTorpedoes = state.torpedoes.map(torpedo => {
+        let newSpeed = torpedo.speed;
+        if (newSpeed < 45) {
+          newSpeed += 0.5; // Accelerate
+          if (newSpeed > 45) newSpeed = 45;
+        }
+
+        const torpRadHeading = (torpedo.heading * Math.PI) / 180;
+        const torpDist = newSpeed * FEET_PER_KNOT_PER_TICK;
+        const torpNewX = torpedo.position.x + torpDist * Math.sin(torpRadHeading);
+        const torpNewY = torpedo.position.y + torpDist * Math.cos(torpRadHeading);
+
+        return {
+          ...torpedo,
+          speed: newSpeed,
+          position: { x: torpNewX, y: torpNewY }
+        };
+      });
 
       // Sensor Simulation
       const newSensorReadings = state.contacts.reduce((acc, contact) => {
@@ -421,7 +483,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         tickCount: newTickCount,
         gameTime: newGameTime,
         trackers: newTrackers,
-        tubes: newTubes
+        tubes: newTubes,
+        torpedoes: newTorpedoes
       };
     }),
 }));

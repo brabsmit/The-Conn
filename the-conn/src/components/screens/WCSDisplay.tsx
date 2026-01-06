@@ -109,6 +109,9 @@ const WCSDisplay = () => {
             case 'MUZZLE':
                 openTube(selectedTube.id);
                 break;
+            case 'FIRE':
+                useSubmarineStore.getState().fireTube(selectedTube.id);
+                break;
         }
     };
 
@@ -119,6 +122,7 @@ const WCSDisplay = () => {
             case 'FLOOD': return selectedTube.status === 'DRY';
             case 'EQUALIZE': return selectedTube.status === 'WET';
             case 'MUZZLE': return selectedTube.status === 'EQUALIZED';
+            case 'FIRE': return selectedTube.status === 'OPEN';
             default: return false;
         }
     };
@@ -198,8 +202,8 @@ const WCSDisplay = () => {
                 </div>
 
                 {/* Right Panel: Action Keys */}
-                <div className="w-1/3 grid grid-cols-2 grid-rows-2 gap-4">
-                     {['LOAD', 'FLOOD', 'EQUALIZE', 'MUZZLE'].map(action => {
+                <div className="w-1/3 grid grid-cols-2 gap-4">
+                     {['LOAD', 'FLOOD', 'EQUALIZE', 'MUZZLE', 'FIRE'].map(action => {
                          const enabled = isActionEnabled(action);
                          return (
                              <button
