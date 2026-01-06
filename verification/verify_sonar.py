@@ -1,28 +1,28 @@
+from playwright.sync_api import sync_playwright
+import time
 
-import asyncio
-from playwright.async_api import async_playwright, expect
+def verify_sonar_display():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto("http://localhost:5173")
 
-async def verify_sonar_update():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+            # Wait for Sonar Panel to load
+            # The panel title is "Sonar Array"
+            page.get_by_text("Sonar Array").wait_for()
 
-        # Navigate to the app
-        await page.goto("http://localhost:5173")
+            # Wait for some ticks to happen so waterfall generates
+            print("Waiting for sonar to populate...")
+            time.sleep(5)
 
-        # Wait for the Sonar Display to be visible (canvas)
-        await page.wait_for_selector("canvas")
+            # Take screenshot
+            page.screenshot(path="verification/sonar_display.png")
+            print("Screenshot taken.")
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            browser.close()
 
-        # Wait for simulation to run for a bit (10 seconds) to accumulate history
-        # We want to see if history is being generated.
-        print("Waiting for simulation to run...")
-        await asyncio.sleep(10)
-
-        # Take a screenshot
-        await page.screenshot(path="verification/sonar_display.png")
-        print("Screenshot taken.")
-
-        await browser.close()
-
-if __name__ == "__main__":
-    asyncio.run(verify_sonar_update())
+if __name__ == '__main__':
+    verify_sonar_display()

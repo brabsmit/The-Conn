@@ -12,7 +12,6 @@ import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../..
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
 
 // Update Rates
-const RATE_FAST = 0; // Every tick
 const RATE_MED = 1000; // 1 second
 const RATE_SLOW = 6000; // 6 seconds
 
@@ -31,67 +30,93 @@ interface WaterfallProps extends DimensionProps {
 }
 
 const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, viewScale }, ref) => {
-    const app = useApp();
+    // The persistent memory
+    const historyRef = useRef<{
+        fast: Uint8Array,
+        med: Uint8Array,
+        slow: Uint8Array
+    } | null>(null);
 
-    const renderTextureFastRef = useRef<PIXI.RenderTexture | null>(null);
-    const renderTextureMedRef = useRef<PIXI.RenderTexture | null>(null);
-    const renderTextureSlowRef = useRef<PIXI.RenderTexture | null>(null);
+    // Texture Refs (for display)
+    const textureFastRef = useRef<PIXI.Texture | null>(null);
+    const textureMedRef = useRef<PIXI.Texture | null>(null);
+    const textureSlowRef = useRef<PIXI.Texture | null>(null);
 
     // Indices for each buffer
     const scanlineFastRef = useRef(0);
     const scanlineMedRef = useRef(0);
     const scanlineSlowRef = useRef(0);
 
-    // Initialize textures
-    if (!renderTextureFastRef.current) renderTextureFastRef.current = PIXI.RenderTexture.create({ width, height });
-    if (!renderTextureMedRef.current) renderTextureMedRef.current = PIXI.RenderTexture.create({ width, height });
-    if (!renderTextureSlowRef.current) renderTextureSlowRef.current = PIXI.RenderTexture.create({ width, height });
+    // Initialize history buffers ONCE
+    useEffect(() => {
+        if (!historyRef.current) {
+            // Initialize with current dimensions.
+            // Note: If width/height are 0 initially, we handle resize in the next effect.
+            const size = width * height * 4;
+            // Ensure non-zero size if possible, or allow 0 and resize later.
 
+             historyRef.current = {
+                fast: new Uint8Array(Math.max(0, size)),
+                med: new Uint8Array(Math.max(0, size)),
+                slow: new Uint8Array(Math.max(0, size))
+            };
+        }
+    }, []); // STRICTLY EMPTY DEPENDENCIES
+
+    // Handle Resize and Texture Management
+    useEffect(() => {
+        if (!historyRef.current) return;
+
+        const size = width * height * 4;
+        if (size <= 0) return;
+
+        // Check if buffer size matches current dimensions
+        if (historyRef.current.fast.length !== size) {
+            // Resize needed. We lose history on resize (acceptable for window resize).
+            historyRef.current.fast = new Uint8Array(size);
+            historyRef.current.med = new Uint8Array(size);
+            historyRef.current.slow = new Uint8Array(size);
+
+            scanlineFastRef.current = 0;
+            scanlineMedRef.current = 0;
+            scanlineSlowRef.current = 0;
+
+            // Destroy old textures
+            textureFastRef.current?.destroy(true); textureFastRef.current = null;
+            textureMedRef.current?.destroy(true); textureMedRef.current = null;
+            textureSlowRef.current?.destroy(true); textureSlowRef.current = null;
+        }
+
+        // Ensure textures exist
+        const ensureTexture = (texRef: React.MutableRefObject<PIXI.Texture | null>, buffer: Uint8Array) => {
+            if (!texRef.current) {
+                texRef.current = PIXI.Texture.fromBuffer(buffer, width, height);
+            }
+        };
+
+        ensureTexture(textureFastRef, historyRef.current.fast);
+        ensureTexture(textureMedRef, historyRef.current.med);
+        ensureTexture(textureSlowRef, historyRef.current.slow);
+
+    }, [width, height]);
+
+    // Cleanup textures on unmount
     useEffect(() => {
         return () => {
-             renderTextureFastRef.current?.destroy(true);
-             renderTextureMedRef.current?.destroy(true);
-             renderTextureSlowRef.current?.destroy(true);
+             textureFastRef.current?.destroy(true);
+             textureMedRef.current?.destroy(true);
+             textureSlowRef.current?.destroy(true);
         };
     }, []);
 
-    // Handle resize
-    useEffect(() => {
-        const resize = (tex: PIXI.RenderTexture | null) => {
-             if (tex && (tex.width !== width || tex.height !== height)) {
-                 tex.resize(width, height);
-             }
-        };
-        resize(renderTextureFastRef.current);
-        resize(renderTextureMedRef.current);
-        resize(renderTextureSlowRef.current);
-    }, [width, height]);
-
-    // Internal helper to render a buffer to a texture
-    const renderToTexture = (texture: PIXI.RenderTexture, buffer: Uint8Array, scanline: number) => {
-        if (!app || !texture.valid) return;
-
-        const lineTexture = PIXI.Texture.fromBuffer(buffer, width, 1);
-        const sprite = new PIXI.Sprite(lineTexture);
-        sprite.y = scanline;
-
-        app.renderer.render(sprite, {
-            renderTexture: texture,
-            clear: false
-        });
-
-        sprite.destroy();
-        lineTexture.destroy(true);
-    };
-
     useImperativeHandle(ref, () => ({
         processTick: (state: SubmarineState, updateMed: boolean, updateSlow: boolean) => {
-            // Check which buffers need updates
             const updateFast = true; // Always update FAST
-
             if (!updateFast && !updateMed && !updateSlow) return;
+            if (!historyRef.current) return;
+            if (width === 0 || height === 0) return;
 
-            // Generate Pixel Buffer ONCE
+            // Generate Pixel Buffer for ONE line
             const pixelBuffer = new Uint8Array(width * 4);
             const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel } = state;
 
@@ -186,21 +211,25 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
                 pixelBuffer[i * 4 + 3] = 255;
             }
 
-            // Write to appropriate textures
-            if (updateFast && renderTextureFastRef.current) {
-                renderToTexture(renderTextureFastRef.current, pixelBuffer, scanlineFastRef.current);
-                scanlineFastRef.current = (scanlineFastRef.current + 1) % height;
-            }
-            if (updateMed && renderTextureMedRef.current) {
-                renderToTexture(renderTextureMedRef.current, pixelBuffer, scanlineMedRef.current);
-                scanlineMedRef.current = (scanlineMedRef.current + 1) % height;
-            }
-            if (updateSlow && renderTextureSlowRef.current) {
-                renderToTexture(renderTextureSlowRef.current, pixelBuffer, scanlineSlowRef.current);
-                scanlineSlowRef.current = (scanlineSlowRef.current + 1) % height;
-            }
+            // Write to history buffers and update textures
+            const updateTexture = (
+                buffer: Uint8Array,
+                tex: PIXI.Texture | null,
+                scanlineRef: React.MutableRefObject<number>
+            ) => {
+                if (!tex) return;
+                const offset = scanlineRef.current * width * 4;
+                if (offset + pixelBuffer.length <= buffer.length) {
+                    buffer.set(pixelBuffer, offset);
+                    tex.update(); // Mark texture as dirty for GPU upload
+                }
+                scanlineRef.current = (scanlineRef.current + 1) % height;
+            };
+
+            if (updateFast) updateTexture(historyRef.current.fast, textureFastRef.current, scanlineFastRef);
+            if (updateMed) updateTexture(historyRef.current.med, textureMedRef.current, scanlineMedRef);
+            if (updateSlow) updateTexture(historyRef.current.slow, textureSlowRef.current, scanlineSlowRef);
         },
-        // Expose current scanline based on viewScale for shader
         getCurrentScanline: () => {
             if (viewScale === 'FAST') return scanlineFastRef.current;
             if (viewScale === 'MED') return scanlineMedRef.current;
@@ -208,9 +237,9 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
         }
     }));
 
-    let activeTexture = renderTextureFastRef.current;
-    if (viewScale === 'MED') activeTexture = renderTextureMedRef.current;
-    if (viewScale === 'SLOW') activeTexture = renderTextureSlowRef.current;
+    let activeTexture = textureFastRef.current;
+    if (viewScale === 'MED') activeTexture = textureMedRef.current;
+    if (viewScale === 'SLOW') activeTexture = textureSlowRef.current;
 
     return (
         <Sprite
