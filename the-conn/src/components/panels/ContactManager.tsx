@@ -31,31 +31,35 @@ export const ContactManager = () => {
                 ) : (
                     trackers.map((tracker) => {
                         const isSelected = selectedTrackerId === tracker.id;
+                        const isSub = tracker.classification === 'SUB';
                         return (
                             <div
                                 key={tracker.id}
                                 onClick={() => setSelectedTracker(tracker.id)}
                                 className={`flex items-center px-2 py-2 border-b border-white/5 cursor-pointer transition-colors ${
+                                    isSub ? 'animate-pulse bg-red-900/40 border-red-900/50' :
                                     isSelected
                                         ? 'bg-amber-900/30 text-amber-200'
                                         : 'hover:bg-white/5 text-zinc-400'
                                 }`}
                             >
                                 {/* ID */}
-                                <div className={`w-12 font-bold text-center ${isSelected ? 'text-amber-400' : 'text-zinc-500'}`}>
+                                <div className={`w-12 font-bold text-center flex items-center justify-center ${isSelected ? 'text-amber-400' : isSub ? 'text-red-500' : 'text-zinc-500'}`}>
+                                    {isSub && <span className="mr-1 text-red-500">⚠</span>}
                                     {tracker.id}
                                 </div>
 
                                 {/* Bearing */}
-                                <div className="w-16 text-center tabular-nums font-mono text-zinc-300">
+                                <div className={`w-16 text-center tabular-nums font-mono ${isSub ? 'text-red-200' : 'text-zinc-300'}`}>
                                     {tracker.currentBearing.toFixed(0).padStart(3, '0')}
                                 </div>
 
                                 {/* Class */}
-                                <div className={`flex-grow text-center ${
-                                    tracker.classificationStatus === 'PENDING' ? 'text-zinc-600 italic' :
+                                <div className={`flex-grow text-center font-bold ${
+                                    tracker.classificationStatus === 'PENDING' ? 'text-zinc-600 italic font-normal' :
                                     tracker.classification === 'MERCHANT' ? 'text-blue-400' :
-                                    tracker.classification === 'ESCORT' || tracker.classification === 'SUB' ? 'text-red-400' :
+                                    tracker.classification === 'ESCORT' ? 'text-red-400' :
+                                    tracker.classification === 'SUB' ? 'text-red-500' :
                                     'text-green-400'
                                 }`}>
                                     {tracker.classificationStatus === 'PENDING' ? 'PENDING...' : tracker.classification || 'UNKNOWN'}

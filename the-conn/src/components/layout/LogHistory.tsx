@@ -40,7 +40,10 @@ export const LogHistory = ({ onClose }: LogHistoryProps) => {
       {sortedLogs.map((log, i) => (
         <div key={i} className="px-3 py-1 border-b border-white/5 hover:bg-white/5 text-zinc-300 flex">
            <span className="text-zinc-500 mr-2 shrink-0">[{formatTime(log.timestamp)}]</span>
-           <span className={log.message.includes('MERCHANT') ? 'text-green-400' : 'text-amber-400'}>
+           <span className={
+               log.type === 'ALERT' ? 'text-red-500 font-bold' :
+               log.message.includes('MERCHANT') ? 'text-green-400' : 'text-amber-400'
+           }>
              {log.message}
            </span>
         </div>

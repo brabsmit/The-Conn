@@ -119,7 +119,8 @@ interface SubmarineState {
 
   // Sensor Data
   sensorReadings: SensorReading[];
-  logs: { message: string; timestamp: number }[];
+  logs: { message: string; timestamp: number; type?: 'INFO' | 'ALERT' }[];
+  alertLevel: 'NORMAL' | 'COMBAT';
 
   // Tracker Data
   trackers: Tracker[];
@@ -140,7 +141,7 @@ interface SubmarineState {
   setOrderedHeading: (heading: number) => void;
   setOrderedSpeed: (speed: number) => void;
   setOrderedDepth: (depth: number) => void;
-  addLog: (message: string) => void;
+  addLog: (message: string, type?: 'INFO' | 'ALERT') => void;
   designateTracker: (bearing: number) => void;
   setSelectedTracker: (id: string | null) => void;
   deleteTracker: (id: string) => void;
@@ -204,6 +205,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   }],
   sensorReadings: [],
   logs: [],
+  alertLevel: 'NORMAL',
   trackers: [],
   selectedTrackerId: null,
   tubes: Array.from({ length: 4 }, (_, i) => ({
@@ -225,7 +227,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
   setOrderedDepth: (depth) => set({ orderedDepth: Math.max(0, Math.min(1200, depth)) }),
 
-  addLog: (message) => set((state) => ({ logs: [...state.logs, { message, timestamp: state.gameTime }].slice(-50) })),
+  addLog: (message, type = 'INFO') => set((state) => ({ logs: [...state.logs, { message, timestamp: state.gameTime, type }].slice(-50) })),
 
   designateTracker: (bearing) => set((state) => {
     const id = `S${state.trackers.length + 1}`;
@@ -346,7 +348,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     transients: newState.transients || [],
     sensorReadings: newState.sensorReadings || [],
     tickCount: 0,
-    gameTime: 0
+    gameTime: 0,
+    alertLevel: 'NORMAL'
   })),
 
   fireTube: (tubeId, designatedTargetId, enableRange, gyroAngle) => set((state) => {
@@ -734,12 +737,21 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                 updatedTracker.classification = type;
 
                 // Log
-                newLogs = [...newLogs, { message: `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`, timestamp: newGameTime }].slice(-50);
+                const isHostile = type === 'SUB';
+                newLogs = [...newLogs, {
+                    message: `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`,
+                    timestamp: newGameTime,
+                    type: isHostile ? 'ALERT' : 'INFO'
+                }].slice(-50);
             }
         }
 
         return updatedTracker;
       });
+
+      // Update Alert Level
+      const combatActive = newTrackers.some(t => t.classification === 'SUB');
+      const newAlertLevel = combatActive ? 'COMBAT' : 'NORMAL';
 
       // Every 60 ticks (approx 1 sec), record history
       let newOwnShipHistory = state.ownShipHistory;
@@ -838,7 +850,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         torpedoes: activeTorpedoes,
         ownshipNoiseLevel: totalNoise,
         cavitating: isCavitating,
-        transients: newTransients
+        transients: newTransients,
+        alertLevel: newAlertLevel
       };
     }),
 }));

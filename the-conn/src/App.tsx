@@ -10,6 +10,7 @@ import { TMAControls } from './components/panels/TMAControls';
 import { ContactManager } from './components/panels/ContactManager';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
+import { AlertOverlay } from './components/effects/AlertOverlay';
 
 function App() {
   const tick = useSubmarineStore(state => state.tick);
@@ -22,13 +23,14 @@ function App() {
 
   return (
     // MAIN CONTAINER: Triptych Layout
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-bulkhead bg-noise font-mono">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-bulkhead bg-noise font-mono relative">
+      <AlertOverlay />
       
       {/* LAYER 1: Top Bar (Fixed Height) */}
       <TopBar />
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
-      <div className="flex-grow flex w-full overflow-hidden p-4 gap-4 relative">
+      <div className="flex-grow flex w-full overflow-hidden p-4 gap-4 relative z-10">
         
         {/* PANE A: Sonar Panel (Left) */}
         <div className="w-[350px] flex-shrink-0 h-full flex flex-col gap-4">
@@ -115,7 +117,7 @@ function App() {
       </div>
 
       {/* LAYER 3: Helm Strip (Bottom, Fixed Height) */}
-      <div className="h-[100px] w-full flex-shrink-0 px-4 pb-4">
+      <div className="h-[100px] w-full flex-shrink-0 px-4 pb-4 z-10">
           <HelmScreen />
       </div>
 

@@ -128,7 +128,9 @@ export const TopBar = () => {
             className={`font-mono text-sm truncate max-w-[600px] transition-all duration-300 outline-none ${
                 flash
                   ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] scale-105'
-                  : 'text-amber-500 hover:text-amber-400'
+                  : latestLog?.type === 'ALERT'
+                    ? 'text-red-500 font-bold drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'
+                    : 'text-amber-500 hover:text-amber-400'
             }`}
         >
             {latestLog ? latestLog.message : "SYSTEM READY"}
