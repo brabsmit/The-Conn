@@ -73,6 +73,7 @@ export interface Tracker {
   classificationStatus: 'PENDING' | 'CLASSIFIED';
   timeToClassify: number;
   classification?: string;
+  kind?: 'SENSOR' | 'WEAPON';
 }
 
 export type TubeStatus = 'EMPTY' | 'LOADING' | 'DRY' | 'FLOODING' | 'WET' | 'EQUALIZING' | 'EQUALIZED' | 'OPENING' | 'OPEN' | 'FIRING';
@@ -108,6 +109,7 @@ export interface Torpedo {
   enableRange: number; // Distance at which to start searching
   gyroAngle: number; // Initial heading
   distanceTraveled: number;
+  isHostile?: boolean;
   history?: EntityHistory[];
 }
 
@@ -154,6 +156,7 @@ interface SubmarineState {
   sensorReadings: SensorReading[];
   logs: { message: string; timestamp: number; type?: 'INFO' | 'ALERT' }[];
   alertLevel: 'NORMAL' | 'COMBAT';
+  incomingTorpedoDetected: boolean;
 
   // Tracker Data
   trackers: Tracker[];
@@ -246,6 +249,7 @@ const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrder
   sensorReadings: [],
   logs: [],
   alertLevel: 'NORMAL',
+  incomingTorpedoDetected: false,
   trackers: [],
   selectedTrackerId: null,
   tubes: Array.from({ length: 4 }, (_, i) => ({
@@ -414,6 +418,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     tickCount: 0,
     gameTime: 0,
     alertLevel: 'NORMAL',
+    incomingTorpedoDetected: false,
     scriptedEvents: [],
     visualTransients: [],
     gameState: 'RUNNING'
@@ -447,6 +452,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       enableRange: launchEnableRange,
       gyroAngle: launchHeading,
       distanceTraveled: 0,
+      isHostile: false,
       history: []
     };
 
@@ -725,6 +731,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           enableRange: 500,
           gyroAngle: req.heading,
           distanceTraveled: 0,
+          isHostile: true,
           history: []
       }));
 
@@ -967,6 +974,94 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
       const allTorpedoes = [...newTorpedoes, ...generatedTorpedoes];
 
+      const newTickCount = state.tickCount + 1;
+      const newGameTime = state.gameTime + (1/60);
+
+      // Detect Incoming Torpedoes
+      let newIncomingTorpedoDetected = false;
+      const weaponTrackers: Tracker[] = [];
+
+      allTorpedoes.forEach(torp => {
+          if (torp.status === 'RUNNING' && torp.isHostile) {
+              const dx = torp.position.x - newX;
+              const dy = torp.position.y - newY;
+              const distYards = Math.sqrt(dx*dx + dy*dy) / 3;
+
+              // Check Baffles
+              const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+              const trueBearing = normalizeAngle(90 - mathAngle);
+              const relBearing = normalizeAngle(trueBearing - newHeading);
+              const inBaffles = relBearing > 150 && relBearing < 210;
+
+              const active = torp.searchMode === 'ACTIVE' && distYards < 4000;
+              const passive = distYards < (inBaffles ? 1000 : 3000);
+
+              if (active || passive) {
+                  newIncomingTorpedoDetected = true;
+
+                  // Update or Create Weapon Tracker
+                  const trackerId = `W-${torp.id}`;
+                  let tracker = state.trackers.find(t => t.id === trackerId);
+
+                  // Solution Logic (Truth + Noise if passive)
+                  let solX = torp.position.x;
+                  let solY = torp.position.y;
+
+                  if (!active) {
+                      // Add some noise for passive detection
+                      solX += gaussianRandom(0, 50);
+                      solY += gaussianRandom(0, 50);
+                  }
+
+                  if (!tracker) {
+                      newLogs = [...newLogs, {
+                          message: `Conn, Sonar: TORPEDO DETECTED! Bearing ${Math.round(trueBearing)}!`,
+                          timestamp: newGameTime,
+                          type: 'ALERT'
+                      }].slice(-50);
+
+                      tracker = {
+                          id: trackerId,
+                          kind: 'WEAPON',
+                          currentBearing: relBearing, // Keep it relative for display
+                          bearingHistory: [],
+                          solution: {
+                              speed: torp.speed,
+                              range: distYards,
+                              course: torp.heading,
+                              bearing: trueBearing,
+                              anchorTime: newGameTime,
+                              anchorOwnShip: { x: newX, y: newY, heading: newHeading },
+                              computedWorldX: solX,
+                              computedWorldY: solY
+                          },
+                          classificationStatus: 'CLASSIFIED',
+                          timeToClassify: 0,
+                          classification: 'TORPEDO'
+                      };
+                  } else {
+                       // Update existing weapon tracker
+                       tracker = {
+                           ...tracker,
+                           currentBearing: relBearing,
+                           solution: {
+                               ...tracker.solution,
+                               speed: torp.speed,
+                               range: distYards,
+                               course: torp.heading,
+                               bearing: trueBearing,
+                               anchorTime: newGameTime,
+                               anchorOwnShip: { x: newX, y: newY, heading: newHeading },
+                               computedWorldX: solX,
+                               computedWorldY: solY
+                           }
+                       };
+                  }
+                  weaponTrackers.push(tracker);
+              }
+          }
+      });
+
       // Sensor Simulation
       const newSensorReadings = newContacts.reduce((acc, contact) => {
         // Skip destroyed contacts in sensors
@@ -996,9 +1091,6 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         return acc;
       }, [] as SensorReading[]);
 
-      const newTickCount = state.tickCount + 1;
-      const newGameTime = state.gameTime + (1/60);
-
       // Process Scripted Events
       let remainingEvents = [];
       let trackersToDelete: string[] = [];
@@ -1024,8 +1116,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       }
       newScriptedEvents = remainingEvents;
 
-      // Update Trackers
-      let newTrackers = state.trackers.map(tracker => {
+      // Update Trackers (Sensors + Weapons)
+      let newTrackers = state.trackers.filter(t => t.kind !== 'WEAPON').map(tracker => {
         let updatedTracker = { ...tracker };
 
         // Follow contact if locked
@@ -1060,15 +1152,26 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         return updatedTracker;
       });
 
+      // Merge Weapon Trackers
+      newTrackers = [...newTrackers, ...weaponTrackers];
+
       // Filter deleted trackers
       if (trackersToDelete.length > 0) {
           newTrackers = newTrackers.filter(t => !trackersToDelete.includes(t.id));
       }
 
       // Update Alert Level
-      // Combat if any active tracker is SUB
-      const combatActive = newTrackers.some(t => t.classification === 'SUB');
+      // Combat if any active tracker is SUB or Incoming Torpedo
+      const combatActive = newTrackers.some(t => t.classification === 'SUB') || newIncomingTorpedoDetected;
       let newAlertLevel = combatActive ? 'COMBAT' : 'NORMAL';
+
+      // Log All Clear
+      if (state.incomingTorpedoDetected && !newIncomingTorpedoDetected) {
+          newLogs = [...newLogs, {
+              message: `Conn, Sonar: Torpedo noise ceasing. Contact lost.`,
+              timestamp: newGameTime
+          }].slice(-50);
+      }
 
       // Clean up old visual transients (> 5 seconds)
       newVisualTransients = newVisualTransients.filter(t => newGameTime - t.timestamp < 5);
@@ -1215,7 +1318,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         transients: newTransients,
         visualTransients: newVisualTransients,
         scriptedEvents: newScriptedEvents,
-        alertLevel: newAlertLevel
+        alertLevel: newAlertLevel,
+        incomingTorpedoDetected: newIncomingTorpedoDetected
       };
     }),
 }));

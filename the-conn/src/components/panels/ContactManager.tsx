@@ -15,6 +15,7 @@ export const ContactManager = () => {
     useInterval(() => {
         const state = useSubmarineStore.getState();
         const active = state.trackers.filter(t => {
+            if (t.kind === 'WEAPON') return true;
             const c = state.contacts.find(c => c.id === t.contactId);
             return !c || c.status !== 'DESTROYED';
         });
@@ -44,12 +45,15 @@ export const ContactManager = () => {
                     trackers.map((tracker) => {
                         const isSelected = selectedTrackerId === tracker.id;
                         const isSub = tracker.classification === 'SUB';
+                        const isWeapon = tracker.kind === 'WEAPON';
+
                         return (
                             <div
                                 key={tracker.id}
                                 onClick={() => setSelectedTracker(tracker.id)}
                                 className={`flex items-center px-2 py-2 border-b border-white/5 cursor-pointer transition-colors ${
                                     isSub ? 'animate-pulse bg-red-900/40 border-red-900/50' :
+                                    isWeapon ? 'bg-red-900/60 border-red-500 text-red-100 animate-pulse' :
                                     isSelected
                                         ? 'bg-amber-900/30 text-amber-200'
                                         : 'hover:bg-white/5 text-zinc-400'
@@ -58,11 +62,12 @@ export const ContactManager = () => {
                                 {/* ID */}
                                 <div className={`w-12 font-bold text-center flex items-center justify-center ${isSelected ? 'text-amber-400' : isSub ? 'text-red-500' : 'text-zinc-500'}`}>
                                     {isSub && <span className="mr-1 text-red-500">⚠</span>}
+                                    {isWeapon && <span className="mr-1 text-red-500">🚀</span>}
                                     {tracker.id}
                                 </div>
 
                                 {/* Bearing */}
-                                <div className={`w-16 text-center tabular-nums font-mono ${isSub ? 'text-red-200' : 'text-zinc-300'}`}>
+                                <div className={`w-16 text-center tabular-nums font-mono ${isSub || isWeapon ? 'text-red-200' : 'text-zinc-300'}`}>
                                     {((tracker.currentBearing + heading) % 360).toFixed(0).padStart(3, '0')}
                                 </div>
 
@@ -72,6 +77,7 @@ export const ContactManager = () => {
                                     tracker.classification === 'MERCHANT' ? 'text-blue-400' :
                                     tracker.classification === 'ESCORT' ? 'text-red-400' :
                                     tracker.classification === 'SUB' ? 'text-red-500' :
+                                    tracker.classification === 'TORPEDO' ? 'text-red-500 font-black' :
                                     'text-green-400'
                                 }`}>
                                     {tracker.classificationStatus === 'PENDING' ? 'PENDING...' : tracker.classification || 'UNKNOWN'}

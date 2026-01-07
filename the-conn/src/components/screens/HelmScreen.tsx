@@ -12,8 +12,11 @@ export const HelmScreen = () => {
   const setOrderedHeading = useSubmarineStore(state => state.setOrderedHeading);
   const setOrderedSpeed = useSubmarineStore(state => state.setOrderedSpeed);
   const setOrderedDepth = useSubmarineStore(state => state.setOrderedDepth);
+  const addLog = useSubmarineStore(state => state.addLog);
 
   const cavitating = useSubmarineStore(state => state.cavitating);
+  const alertLevel = useSubmarineStore(state => state.alertLevel);
+  const incomingTorpedoDetected = useSubmarineStore(state => state.incomingTorpedoDetected);
 
   // Use refs for high-frequency updates (actual values)
   const headingRef = useRef<HTMLSpanElement>(null);
@@ -124,6 +127,22 @@ export const HelmScreen = () => {
                      />
                 </div>
             </div>
+
+            {/* EMERGENCY EVASION */}
+            {alertLevel === 'COMBAT' && incomingTorpedoDetected && (
+                <div className="flex-1 flex items-center justify-center">
+                    <button
+                        onClick={() => {
+                            setOrderedSpeed(30);
+                            setOrderedDepth(800);
+                            addLog("Conn, Helm: Evasion! Cavitating! Making for depth!", "ALERT");
+                        }}
+                        className="w-full h-14 bg-red-900 border-2 border-red-500 text-white font-bold animate-pulse hover:bg-red-700 shadow-[0_0_15px_rgba(239,68,68,0.5)] tracking-widest"
+                    >
+                        EMERGENCY EVASION
+                    </button>
+                </div>
+            )}
 
         </div>
     </Panel>
