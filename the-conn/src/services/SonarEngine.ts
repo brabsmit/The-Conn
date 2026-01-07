@@ -225,11 +225,38 @@ class SonarEngine {
         const local = this.stage!.toLocal(e.global);
 
         const x = local.x;
-        const signedBearing = (x / this.width) * 300 - 150;
-        let bearing = signedBearing;
-        if (bearing < 0) bearing += 360;
 
-        useSubmarineStore.getState().designateTracker(bearing);
+        // Inverse Mapping: ScreenX -> ViewAngle -> RelativeBearing
+        // ScreenX = (viewAngle / 300) * CanvasWidth
+        // viewAngle = (ScreenX / CanvasWidth) * 300
+        const viewAngle = (x / this.width) * 300;
+
+        let relBearing = 0;
+
+        // If viewAngle <= 150 (Left half), it maps to 210..360
+        // If viewAngle > 150 (Right half), it maps to 0..150
+        // Wait:
+        // 210 -> 0 (viewAngle)
+        // 360 -> 150
+        // 0 -> 150
+        // 150 -> 300
+
+        // Inverse:
+        // if viewAngle <= 150: rb = viewAngle + 210
+        // if viewAngle > 150: rb = viewAngle - 150
+
+        // Edge case: viewAngle = 150. rb = 360 (0).
+        // viewAngle = 150.1 -> rb = 0.1
+
+        if (viewAngle <= 150) {
+            relBearing = viewAngle + 210;
+        } else {
+            relBearing = viewAngle - 150;
+        }
+
+        relBearing = normalizeAngle(relBearing);
+
+        useSubmarineStore.getState().designateTracker(relBearing);
     }
 
     private tick(delta: number): void {
@@ -280,6 +307,21 @@ class SonarEngine {
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
         const signalBuffer = new Float32Array(width).fill(0);
 
+        // Helper for Viewport Mapping (300 deg)
+        const getScreenX = (relBearing: number): number | null => {
+            // Baffles: 150 < rb < 210
+            if (relBearing > 150 && relBearing < 210) return null;
+
+            let viewAngle = 0;
+            if (relBearing >= 210) {
+                viewAngle = relBearing - 210; // 210..360 -> 0..150
+            } else {
+                viewAngle = relBearing + 150; // 0..150 -> 150..300
+            }
+
+            return Math.floor((viewAngle / 300) * width);
+        };
+
         // 1. Contacts
         sensorReadings.forEach((reading) => {
             const contact = contacts.find(c => c.id === reading.contactId);
@@ -300,11 +342,11 @@ class SonarEngine {
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
             signal = Math.max(0, signal - selfNoisePenalty);
 
-            let signedBearing = reading.bearing;
-            if (signedBearing > 180) signedBearing -= 360;
+            // reading.bearing is already Relative (0-360) (noisy) from Store
+            const rb = normalizeAngle(reading.bearing);
+            const cx = getScreenX(rb);
 
-            if (signedBearing >= -150 && signedBearing <= 150) {
-                 const cx = Math.floor(((signedBearing + 150) / 300) * width);
+            if (cx !== null) {
                  for (let off = -1; off <= 2; off++) {
                      const x = cx + off;
                      if (x >= 0 && x < width) {
@@ -327,10 +369,11 @@ class SonarEngine {
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
-            const relBearing = getShortestAngle(trueBearing, ownHeading);
+            const relBearing = normalizeAngle(trueBearing - ownHeading);
 
-            if (relBearing >= -150 && relBearing <= 150) {
-                 const cx = Math.floor(((relBearing + 150) / 300) * width);
+            const cx = getScreenX(relBearing);
+
+            if (cx !== null) {
                  for (let off = -1; off <= 1; off++) {
                      const x = cx + off;
                      if (x >= 0 && x < width) {
@@ -349,9 +392,11 @@ class SonarEngine {
             const decay = Math.max(0, 1 - (age / 3.0));
             if (decay <= 0) return;
 
-            const relBearing = getShortestAngle(t.bearing, ownHeading);
-            if (relBearing >= -150 && relBearing <= 150) {
-                 const cx = Math.floor(((relBearing + 150) / 300) * width);
+            // t.bearing is True Bearing
+            const relBearing = normalizeAngle(t.bearing - ownHeading);
+            const cx = getScreenX(relBearing);
+
+            if (cx !== null) {
                  const spread = 2;
                  for (let off = -spread; off <= spread; off++) {
                      const x = cx + off;
@@ -457,28 +502,39 @@ class SonarEngine {
             const dy = targetPos.y - ownShip.y;
             let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
             trueBearing = normalizeAngle(trueBearing);
-            const relBearing = getShortestAngle(trueBearing, ownShip.heading);
 
-            if (relBearing >= -150 && relBearing <= 150) {
-                const x = ((relBearing + 150) / 300) * width;
-                const lastX = ctx.lastPoints.get(tracker.id);
-                const isNewChunk = ctx.pixelCount === 1;
+            const relBearing = normalizeAngle(trueBearing - ownShip.heading);
 
-                if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
-                    g.moveTo(lastX, localY + 1);
-                    g.lineTo(x, localY);
-                } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
-                    g.moveTo(lastX, localY + 1);
-                    g.lineTo(x, localY);
-                } else {
-                    g.beginFill(0xffffff);
-                    g.drawRect(x, localY, 1, 1);
-                    g.endFill();
-                }
-                ctx.lastPoints.set(tracker.id, x);
-            } else {
-                ctx.lastPoints.delete(tracker.id);
+            // Mapping: 210..360..150
+            // Baffles: 150 < rb < 210
+            if (relBearing > 150 && relBearing < 210) {
+                 ctx.lastPoints.delete(tracker.id);
+                 return;
             }
+
+            let viewAngle = 0;
+            if (relBearing >= 210) {
+                viewAngle = relBearing - 210;
+            } else {
+                viewAngle = relBearing + 150;
+            }
+
+            const x = (viewAngle / 300) * width;
+            const lastX = ctx.lastPoints.get(tracker.id);
+            const isNewChunk = ctx.pixelCount === 1;
+
+            if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
+                g.moveTo(lastX, localY + 1);
+                g.lineTo(x, localY);
+            } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
+                g.moveTo(lastX, localY + 1);
+                g.lineTo(x, localY);
+            } else {
+                g.beginFill(0xffffff);
+                g.drawRect(x, localY, 1, 1);
+                g.endFill();
+            }
+            ctx.lastPoints.set(tracker.id, x);
         });
     }
 }

@@ -1048,13 +1048,25 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       let newOwnShipHistory = state.ownShipHistory;
       if (newTickCount % 60 === 0) {
         newTrackers = newTrackers.map(tracker => {
-          let newHistory = [
-            ...tracker.bearingHistory,
-            { time: newGameTime, bearing: tracker.currentBearing }
-          ];
-          if (newHistory.length > MAX_HISTORY) {
-            newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+          // Check for active sensor reading (Baffle Cutoff)
+          const hasReading = newSensorReadings.some(r => r.contactId === tracker.contactId);
+
+          // Reviewer Requirement: Explicitly prevent TMA History updates if bearing is in baffles
+          // (Even if sensor reading exists due to noise or logic variance)
+          const rb = normalizeAngle(tracker.currentBearing);
+          const inBaffles = rb > 150 && rb < 210;
+
+          let newHistory = tracker.bearingHistory;
+          if (hasReading && !inBaffles) {
+            newHistory = [
+              ...tracker.bearingHistory,
+              { time: newGameTime, bearing: tracker.currentBearing }
+            ];
+            if (newHistory.length > MAX_HISTORY) {
+              newHistory = newHistory.slice(newHistory.length - MAX_HISTORY);
+            }
           }
+
           return {
             ...tracker,
             bearingHistory: newHistory
