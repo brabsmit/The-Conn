@@ -373,7 +373,22 @@ const TrackerSymbol: React.FC<{
             // --- DRAW SYMBOL ---
             g.lineStyle(lineWeight, color, alpha);
             const size = 6;
-            g.drawRect(relX - size, relY - size, size * 2, size * 2);
+
+            if (isWeapon) {
+                // Triangle / Caret for Weapon
+                // Pointing up (relative to screen) or along course?
+                // Let's make a generic warning triangle centered on relX/relY
+                //    ^
+                //   / \
+                //  /___\
+                g.moveTo(relX, relY - size);
+                g.lineTo(relX + size, relY + size);
+                g.lineTo(relX - size, relY + size);
+                g.lineTo(relX, relY - size);
+            } else {
+                // Square for Contact
+                g.drawRect(relX - size, relY - size, size * 2, size * 2);
+            }
 
             // Velocity Vector
             const vecLen = 40;

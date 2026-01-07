@@ -24,6 +24,7 @@ export interface Contact {
   torpedoCooldown?: number;
   canDetectTorpedoes?: boolean;
   sensitivity?: number;
+  aiDisabled?: boolean;
   status?: 'ACTIVE' | 'DESTROYED';
   history?: EntityHistory[];
 }
@@ -543,6 +544,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
         // AI Logic (Only for ENEMY)
         if (currentContact.type === 'ENEMY') {
+            if (currentContact.aiDisabled) return currentContact;
+
             const timeSinceLastUpdate = state.gameTime - (currentContact.aiLastUpdate || 0);
 
             // Run AI every 1 second
@@ -713,7 +716,13 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       newContacts.forEach(c => {
           if (c.aiMode === 'EVADE' && c.torpedoCooldown === 600) {
               // Just fired
-              enemyFireRequests.push({ shooterId: c.id, x: c.x, y: c.y, heading: c.heading || 0 });
+              // Calculate Bearing to Ownship for correct firing solution
+              const dx = newX - c.x;
+              const dy = newY - c.y;
+              const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
+              const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
+
+              enemyFireRequests.push({ shooterId: c.id, x: c.x, y: c.y, heading: bearingToOwnship });
           }
       });
 
@@ -725,7 +734,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           speed: 20, // Launch speed
           status: 'RUNNING',
           launchTime: state.gameTime,
-          searchMode: 'ACTIVE',
+          searchMode: 'PASSIVE',
           designatedTargetId: 'OWNSHIP',
           activeTargetId: undefined,
           enableRange: 500,
@@ -1019,6 +1028,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                           timestamp: newGameTime,
                           type: 'ALERT'
                       }].slice(-50);
+
+                      newAlertLevel = 'COMBAT';
 
                       tracker = {
                           id: trackerId,
