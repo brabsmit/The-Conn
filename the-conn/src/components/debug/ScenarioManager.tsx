@@ -104,7 +104,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
           type: type, // Can be overridden by user selection if we wanted, but logic implies classification drives it. Keeping as derived.
           classification: formData.classification,
           sourceLevel,
-          cavitationSpeed
+          cavitationSpeed,
+          aiDisabled: true // Disable AI on manual intervention
       });
       // Ensure form type stays in sync with what we just set
       setFormData(prev => ({ ...prev, type }));
@@ -331,6 +332,15 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                             [FORCE FIRE]
                          </button>
                     </div>
+
+                    {contacts.find(c => c.id === selectedEntityId)?.aiDisabled && (
+                        <button
+                            onClick={() => updateContact(selectedEntityId, { aiDisabled: false })}
+                            className="w-full bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded mt-2 font-bold font-mono text-xs"
+                        >
+                            [RESUME AI]
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm italic">
