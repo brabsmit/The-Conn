@@ -1,5 +1,5 @@
 import { useSubmarineStore } from '../store/useSubmarineStore';
-import type { Contact } from '../store/useSubmarineStore';
+import type { Contact, Tracker } from '../store/useSubmarineStore';
 
 export const loadAmbushScenario = () => {
     const store = useSubmarineStore.getState();
@@ -59,11 +59,47 @@ export const loadAmbushScenario = () => {
         sensitivity: 300000000 // Tuned for detection
     };
 
+    // Pre-calculated Trackers
+    const tracker1: Tracker = {
+        id: 'S1',
+        contactId: 'Sierra-1',
+        currentBearing: 45,
+        bearingHistory: [],
+        solution: {
+            speed: 10,
+            range: 8000,
+            course: 90,
+            bearing: 45,
+            anchorTime: 0,
+            anchorOwnShip: { x: 0, y: 0, heading: 0 }
+        },
+        classificationStatus: 'PENDING',
+        timeToClassify: 2 // Fast classify for testing
+    };
+
+    const tracker2: Tracker = {
+        id: 'S2',
+        contactId: 'Sierra-2',
+        currentBearing: 50,
+        bearingHistory: [],
+        solution: {
+            speed: 5,
+            range: 9000,
+            course: 90,
+            bearing: 50,
+            anchorTime: 0,
+            anchorOwnShip: { x: 0, y: 0, heading: 0 }
+        },
+        classificationStatus: 'PENDING',
+        timeToClassify: 5 // Slightly slower than S1
+    };
+
+
     // Reset Store
     store.loadScenario({
         ...ownShip,
         contacts: [merchant, enemySub],
-        trackers: [],
+        trackers: [tracker1, tracker2], // Pre-load trackers
         ownShipHistory: [],
         sensorReadings: [],
         torpedoes: [],
