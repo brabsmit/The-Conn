@@ -89,7 +89,12 @@ describe('Ambush Scenario & AI Logic', () => {
       useSubmarineStore.getState().tick(1);
 
       const updatedEnemy = useSubmarineStore.getState().contacts.find(c => c.id === 'Sierra-2')!;
-      // With sensitivity 3e8, and high noise, should trigger
-      expect(updatedEnemy.aiMode).toBe('ATTACK');
+      // With sensitivity 3e8, and high noise, should trigger ATTACK -> Fire -> EVADE
+      expect(updatedEnemy.aiMode).toBe('EVADE');
+
+      // Should have fired a torpedo
+      const torpedoes = useSubmarineStore.getState().torpedoes;
+      const enemyTorpedo = torpedoes.find(t => t.id.includes('Sierra-2'));
+      expect(enemyTorpedo).toBeDefined();
   });
 });
