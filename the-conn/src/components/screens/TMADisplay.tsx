@@ -49,34 +49,32 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             // Draw Ownship Heading Trace
             // Color: Blue (0x3333ff)
             graphics.lineStyle(2, 0x3333ff, 0.6);
-            let firstTracePoint = true;
-            let lastX = 0;
+            let lastX: number | null = null;
 
-            ownShipHistory.forEach((history) => {
+            // Reverse iteration: Newest (time ~ gameTime) -> Oldest
+            for (let i = ownShipHistory.length - 1; i >= 0; i--) {
+                const history = ownShipHistory[i];
                 const age = gameTime - history.time;
                 const y = age * PIXELS_PER_SECOND;
 
-                if (y >= -50 && y <= height + 50) {
-                    // Course-Up Logic:
-                    // Plot the relative angle of the history heading vs current heading
-                    const angleDiff = getShortestAngle(history.heading, currentHeading);
-                    const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
+                // Optimization: Stop drawing if off-screen
+                if (y > height + 100) break;
 
-                    if (firstTracePoint) {
-                        graphics.moveTo(x, y);
-                        firstTracePoint = false;
-                    } else {
-                        if (Math.abs(x - lastX) > width / 3) {
-                             graphics.moveTo(x, y);
-                        } else {
-                             graphics.lineTo(x, y);
-                        }
-                    }
-                    lastX = x;
+                // Course-Up Logic:
+                const angleDiff = getShortestAngle(history.heading, currentHeading);
+                const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
+
+                if (lastX === null) {
+                    graphics.moveTo(x, y);
                 } else {
-                    firstTracePoint = true;
+                    if (Math.abs(x - lastX) > width / 3) {
+                         graphics.moveTo(x, y);
+                    } else {
+                         graphics.lineTo(x, y);
+                    }
                 }
-            });
+                lastX = x;
+            }
 
             // Iterate over all sorted trackers
             sortedTrackers.forEach(tracker => {
@@ -113,17 +111,23 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                      graphics.moveTo(xNow, 0);
                      let lastX = xNow;
 
-                     // 2. History Points
+                     // 2. History Points (Reverse Iteration)
+                     let osIndex = ownShipHistory.length - 1;
                      for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
                         const h = tracker.bearingHistory[i];
                         const age = gameTime - h.time;
                         const y = age * PIXELS_PER_SECOND;
 
-                        if (y > height + 5) continue;
+                        if (y > height + 100) break;
 
-                        const ownShipState = ownShipHistory.find(os => Math.abs(os.time - h.time) < 0.1);
+                        // Synchronized lookup (zipper)
+                        while (osIndex >= 0 && ownShipHistory[osIndex].time > h.time + 0.1) {
+                            osIndex--;
+                        }
+                        if (osIndex < 0) break; // No more ownship history matching
 
-                        if (ownShipState) {
+                        const ownShipState = ownShipHistory[osIndex];
+                        if (Math.abs(ownShipState.time - h.time) < 0.1) {
                             const targetPos = calculateTargetPosition(solution, h.time);
                             const dx = targetPos.x - ownShipState.x;
                             const dy = targetPos.y - ownShipState.y;
@@ -154,29 +158,32 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                     graphics.beginFill(0x33ff33, 0.3); // Dim Green
                 }
 
-                let osIndex = 0;
-                tracker.bearingHistory.forEach(history => {
-                    // Optimized lookup: fast forward osIndex
-                    while (osIndex < ownShipHistory.length && ownShipHistory[osIndex].time < history.time - 0.1) {
-                        osIndex++;
-                    }
+                // Reverse Iteration
+                let osIndex = ownShipHistory.length - 1;
+                for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
+                    const history = tracker.bearingHistory[i];
+                    const age = gameTime - history.time;
+                    const y = age * PIXELS_PER_SECOND;
 
-                    if (osIndex < ownShipHistory.length && Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                    if (y > height + 100) break;
+
+                    // Synchronized lookup
+                    while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
+                        osIndex--;
+                    }
+                    if (osIndex < 0) break;
+
+                    if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
                         const ownShipState = ownShipHistory[osIndex];
                         const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
                         const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
 
                         if (angleDiff >= -180 && angleDiff <= 180) {
                              const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
-                             const age = gameTime - history.time;
-                             const y = age * PIXELS_PER_SECOND;
-
-                             if (y >= -5 && y <= height + 5) {
-                                 graphics.drawCircle(x, y, 2.5);
-                             }
+                             graphics.drawCircle(x, y, 2.5);
                         }
                     }
-                });
+                }
                 graphics.endFill();
             });
 
@@ -205,12 +212,25 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                 }
 
                 // In DOTS mode, we compare ALL tracks against the SELECTED tracker's solution.
-                // This shows how well the current solution fits other tracks (or the same track).
                 if (selectedTracker && selectedTracker.solution) {
-                     tracker.bearingHistory.forEach(history => {
-                        const ownShipState = ownShipHistory.find(os => Math.abs(os.time - history.time) < 0.1);
+                     // Reverse Iteration
+                     let osIndex = ownShipHistory.length - 1;
+                     for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
+                        const history = tracker.bearingHistory[i];
+                        const age = gameTime - history.time;
+                        const y = age * PIXELS_PER_SECOND;
 
-                        if (ownShipState) {
+                        if (y > height + 100) break;
+
+                        // Synchronized lookup
+                        while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
+                            osIndex--;
+                        }
+                        if (osIndex < 0) break;
+
+                        if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                            const ownShipState = ownShipHistory[osIndex];
+
                              // Sensor True Bearing (of THIS tracker)
                             const sensorTrueBearing = normalizeAngle(history.bearing + ownShipState.heading);
 
@@ -225,17 +245,13 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                             const residual = getShortestAngle(sensorTrueBearing, solutionTrueBearing);
 
                              const x = SCREEN_CENTER + (residual * PIXELS_PER_DEGREE);
-                             const age = gameTime - history.time;
-                             const y = age * PIXELS_PER_SECOND;
 
-                             if (y >= -5 && y <= height + 5) {
-                                 // Clip to screen width to avoid drawing outside if error is huge
-                                 if (x >= 0 && x <= width) {
-                                     graphics.drawCircle(x, y, 2.5);
-                                 }
+                             // Clip to screen width to avoid drawing outside if error is huge
+                             if (x >= 0 && x <= width) {
+                                 graphics.drawCircle(x, y, 2.5);
                              }
                         }
-                     });
+                     }
                 }
                 graphics.endFill();
             });

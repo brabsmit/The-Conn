@@ -169,7 +169,7 @@ const DECELERATION = 0.05; // knots per tick
 const DIVE_RATE = 1.0; // feet per tick
 const ASCENT_RATE = 1.0; // feet per tick
 const FEET_PER_KNOT_PER_TICK = 0.028; // approx 1.68 ft/sec / 60 ticks/sec
-const MAX_HISTORY = 300;
+const MAX_HISTORY = 25000;
 
 // Helper for Gaussian noise (Box-Muller)
 const gaussianRandom = (mean: number, stdev: number) => {
