@@ -7,8 +7,9 @@ import { useResize } from '../../hooks/useResize';
 
 // Colors
 const COLOR_BG = 0x001133;
-const COLOR_OWN_SHIP = 0xFFFFFF;
+const COLOR_OWN_SHIP = 0x0088FF; // Blue
 const COLOR_TRACKER_AMBER = 0xFFB000;
+const COLOR_TRACKER_RED = 0xFF0000; // Weapon Trace
 const COLOR_SELECTED = 0xFF8800; // Orange
 const COLOR_TORPEDO = 0xFFFF00; // Yellow
 const COLOR_RANGE_RING = 0x445566;
@@ -286,7 +287,14 @@ const TrackerSymbol: React.FC<{
     const draw = React.useCallback((g: PIXI.Graphics) => {
         g.clear();
 
-        const color = isSelected ? COLOR_SELECTED : COLOR_TRACKER_AMBER;
+        const isWeapon = tracker.kind === 'WEAPON';
+        const isHostile = tracker.classification === 'SUB' || tracker.classification === 'ESCORT';
+        const color = isSelected
+            ? COLOR_SELECTED
+            : (isWeapon || isHostile)
+                ? COLOR_TRACKER_RED
+                : COLOR_TRACKER_AMBER;
+
         const alpha = isSelected ? 1.0 : 0.8;
         const lineWeight = isSelected ? 3 : 2;
 
@@ -390,7 +398,11 @@ const TrackerSymbol: React.FC<{
                     style={new PIXI.TextStyle({
                         fontFamily: 'monospace',
                         fontSize: 12,
-                        fill: isSelected ? COLOR_SELECTED : COLOR_TRACKER_AMBER
+                        fill: isSelected
+                             ? COLOR_SELECTED
+                             : (tracker.kind === 'WEAPON' || tracker.classification === 'SUB' || tracker.classification === 'ESCORT')
+                                 ? COLOR_TRACKER_RED
+                                 : COLOR_TRACKER_AMBER
                     })}
                 />
             )}

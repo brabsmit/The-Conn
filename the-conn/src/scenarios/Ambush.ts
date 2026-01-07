@@ -35,7 +35,8 @@ export const loadAmbushScenario = () => {
         type: 'NEUTRAL', // Assuming merchant is neutral or enemy merchant? Task says "Merchant". Usually neutral, but can be target. Store defaults "ENEMY" | "NEUTRAL".
         classification: 'MERCHANT',
         sourceLevel: 0.8, // Loud
-        cavitationSpeed: 10 // Cavitates early
+        cavitationSpeed: 10, // Cavitates early
+        status: 'ACTIVE'
     };
 
     // 3. Enemy Sub (S-2)
@@ -56,7 +57,8 @@ export const loadAmbushScenario = () => {
         sourceLevel: 0.1, // Quiet
         cavitationSpeed: 20, // Good screw
         aiMode: 'IDLE',
-        sensitivity: 300000000 // Tuned for detection
+        sensitivity: 300000000, // Tuned for detection
+        status: 'ACTIVE'
     };
 
     // Pre-calculated Trackers
