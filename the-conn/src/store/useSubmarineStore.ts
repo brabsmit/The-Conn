@@ -8,6 +8,7 @@ interface Contact {
   speed?: number;
   type?: 'ENEMY' | 'NEUTRAL';
   classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL';
+  depth?: number;
   sourceLevel?: number;
   cavitationSpeed?: number;
   aiMode?: 'IDLE' | 'ATTACK' | 'EVADE';
@@ -75,6 +76,7 @@ export interface Tube {
   progress: number;
   weaponData: WeaponData | null;
   torpedoId?: string;
+  autoSequence?: boolean;
 }
 
 export interface Torpedo {
@@ -196,6 +198,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     y: 5000,
     type: 'ENEMY',
     classification: 'MERCHANT',
+    depth: 50,
     sourceLevel: 1.0,
     cavitationSpeed: 10
   }],
@@ -764,25 +767,58 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         }
       }
 
-      // Update Tubes (Progress)
-      const newTubes = state.tubes.map(tube => {
-        if (['LOADING', 'FLOODING', 'EQUALIZING', 'OPENING', 'FIRING'].includes(tube.status)) {
-          const newProgress = tube.progress + 1;
-          if (newProgress >= 100) {
-            // Transition
-            switch (tube.status) {
-              case 'LOADING': return { ...tube, status: 'DRY' as TubeStatus, progress: 0 };
-              case 'FLOODING': return { ...tube, status: 'WET' as TubeStatus, progress: 0 };
-              case 'EQUALIZING': return { ...tube, status: 'EQUALIZED' as TubeStatus, progress: 0 };
-              case 'OPENING': return { ...tube, status: 'OPEN' as TubeStatus, progress: 0 };
-              case 'FIRING': return { ...tube, status: 'EMPTY' as TubeStatus, progress: 0, weaponData: null };
-              default: return tube;
+      // Update Tubes (Progress and Auto-Sequence)
+      let tubesUpdated = [...state.tubes];
+      let newTransients = [...activeTransients];
+
+      tubesUpdated = tubesUpdated.map(tube => {
+        let updatedTube = { ...tube };
+
+        // Handle Progress Transitions
+        if (['LOADING', 'FLOODING', 'EQUALIZING', 'OPENING', 'FIRING'].includes(updatedTube.status)) {
+          updatedTube.progress += 1;
+          if (updatedTube.progress >= 100) {
+            updatedTube.progress = 0;
+            switch (updatedTube.status) {
+              case 'LOADING': updatedTube.status = 'DRY'; break;
+              case 'FLOODING': updatedTube.status = 'WET'; break;
+              case 'EQUALIZING': updatedTube.status = 'EQUALIZED'; break;
+              case 'OPENING': updatedTube.status = 'OPEN'; break;
+              case 'FIRING':
+                  updatedTube.status = 'EMPTY';
+                  updatedTube.weaponData = null;
+                  break;
             }
-          } else {
-            return { ...tube, progress: newProgress };
           }
         }
-        return tube;
+        return updatedTube;
+      });
+
+      // Handle Auto-Sequence (Must be separate pass or integrated, carefully to trigger transients)
+      // Since transients and multiple tubes can change, we need to iterate and trigger actions which might mean modifying transients directly here.
+      tubesUpdated = tubesUpdated.map(tube => {
+          if (tube.autoSequence) {
+              if (tube.status === 'DRY') {
+                  // Trigger Flood
+                  newTransients.push({ type: 'TUBE_FLOOD', startTime: newGameTime, duration: 10, magnitude: 0.2 });
+                  return { ...tube, status: 'FLOODING', progress: 0 };
+              }
+              if (tube.status === 'WET') {
+                  // Trigger Equalize (No transient in original store for equalize)
+                  return { ...tube, status: 'EQUALIZING', progress: 0 };
+              }
+              if (tube.status === 'EQUALIZED') {
+                  // Trigger Open
+                  newTransients.push({ type: 'MUZZLE_OPEN', startTime: newGameTime, duration: 10, magnitude: 0.3 });
+                  return { ...tube, status: 'OPENING', progress: 0 };
+              }
+              if (tube.status === 'OPEN') {
+                  // Done
+                  newLogs = [...newLogs, { message: `OOD, Fire Control, Tube #${tube.id} is ready in all respects`, timestamp: newGameTime }].slice(-50);
+                  return { ...tube, autoSequence: false };
+              }
+          }
+          return tube;
       });
 
       return {
@@ -794,15 +830,15 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         ownShipHistory: newOwnShipHistory,
         contacts: newContacts, // Update truth data
         sensorReadings: newSensorReadings,
-        logs: newLogs,
+        logs: newLogs, // Ensure this reflects updates from auto-sequence
         tickCount: newTickCount,
         gameTime: newGameTime,
         trackers: newTrackers,
-        tubes: newTubes,
+        tubes: tubesUpdated,
         torpedoes: activeTorpedoes,
         ownshipNoiseLevel: totalNoise,
         cavitating: isCavitating,
-        transients: activeTransients
+        transients: newTransients
       };
     }),
 }));
