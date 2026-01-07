@@ -13,6 +13,11 @@ const COLOR_SELECTED = 0xFF8800; // Orange
 const COLOR_TORPEDO = 0xFFFF00; // Yellow
 const COLOR_RANGE_RING = 0x445566;
 
+// Zone Colors
+const COLOR_ZONE_RED = 0xFF0000;
+const COLOR_ZONE_YELLOW = 0xFFFF00;
+const COLOR_ZONE_GREEN = 0x00FF00;
+
 // Constants
 const VIEW_RADIUS_YARDS = 12000;
 
@@ -32,21 +37,64 @@ const GeoDisplay: React.FC = () => {
     const gameTime = useSubmarineStore(state => state.gameTime);
 
     // Coordinate Transform: World (Yards) -> Screen (Pixels)
-    // Center is (width/2, height/2)
-    // North Up means:
-    // Screen X = (World X - OwnShip X) scaled + Center X
-    // Screen Y = -(World Y - OwnShip Y) scaled + Center Y  (Flip Y because Screen Y is down)
-    // Wait, Task says "North-Up (Standard Nav Plot). Ownship rotates in the center based on its heading."
-    // Actually, usually "North Up" means North is Top of Screen. Ownship rotates.
-    // "Course Up" means Ownship is Top of Screen. World rotates.
-    // The task says: "Orientation: North-Up ... Ownship rotates in the center based on its heading."
-    // So Map is fixed North=Up. Ship icon rotates.
-
     // Scale: Fit 12k yards?
-    // Let's make it dynamic or fixed. Task suggests generic range rings.
-    // Let's assume a fixed scale where 10k yards is visible.
-
     const scale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
+
+    // Check if Ownship is in the Green Zone of any TRACKED target with a valid solution
+    // If selectedTrackerId is set, prioritize that. Or just any?
+    // "If Ownship is physically inside the Green Zone" - implies relative to the specific target being viewed or all?
+    // Usually tactical geometry is most relevant for the selected target.
+    // Let's compute a global "idealSolution" flag based on the selected tracker.
+
+    const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
+    let isSolutionIdeal = false;
+
+    if (selectedTracker && selectedTracker.solution.range > 0) {
+       // Re-calculate geometry for the selected tracker to determine zone status
+       // This duplicates logic inside TrackerSymbol but is needed for the global UI overlay.
+       // Ideally we could lift this state up, but for now we recalculate.
+
+       // Project Target Position
+       const sol = selectedTracker.solution;
+       const timeDelta = gameTime - sol.anchorTime;
+       const speedYps = sol.speed * 0.5629;
+       const distTraveled = speedYps * timeDelta;
+
+       const radAnchorBearing = (sol.bearing * Math.PI) / 180;
+       const anchorTargetX = sol.anchorOwnShip.x + Math.sin(radAnchorBearing) * sol.range;
+       const anchorTargetY = sol.anchorOwnShip.y + Math.cos(radAnchorBearing) * sol.range;
+
+       const radCourse = (sol.course * Math.PI) / 180;
+       const currentTargetX = anchorTargetX + Math.sin(radCourse) * distTraveled;
+       const currentTargetY = anchorTargetY + Math.cos(radCourse) * distTraveled;
+
+       // Vector Target -> Ownship
+       const dx = ownShip.x - currentTargetX;
+       const dy = ownShip.y - currentTargetY;
+
+       // Bearing from Target to Ownship (0 is North)
+       // Math.atan2(x, y) gives angle from North clockwise if x is East, y is North?
+       // Standard atan2(y,x) is from East counter-clockwise.
+       // Nav Math: atan2(x, y) = bearing from North (Y axis) clockwise.
+       // x = East, y = North.
+       let bearingFromTarget = Math.atan2(dx, dy) * (180 / Math.PI);
+       if (bearingFromTarget < 0) bearingFromTarget += 360;
+
+       // Aspect = BearingFromTarget - TargetHeading
+       let aspect = bearingFromTarget - sol.course;
+       // Normalize to -180 to 180
+       while (aspect > 180) aspect -= 360;
+       while (aspect <= -180) aspect += 360;
+
+       // Green Zone: Stern +/- 60 deg -> Abs(Aspect) > 120 (since Stern is 180)
+       // Wait. Stern is 180. +/- 60 is 120 to 240.
+       // Normalized: 120 to 180 and -180 to -120.
+       // So abs(aspect) >= 120.
+
+       if (Math.abs(aspect) >= 120) {
+           isSolutionIdeal = true;
+       }
+    }
 
     return (
         <div ref={parentRef} className="w-full h-full bg-[#001133] relative overflow-hidden select-none">
@@ -84,11 +132,18 @@ const GeoDisplay: React.FC = () => {
                 </Stage>
             )}
 
-            {/* UI Overlays can go here (HTML) */}
+            {/* UI Overlays */}
             <div className="absolute top-2 left-2 text-cyan-500 font-mono text-xs opacity-70 pointer-events-none">
                 <div>MODE: NORTH-UP</div>
                 <div>SCALE: 10k YDS</div>
             </div>
+
+            {/* SOLUTION IDEAL INDICATOR */}
+            {isSolutionIdeal && (
+                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 text-green-400 font-bold text-lg animate-pulse pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+                    SOLUTION IDEAL
+                </div>
+            )}
         </div>
     );
 };
@@ -133,13 +188,6 @@ const OwnShipSymbol: React.FC<{ heading: number }> = ({ heading }) => {
 
     }, []);
 
-    // Rotate container based on heading
-    // Heading 0 is North (Up). Screen Y is Down.
-    // So Heading 0 should point to -Y.
-    // The polygon points to -Y (Nose at -15).
-    // So rotation = heading.
-    // PIXI rotation is radians clockwise.
-    // If heading is 90 (East), we want to rotate 90 deg clockwise.
     return <Graphics draw={draw} rotation={heading * Math.PI / 180} />;
 };
 
@@ -152,56 +200,44 @@ const TrackerSymbol: React.FC<{
 }> = ({ tracker, ownShip, scale, isSelected, gameTime }) => {
     const { solution } = tracker;
 
-    // Determine position based on solution
-    // If solution is valid (range > 0), calculate relative pos.
-    // Else, draw bearing line.
-
-    // Wait, the solution stores: anchorTime, anchorOwnShip, etc.
-    // We need to project the solution to CURRENT time to see where the target SHOULD be now.
-    // Or just visualize the solution parameters relative to OwnShip NOW?
-    // Usually, NAV plot shows the computed position at current time.
-
-    // We can use getProjectedPosition from tma.ts but I don't want to import logic if I can help it.
-    // Let's implement simple projection here or assume solution is "current".
-    // Actually `solution` in store is "The solution". It has an anchor time.
-    // To draw it correctly on the map at the current time, we should project it forward.
-
-    const timeDelta = gameTime - solution.anchorTime; // seconds
-    // Convert speed (knots) to yards/sec. 1 knot ~= 0.56 yards/sec
+    // Calculate projected position
+    const timeDelta = gameTime - solution.anchorTime;
     const speedYps = solution.speed * 0.5629;
-    const distTraveled = speedYps * timeDelta; // yards
+    const distTraveled = speedYps * timeDelta;
 
-    // Initial position at anchor time relative to anchor ownship?
-    // Solution defines: range, bearing from anchorOwnShip at anchorTime.
-
-    // 1. Calculate World Position of Target at Anchor Time
-    // anchorBearing is relative to North? Yes store says 0-359.
     const radAnchorBearing = (solution.bearing * Math.PI) / 180;
     const anchorTargetX = solution.anchorOwnShip.x + Math.sin(radAnchorBearing) * solution.range;
     const anchorTargetY = solution.anchorOwnShip.y + Math.cos(radAnchorBearing) * solution.range;
 
-    // 2. Project Target Position to Current Time based on Course/Speed
     const radCourse = (solution.course * Math.PI) / 180;
     const currentTargetX = anchorTargetX + Math.sin(radCourse) * distTraveled;
     const currentTargetY = anchorTargetY + Math.cos(radCourse) * distTraveled;
-
-    // 3. Calculate Screen Position (Relative to Current Ownship, Scaled)
-    // North Up: +Y is North? No, standard math: +Y is North?
-    // Wait, let's check `useSubmarineStore`.
-    // updatePosition: x + sin(heading), y + cos(heading).
-    // So if Heading 0 (North), we add to Y. So +Y is North.
-    // If Heading 90 (East), we add to X. So +X is East.
-    // This is Standard Math with Y=North, X=East.
-
-    // Screen Coordinates:
-    // Center is OwnShip.
-    // Screen X = (TargetX - OwnX) * scale
-    // Screen Y = -(TargetY - OwnY) * scale (Because Screen Y is Down, World Y is Up/North)
 
     const relX = (currentTargetX - ownShip.x) * scale;
     const relY = -(currentTargetY - ownShip.y) * scale;
 
     const isSolutionIncomplete = !solution.range || solution.range < 100;
+
+    // Calculate Aspect/Zones for Valid Solution
+    let inGreenZone = false;
+    let targetAngle = 0; // Relative bearing of Ownship from Target
+
+    if (!isSolutionIncomplete) {
+        // Vector Target -> Ownship
+        const dx = ownShip.x - currentTargetX;
+        const dy = ownShip.y - currentTargetY;
+
+        let bearingFromTarget = Math.atan2(dx, dy) * (180 / Math.PI); // 0=North
+        if (bearingFromTarget < 0) bearingFromTarget += 360;
+
+        // Aspect (relative to Target Heading)
+        let aspect = bearingFromTarget - solution.course;
+        while (aspect > 180) aspect -= 360;
+        while (aspect <= -180) aspect += 360;
+
+        targetAngle = aspect;
+        inGreenZone = Math.abs(aspect) >= 120;
+    }
 
     const draw = React.useCallback((g: PIXI.Graphics) => {
         g.clear();
@@ -211,48 +247,71 @@ const TrackerSymbol: React.FC<{
         const lineWeight = isSelected ? 3 : 2;
 
         if (isSolutionIncomplete) {
-            // Draw Infinite Bearing Line
-            // We use the CURRENT bearing from the tracker (sensor data) if available, or project?
-            // "If Solution is Incomplete... draw Infinite Bearing Line... extending from Ownship down the tracked bearing."
-            // The tracker.currentBearing is the sensor bearing.
-
+            // Infinite Bearing Line
             const bearing = tracker.currentBearing;
             const rad = (bearing * Math.PI) / 180;
-
-            // Draw line from center to edge of screen
-            // Since it's North Up, and 0 is North (+Y world, -Y screen)
-            // Screen Vector: x = sin(bearing), y = -cos(bearing)
-
-            const vecX = Math.sin(rad) * 1000; // arbitrary long length
+            const vecX = Math.sin(rad) * 1000;
             const vecY = -Math.cos(rad) * 1000;
 
-            // Dashed line simulation (Pixi doesn't do dashed lines natively easily in v7 without plugin, assume solid stippled or just low alpha)
-            // We'll use low alpha for "ghostly".
             g.lineStyle(2, color, 0.4);
             g.moveTo(0, 0);
             g.lineTo(vecX, vecY);
 
-            // Label
             g.beginFill(color, 0.4);
-            g.drawCircle(vecX * 0.1, vecY * 0.1, 4); // Small dot near ship
+            g.drawCircle(vecX * 0.1, vecY * 0.1, 4);
             g.endFill();
 
         } else {
-            // Draw Target Symbol at Calculated Position
-            g.lineStyle(lineWeight, color, alpha);
+            // --- DRAW TACTICAL ZONES (Underneath Symbol) ---
+            // Only draw zones if solution is valid.
+            // Radius of cones: Let's pick a reasonable visual size, e.g. 2000 yards scaled or fixed pixels?
+            // Fixed pixels might be better for UI clarity, but scaled gives tactical context.
+            // Let's go with fixed pixels to avoid clutter at zoom, or scaled but clamped?
+            // Task says "Draw Arcs (Extending from Target)". Let's use a fixed radius like 60px or scaled 1500yds.
+            const zoneRadius = 1500 * scale;
 
-            // Symbol (Square)
+            // Pixi Arc Logic:
+            // 0 is East (+X).
+            // North is -90 deg (-PI/2).
+            // Target Course C corresponds to angle (C - 90).
+
+            const toPixiAngle = (deg: number) => (deg - 90) * (Math.PI / 180);
+            const course = solution.course;
+
+            // Red Zone: +/- 30
+            g.beginFill(COLOR_ZONE_RED, 0.2);
+            g.moveTo(relX, relY);
+            g.arc(relX, relY, zoneRadius, toPixiAngle(course - 30), toPixiAngle(course + 30));
+            g.lineTo(relX, relY);
+            g.endFill();
+
+            // Yellow Zone: 30 to 120 (Starboard) and -30 to -120 (Port => 330 to 240)
+            g.beginFill(COLOR_ZONE_YELLOW, 0.1);
+            // Starboard Beam
+            g.moveTo(relX, relY);
+            g.arc(relX, relY, zoneRadius, toPixiAngle(course + 30), toPixiAngle(course + 120));
+            g.lineTo(relX, relY);
+            // Port Beam
+            g.moveTo(relX, relY);
+            g.arc(relX, relY, zoneRadius, toPixiAngle(course - 120), toPixiAngle(course - 30));
+            g.lineTo(relX, relY);
+            g.endFill();
+
+            // Green Zone: 120 to 240 (Stern)
+            // If inGreenZone (Ownship is there), highlight brighter
+            const greenAlpha = (isSelected && inGreenZone) ? 0.4 : 0.2;
+            g.beginFill(COLOR_ZONE_GREEN, greenAlpha);
+            g.moveTo(relX, relY);
+            g.arc(relX, relY, zoneRadius, toPixiAngle(course + 120), toPixiAngle(course + 240));
+            g.lineTo(relX, relY);
+            g.endFill();
+
+            // --- DRAW SYMBOL ---
+            g.lineStyle(lineWeight, color, alpha);
             const size = 6;
             g.drawRect(relX - size, relY - size, size * 2, size * 2);
 
             // Velocity Vector
-            // Course is world angle. 0 is North (+Y world, -Y screen).
-            // Vector length proportional to speed? Or fixed "Leader" line?
-            // Let's do 1 min leader.
-            // 1 min distance = Speed (kts) / 60 * 2000 yds (approx)
-            // Let's just normalize: 100px for full speed?
-            // Let's use generic length for now: 50px.
-
             const vecLen = 40;
             const courseRad = (solution.course * Math.PI) / 180;
             const tipX = relX + Math.sin(courseRad) * vecLen;
@@ -260,17 +319,13 @@ const TrackerSymbol: React.FC<{
 
             g.moveTo(relX, relY);
             g.lineTo(tipX, tipY);
-
-            // Label
-            // We can't easily render text in Graphics, assume overlay or just symbol is enough.
         }
 
-    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected]);
+    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, inGreenZone, scale]);
 
     return (
         <React.Fragment>
             <Graphics draw={draw} />
-            {/* Text Label for ID */}
             {!isSolutionIncomplete && (
                 <Text
                     text={tracker.id}
@@ -292,10 +347,8 @@ const TorpedoSymbol: React.FC<{
     ownShip: { x: number, y: number },
     scale: number
 }> = ({ torpedo, ownShip, scale }) => {
-
-    // Telemetry Position
     const relX = (torpedo.position.x - ownShip.x) * scale;
-    const relY = -(torpedo.position.y - ownShip.y) * scale; // Flip Y
+    const relY = -(torpedo.position.y - ownShip.y) * scale;
 
     const draw = React.useCallback((g: PIXI.Graphics) => {
         g.clear();
@@ -303,31 +356,15 @@ const TorpedoSymbol: React.FC<{
         if (torpedo.status === 'RUNNING') {
             g.lineStyle(1, COLOR_TORPEDO, 1);
             g.beginFill(COLOR_TORPEDO);
-
-            // Triangle
-            // Heading is world degrees. 0 is North (+Y world, -Y screen)
-            const rad = (torpedo.heading * Math.PI) / 180;
-
-            // We need to rotate the triangle points manually or use rotation prop.
-            // Using rotation prop on container is cleaner but here we are in a loop inside a container.
-            // Let's just draw a circle for simplicity or small triangle.
             g.drawCircle(0, 0, 3);
             g.endFill();
 
-            // Wire Trace (History)?
-            // Or just a line from Ownship to Torpedo (Wire)?
-            // "Draw the Yellow Weapon Trace"
-            // Usually this means the path it has taken.
-            // We don't have full history in store for torpedo, just current pos.
-            // But we know it launched from us?
-            // Let's just draw the current position and a short tail vector opposite to heading.
-
+            const rad = (torpedo.heading * Math.PI) / 180;
             const tailLen = 10;
             const tailX = -Math.sin(rad) * tailLen;
             const tailY = Math.cos(rad) * tailLen;
             g.moveTo(0,0);
             g.lineTo(tailX, tailY);
-
         }
     }, [torpedo.heading, torpedo.status]);
 
