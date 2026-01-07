@@ -3,26 +3,28 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import type { Tube, TubeStatus } from '../../store/useSubmarineStore';
 import { calculateProjectedSolution } from '../../lib/tma';
 
-const TubeStatusLight = ({ status }: { status: TubeStatus }) => {
-  let color = 'bg-zinc-800';
-  let pulse = '';
+const InterlockLights = ({ status }: { status: TubeStatus }) => {
+    // Interlocks: LOADED (Has Weapon), FLOODED (WET+), EQUALIZED (EQUALIZED+), MUZZLE (OPEN+)
+    const isLoaded = status !== 'EMPTY' && status !== 'LOADING';
+    const isFlooded = ['WET', 'EQUALIZING', 'EQUALIZED', 'OPENING', 'OPEN', 'FIRING'].includes(status);
+    const isEqualized = ['EQUALIZED', 'OPENING', 'OPEN', 'FIRING'].includes(status);
+    const isOpen = ['OPEN', 'FIRING'].includes(status);
 
-  switch (status) {
-    case 'EMPTY': color = 'bg-zinc-900 border-zinc-700'; break;
-    case 'LOADING': color = 'bg-amber-900/50 border-amber-600'; pulse = 'animate-pulse'; break;
-    case 'DRY': color = 'bg-amber-600 border-amber-400'; break;
-    case 'FLOODING': color = 'bg-blue-900/50 border-blue-600'; pulse = 'animate-pulse'; break;
-    case 'WET': color = 'bg-blue-600 border-blue-400'; break;
-    case 'EQUALIZING': color = 'bg-cyan-900/50 border-cyan-600'; pulse = 'animate-pulse'; break;
-    case 'EQUALIZED': color = 'bg-cyan-600 border-cyan-400'; break;
-    case 'OPENING': color = 'bg-red-900/50 border-red-600'; pulse = 'animate-pulse'; break;
-    case 'OPEN': color = 'bg-red-600 border-red-400'; break;
-    case 'FIRING': color = 'bg-red-500 border-white'; pulse = 'animate-pulse'; break;
-  }
+    const Light = ({ on, label }: { on: boolean; label: string }) => (
+        <div className="flex flex-col items-center gap-1">
+            <div className={`w-8 h-8 rounded-full border-2 transition-all duration-300 ${on ? 'bg-green-500 border-green-400 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : 'bg-zinc-900 border-zinc-700'}`} />
+            <span className={`text-[8px] font-bold tracking-wider ${on ? 'text-green-500' : 'text-zinc-600'}`}>{label}</span>
+        </div>
+    );
 
-  return (
-    <div className={`w-3 h-3 rounded-full border ${color} ${pulse} shadow-[0_0_8px_rgba(0,0,0,0.5)] flex-shrink-0`} />
-  );
+    return (
+        <div className="flex gap-4 items-center justify-center p-2 bg-black/40 rounded border border-white/5">
+            <Light on={isLoaded} label="LOADED" />
+            <Light on={isFlooded} label="FLOODED" />
+            <Light on={isEqualized} label="EQUALIZED" />
+            <Light on={isOpen} label="MUZZLE" />
+        </div>
+    );
 };
 
 const ProgressBar = ({ progress }: { progress: number }) => (
@@ -36,21 +38,34 @@ const ProgressBar = ({ progress }: { progress: number }) => (
     </div>
 );
 
-const TubeStrip = ({ tube, isSelected, onClick }: { tube: Tube; isSelected: boolean; onClick: () => void }) => {
+const TubeStrip = ({ tube, isSelected, onClick, targetId, onSelectTarget, trackers }: { tube: Tube; isSelected: boolean; onClick: () => void; targetId: string | null; onSelectTarget: (id: string | null) => void; trackers: any[] }) => {
     return (
         <div
             onClick={onClick}
             className={`
-                w-full h-full p-2 border border-white/10 rounded flex flex-col justify-between cursor-pointer transition-all overflow-hidden
+                w-full h-full p-2 border border-white/10 rounded flex flex-col justify-between cursor-pointer transition-all overflow-hidden relative
                 ${isSelected ? 'bg-white/5 border-amber-500/50 shadow-[inset_0_0_20px_rgba(245,158,11,0.1)]' : 'bg-black/40 hover:bg-white/5'}
             `}
         >
-            <div className="flex justify-between items-center mb-2 flex-shrink-0">
-                 <span className={`font-mono text-xl font-bold ${isSelected ? 'text-amber-500' : 'text-zinc-600'}`}>
+            {/* Top: Target Assignment */}
+            <div className="w-full flex justify-between items-center gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
+                 <span className={`font-mono text-xl font-bold flex-shrink-0 ${isSelected ? 'text-amber-500' : 'text-zinc-600'}`}>
                      {tube.id}
                  </span>
-                 <TubeStatusLight status={tube.status} />
+                 <select
+                    className="bg-black/50 border border-white/10 rounded text-[10px] p-1 text-zinc-300 outline-none focus:border-amber-500 w-full max-w-[120px]"
+                    value={targetId || ''}
+                    onChange={(e) => onSelectTarget(e.target.value || null)}
+                 >
+                    <option value="">NO TARGET</option>
+                    {trackers.map(tracker => (
+                        <option key={tracker.id} value={tracker.id}>
+                            {tracker.id} {tracker.classification ? `(${tracker.classification})` : ''}
+                        </option>
+                    ))}
+                 </select>
             </div>
+
 
             <div className="flex-grow flex flex-col justify-center gap-2 min-h-0 relative">
                 <span className={`text-[10px] tracking-wider font-bold text-center ${isSelected ? 'text-zinc-300' : 'text-zinc-600'}`}>
@@ -68,6 +83,7 @@ const TubeStrip = ({ tube, isSelected, onClick }: { tube: Tube; isSelected: bool
                      <div className="flex flex-col gap-0.5">
                          <span>MK-48 ADCAP</span>
                          <span>MODE: {tube.weaponData.searchMode}</span>
+                         {tube.autoSequence && <span className="text-amber-500 animate-pulse">AUTO-SEQ...</span>}
                      </div>
                  ) : (
                      <span className="opacity-50">NO WEAPON</span>
@@ -98,65 +114,93 @@ const WCSDisplay = () => {
     const [searchFloor, setSearchFloor] = useState(1000);
     const [searchMode, setSearchMode] = useState<'ACTIVE' | 'PASSIVE'>('PASSIVE');
 
-    // Target Selection
-    const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+    // Target Selection per Tube (using local state map or store if we want persistence)
+    // To keep it simple and fulfill "when user selects a tube... check assigned target", we can map tubeID -> targetID here.
+    const [tubeTargets, setTubeTargets] = useState<Record<number, string | null>>({});
 
     const selectedTube = tubes.find(t => t.id === selectedTubeId);
+    const selectedTargetId = selectedTube ? tubeTargets[selectedTube.id] || null : null;
 
-    const handleAction = (action: string) => {
-        if (!selectedTube) return;
-
-        switch(action) {
-            case 'LOAD':
-                loadTube(selectedTube.id, {
-                    runDepth: 50, // Default run depth
-                    floor: searchFloor,
-                    ceiling: searchCeiling,
-                    searchMode
-                });
-                break;
-            case 'FLOOD':
-                floodTube(selectedTube.id);
-                break;
-            case 'EQUALIZE':
-                equalizeTube(selectedTube.id);
-                break;
-            case 'MUZZLE':
-                openTube(selectedTube.id);
-                break;
-            case 'FIRE':
-                {
-                    let targetId = undefined;
-                    let enableRange = undefined;
-                    let gyroAngle = undefined;
-
-                    if (selectedTargetId) {
-                        const tracker = trackers.find(t => t.id === selectedTargetId);
-                        if (tracker) {
-                            targetId = selectedTargetId;
-                            const proj = calculateProjectedSolution(tracker.solution, ownShip, gameTime);
-                            // RTE: Distance - 1000yds. Minimum 500yds.
-                            enableRange = Math.max(500, proj.calcRange - 1000);
-                            gyroAngle = proj.calcBearing;
-                        }
-                    }
-
-                    fireTube(selectedTube.id, targetId, enableRange, gyroAngle);
-                }
-                break;
-        }
+    const handleTargetSelect = (tubeId: number, targetId: string | null) => {
+        setTubeTargets(prev => ({ ...prev, [tubeId]: targetId }));
     };
 
-    const isActionEnabled = (action: string) => {
-        if (!selectedTube) return false;
-        switch(action) {
-            case 'LOAD': return selectedTube.status === 'EMPTY';
-            case 'FLOOD': return selectedTube.status === 'DRY';
-            case 'EQUALIZE': return selectedTube.status === 'WET';
-            case 'MUZZLE': return selectedTube.status === 'EQUALIZED';
-            case 'FIRE': return selectedTube.status === 'OPEN';
-            default: return false;
+    const handleMakeReady = () => {
+        if (!selectedTube) return;
+
+        // If tube is already loaded (DRY/WET/etc), just enable auto-sequence to finish it
+        if (selectedTube.status !== 'EMPTY') {
+            useSubmarineStore.setState(state => ({
+                tubes: state.tubes.map(t =>
+                    t.id === selectedTube.id ? { ...t, autoSequence: true } : t
+                )
+            }));
+            return;
         }
+
+        let floor = 1000;
+        let ceiling = 50;
+        let depth = 50; // Default
+        let mode: 'ACTIVE' | 'PASSIVE' = 'PASSIVE';
+
+        if (selectedTargetId) {
+            const tracker = trackers.find(t => t.id === selectedTargetId);
+            const contact = tracker?.contactId ? useSubmarineStore.getState().contacts.find(c => c.id === tracker.contactId) : null;
+            const classification = tracker?.classification || 'UNKNOWN';
+
+            if (classification === 'SUB') {
+                depth = contact?.depth || 400; // Use contact depth if available (cheat/simulated crew knowledge)
+                floor = 1200; // Deep
+                ceiling = 50; // Shallow
+            } else if (classification === 'MERCHANT') {
+                depth = 20; // Search Depth
+                floor = 80;
+                ceiling = 0;
+            } else {
+                // Unknown
+                depth = 200;
+                floor = 1000;
+                ceiling = 50;
+            }
+        }
+
+        // Apply to UI state as well for feedback
+        setSearchFloor(floor);
+        setSearchCeiling(ceiling);
+
+        loadTube(selectedTube.id, {
+            runDepth: depth,
+            floor,
+            ceiling,
+            searchMode: mode
+        });
+
+        // Enable Auto-Sequence
+        useSubmarineStore.setState(state => ({
+            tubes: state.tubes.map(t =>
+                t.id === selectedTube.id ? { ...t, autoSequence: true } : t
+            )
+        }));
+    };
+
+    const handleFire = () => {
+        if (!selectedTube || selectedTube.status !== 'OPEN') return;
+
+        let targetId = undefined;
+        let enableRange = undefined;
+        let gyroAngle = undefined;
+
+        if (selectedTargetId) {
+            const tracker = trackers.find(t => t.id === selectedTargetId);
+            if (tracker) {
+                targetId = selectedTargetId;
+                const proj = calculateProjectedSolution(tracker.solution, ownShip, gameTime);
+                enableRange = Math.max(500, proj.calcRange - 1000);
+                gyroAngle = proj.calcBearing;
+            }
+        }
+
+        fireTube(selectedTube.id, targetId, enableRange, gyroAngle);
     };
 
     return (
@@ -171,6 +215,9 @@ const WCSDisplay = () => {
                             tube={tube}
                             isSelected={selectedTubeId === tube.id}
                             onClick={() => setSelectedTubeId(tube.id)}
+                            targetId={tubeTargets[tube.id] || null}
+                            onSelectTarget={(id) => handleTargetSelect(tube.id, id)}
+                            trackers={trackers}
                          />
                      ))}
                  </div>
@@ -181,93 +228,98 @@ const WCSDisplay = () => {
             {/* Zone 2: The Control Deck (Bottom) */}
             <div className="h-64 flex flex-row gap-4 p-4 bg-black/20 flex-shrink-0">
 
-                {/* Left Panel: Presets */}
-                <div className="w-2/3 grid grid-cols-2 gap-4">
-                     {/* Column 1 */}
-                     <div className="flex flex-col gap-4 justify-center">
-                         <div className="flex flex-col gap-2">
-                             <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH CEILING: <span className="text-amber-500">{searchCeiling} FT</span></div>
-                             <input
-                                 type="range"
-                                 min="0"
-                                 max="400"
-                                 step="10"
-                                 value={searchCeiling}
-                                 onChange={(e) => setSearchCeiling(Number(e.target.value))}
-                                 className="w-full accent-amber-600 cursor-pointer"
-                             />
-                         </div>
-                         <div className="flex flex-col gap-2">
-                             <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH MODE</div>
-                             <div className="flex bg-black/50 rounded p-1 border border-white/10 w-max">
-                                 {['PASSIVE', 'ACTIVE'].map(mode => (
-                                     <button
-                                         key={mode}
-                                         onClick={() => setSearchMode(mode as 'ACTIVE' | 'PASSIVE')}
-                                         className={`
-                                             px-4 py-1 rounded text-xs font-bold transition-colors
-                                             ${searchMode === mode ? 'bg-amber-600 text-black' : 'text-zinc-500 hover:text-zinc-300'}
-                                         `}
-                                     >
-                                         {mode}
-                                     </button>
-                                 ))}
+                {/* Left Panel: Presets & Interlocks Display */}
+                <div className="w-2/3 flex flex-col gap-4">
+
+                     <div className="flex gap-4 h-full">
+                         {/* Presets Controls */}
+                         <div className="flex-grow grid grid-cols-2 gap-4">
+                             <div className="flex flex-col gap-4 justify-center">
+                                 <div className="flex flex-col gap-2">
+                                     <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH CEILING: <span className="text-amber-500">{searchCeiling} FT</span></div>
+                                     <input
+                                         type="range"
+                                         min="0"
+                                         max="400"
+                                         step="10"
+                                         value={searchCeiling}
+                                         onChange={(e) => setSearchCeiling(Number(e.target.value))}
+                                         className="w-full accent-amber-600 cursor-pointer"
+                                     />
+                                 </div>
+                                 <div className="flex flex-col gap-2">
+                                     <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH MODE</div>
+                                     <div className="flex bg-black/50 rounded p-1 border border-white/10 w-max">
+                                         {['PASSIVE', 'ACTIVE'].map(mode => (
+                                             <button
+                                                 key={mode}
+                                                 onClick={() => setSearchMode(mode as 'ACTIVE' | 'PASSIVE')}
+                                                 className={`
+                                                     px-4 py-1 rounded text-xs font-bold transition-colors
+                                                     ${searchMode === mode ? 'bg-amber-600 text-black' : 'text-zinc-500 hover:text-zinc-300'}
+                                                 `}
+                                             >
+                                                 {mode}
+                                             </button>
+                                         ))}
+                                     </div>
+                                 </div>
+                             </div>
+
+                             <div className="flex flex-col gap-4 justify-center">
+                                 <div className="flex flex-col gap-2">
+                                     <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH FLOOR: <span className="text-amber-500">{searchFloor} FT</span></div>
+                                     <input
+                                         type="range"
+                                         min="400"
+                                         max="1200"
+                                         step="10"
+                                         value={searchFloor}
+                                         onChange={(e) => setSearchFloor(Number(e.target.value))}
+                                         className="w-full accent-amber-600 cursor-pointer"
+                                     />
+                                 </div>
                              </div>
                          </div>
                      </div>
 
-                     {/* Column 2 */}
-                     <div className="flex flex-col gap-4 justify-center">
-                         <div className="flex flex-col gap-2">
-                             <div className="text-xs text-zinc-500 font-bold tracking-widest">SEARCH FLOOR: <span className="text-amber-500">{searchFloor} FT</span></div>
-                             <input
-                                 type="range"
-                                 min="400"
-                                 max="1200"
-                                 step="10"
-                                 value={searchFloor}
-                                 onChange={(e) => setSearchFloor(Number(e.target.value))}
-                                 className="w-full accent-amber-600 cursor-pointer"
-                             />
-                         </div>
-                         <div className="flex flex-col gap-2">
-                            <div className="text-xs text-zinc-500 font-bold tracking-widest">TARGET SELECT</div>
-                            <select
-                                className="bg-black/50 border border-white/10 rounded text-xs p-1 text-zinc-300 outline-none focus:border-amber-500"
-                                value={selectedTargetId || ''}
-                                onChange={(e) => setSelectedTargetId(e.target.value || null)}
-                            >
-                                <option value="">NO TARGET</option>
-                                {trackers.map(tracker => (
-                                    <option key={tracker.id} value={tracker.id}>
-                                        {tracker.id} {tracker.contactId ? `(${tracker.contactId})` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                         </div>
+                     {/* Interlock Lights Row */}
+                     <div className="mt-auto">
+                        <div className="text-xs text-zinc-500 font-bold tracking-widest mb-1">INTERLOCKS</div>
+                        {selectedTube && <InterlockLights status={selectedTube.status} />}
                      </div>
                 </div>
 
                 {/* Right Panel: Action Keys */}
-                <div className="w-1/3 grid grid-cols-2 gap-4">
-                     {['LOAD', 'FLOOD', 'EQUALIZE', 'MUZZLE', 'FIRE'].map(action => {
-                         const enabled = isActionEnabled(action);
-                         return (
-                             <button
-                                 key={action}
-                                 onClick={() => handleAction(action)}
-                                 disabled={!enabled}
-                                 className={`
-                                     border-2 rounded flex items-center justify-center text-sm lg:text-base font-bold tracking-wider transition-all
-                                     ${enabled
-                                         ? 'border-zinc-500 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:border-zinc-300 shadow-[0_4px_0_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none'
-                                         : 'border-zinc-800 bg-zinc-900/50 text-zinc-700 cursor-not-allowed opacity-50'}
-                                 `}
-                             >
-                                 {action}
-                             </button>
-                         );
-                     })}
+                <div className="w-1/3 flex flex-col gap-4">
+                    {/* Make Ready Button */}
+                    <button
+                        onClick={handleMakeReady}
+                        disabled={!selectedTube || ['OPEN', 'FIRING'].includes(selectedTube.status)}
+                        className={`
+                            flex-1 border-2 rounded flex flex-col items-center justify-center transition-all
+                            ${selectedTube && !['OPEN', 'FIRING'].includes(selectedTube.status)
+                                ? 'border-amber-500 bg-amber-900/40 text-amber-100 hover:bg-amber-900/60 shadow-[0_4px_0_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none'
+                                : 'border-zinc-800 bg-zinc-900/50 text-zinc-700 cursor-not-allowed opacity-50'}
+                        `}
+                    >
+                        <span className="font-bold text-lg tracking-wider">MAKE READY</span>
+                        <span className="text-[10px] opacity-75">AUTO-LOAD & SEQUENCE</span>
+                    </button>
+
+                    {/* Fire Button */}
+                    <button
+                        onClick={handleFire}
+                        disabled={!selectedTube || selectedTube.status !== 'OPEN'}
+                        className={`
+                            h-20 border-2 rounded flex items-center justify-center transition-all
+                            ${selectedTube?.status === 'OPEN'
+                                ? 'border-red-500 bg-red-600 text-white shadow-[0_4px_0_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none animate-pulse'
+                                : 'border-zinc-800 bg-zinc-900/50 text-zinc-700 cursor-not-allowed opacity-50'}
+                        `}
+                    >
+                         <span className="font-bold text-2xl tracking-widest">FIRE</span>
+                    </button>
                 </div>
 
             </div>
