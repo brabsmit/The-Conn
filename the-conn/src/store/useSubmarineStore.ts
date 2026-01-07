@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 
+interface EntityHistory {
+  time: number;
+  x: number;
+  y: number;
+  heading?: number;
+}
+
 interface Contact {
   id: string;
   x: number;
@@ -18,6 +25,7 @@ interface Contact {
   canDetectTorpedoes?: boolean;
   sensitivity?: number;
   status?: 'ACTIVE' | 'DESTROYED';
+  history?: EntityHistory[];
 }
 
 interface SensorReading {
@@ -100,6 +108,7 @@ export interface Torpedo {
   enableRange: number; // Distance at which to start searching
   gyroAngle: number; // Initial heading
   distanceTraveled: number;
+  history?: EntityHistory[];
 }
 
 interface Transient {
@@ -122,6 +131,9 @@ interface ScriptedEvent {
 }
 
 interface SubmarineState {
+  // Game State
+  gameState: 'RUNNING' | 'VICTORY' | 'DEFEAT';
+
   // OwnShip Data
   heading: number; // 0-359
   speed: number; // 0-30kts
@@ -178,6 +190,7 @@ interface SubmarineState {
   updateContact: (id: string, updates: Partial<Contact>) => void;
   removeContact: (id: string) => void;
   loadScenario: (state: Partial<SubmarineState>) => void;
+  resetSimulation: () => void;
   tick: (delta?: number) => void;
 }
 
@@ -204,7 +217,9 @@ const gaussianRandom = (mean: number, stdev: number) => {
   return num * stdev + mean;
 };
 
-export const useSubmarineStore = create<SubmarineState>((set) => ({
+// FULL DEFAULT STATE FOR RESET
+const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
+  gameState: 'RUNNING',
   heading: 0,
   speed: 0,
   depth: 0,
@@ -225,7 +240,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     depth: 50,
     sourceLevel: 1.0,
     cavitationSpeed: 10,
-    status: 'ACTIVE'
+    status: 'ACTIVE',
+    history: []
   }],
   sensorReadings: [],
   logs: [],
@@ -234,7 +250,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   selectedTrackerId: null,
   tubes: Array.from({ length: 4 }, (_, i) => ({
     id: i + 1,
-    status: 'EMPTY',
+    status: 'EMPTY' as const,
     progress: 0,
     weaponData: null
   })),
@@ -246,6 +262,10 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   orderedHeading: 0,
   orderedSpeed: 10,
   orderedDepth: 150,
+});
+
+export const useSubmarineStore = create<SubmarineState>((set) => ({
+  ...getInitialState(),
 
   setOrderedHeading: (heading) => set({ orderedHeading: normalizeAngle(heading) }),
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
@@ -369,7 +389,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   })),
 
   addContact: (contact) => set((state) => ({
-    contacts: [...state.contacts, { ...contact, status: contact.status || 'ACTIVE' }]
+    contacts: [...state.contacts, { ...contact, status: contact.status || 'ACTIVE', history: [] }]
   })),
 
   updateContact: (id, updates) => set((state) => ({
@@ -395,8 +415,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     gameTime: 0,
     alertLevel: 'NORMAL',
     scriptedEvents: [],
-    visualTransients: []
+    visualTransients: [],
+    gameState: 'RUNNING'
   })),
+
+  resetSimulation: () => set(getInitialState()),
 
   fireTube: (tubeId, designatedTargetId, enableRange, gyroAngle) => set((state) => {
     const tube = state.tubes.find(t => t.id === tubeId);
@@ -423,7 +446,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       activeTargetId: undefined, // Not locked initially
       enableRange: launchEnableRange,
       gyroAngle: launchHeading,
-      distanceTraveled: 0
+      distanceTraveled: 0,
+      history: []
     };
 
     return {
@@ -439,6 +463,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
   tick: (delta = 1) =>
     set((state) => {
+      if (state.gameState !== 'RUNNING') {
+        return {};
+      }
+
+      let newGameState = state.gameState;
       let newHeading = state.heading;
       let newSpeed = state.speed;
       let newDepth = state.depth;
@@ -695,7 +724,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           activeTargetId: undefined,
           enableRange: 500,
           gyroAngle: req.heading,
-          distanceTraveled: 0
+          distanceTraveled: 0,
+          history: []
       }));
 
       // Update Torpedoes & Collision Check
@@ -854,7 +884,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
                  // Proximity Fuse (Detonation)
                  const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                 if (distToContact < 40) { // Updated Threshold
+                 if (distToContact < 40) { // Updated Threshold (40 yards)
                      finalStatus = 'EXPLODED';
 
                      // IMPACT LOGIC
@@ -877,7 +907,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                              type: 'LOG',
                              payload: { message: `ALARM: HULL BREACH! TORPEDO IMPACT!`, type: 'ALERT' }
                          });
-                         // Maybe slow down ownship or create damage?
+                         newGameState = 'DEFEAT';
                      } else {
                          // Hit Contact
                          const contact = newContacts.find(c => c.id === finalActiveTargetId);
@@ -935,8 +965,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         };
       });
 
-      // Filter out dead torpedoes
-      const activeTorpedoes = [...newTorpedoes, ...generatedTorpedoes].filter(t => t.status !== 'DUD' && t.status !== 'EXPLODED');
+      const allTorpedoes = [...newTorpedoes, ...generatedTorpedoes];
 
       // Sensor Simulation
       const newSensorReadings = newContacts.reduce((acc, contact) => {
@@ -1051,8 +1080,6 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           // Check for active sensor reading (Baffle Cutoff)
           const hasReading = newSensorReadings.some(r => r.contactId === tracker.contactId);
 
-          // Reviewer Requirement: Explicitly prevent TMA History updates if bearing is in baffles
-          // (Even if sensor reading exists due to noise or logic variance)
           const rb = normalizeAngle(tracker.currentBearing);
           const inBaffles = rb > 150 && rb < 210;
 
@@ -1080,6 +1107,33 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         if (newOwnShipHistory.length > MAX_HISTORY) {
           newOwnShipHistory = newOwnShipHistory.slice(newOwnShipHistory.length - MAX_HISTORY);
         }
+
+        // Record Contact History (Truth)
+        newContacts = newContacts.map(c => {
+            let h = c.history || [];
+            h = [...h, { time: newGameTime, x: c.x, y: c.y, heading: c.heading }];
+            if (h.length > MAX_HISTORY) {
+                h = h.slice(h.length - MAX_HISTORY);
+            }
+            return {
+                ...c,
+                history: h
+            };
+        });
+
+        // Record Torpedo History
+        for (let i = 0; i < allTorpedoes.length; i++) {
+             const t = allTorpedoes[i];
+             let h = t.history || [];
+             h = [...h, { time: newGameTime, x: t.position.x, y: t.position.y, heading: t.heading }];
+             if (h.length > MAX_HISTORY) {
+                 h = h.slice(h.length - MAX_HISTORY);
+             }
+             allTorpedoes[i] = {
+                 ...t,
+                 history: h
+             };
+         }
       }
 
       // Update Tubes (Progress and Auto-Sequence)
@@ -1131,7 +1185,17 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           return tube;
       });
 
+      // VICTORY CHECK
+      // If no active enemy contacts AND Alert Level is NORMAL
+      if (newGameState === 'RUNNING') {
+          const activeEnemies = newContacts.filter(c => c.type === 'ENEMY' && c.status === 'ACTIVE');
+          if (activeEnemies.length === 0 && newAlertLevel === 'NORMAL') {
+               newGameState = 'VICTORY';
+          }
+      }
+
       return {
+        gameState: newGameState,
         heading: newHeading,
         speed: newSpeed,
         depth: newDepth,
@@ -1145,7 +1209,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         gameTime: newGameTime,
         trackers: newTrackers,
         tubes: tubesUpdated,
-        torpedoes: activeTorpedoes,
+        torpedoes: allTorpedoes, // Use the list that includes exploded/duds
         ownshipNoiseLevel: totalNoise,
         cavitating: isCavitating,
         transients: newTransients,

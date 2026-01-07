@@ -11,6 +11,7 @@ import { ContactManager } from './components/panels/ContactManager';
 import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
 import { AlertOverlay } from './components/effects/AlertOverlay';
+import { DebriefModal } from './components/modals/DebriefModal';
 
 function App() {
   const tick = useSubmarineStore(state => state.tick);
@@ -25,6 +26,7 @@ function App() {
     // MAIN CONTAINER: Triptych Layout
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bulkhead bg-noise font-mono relative">
       <AlertOverlay />
+      <DebriefModal />
       
       {/* LAYER 1: Top Bar (Fixed Height) */}
       <TopBar />
