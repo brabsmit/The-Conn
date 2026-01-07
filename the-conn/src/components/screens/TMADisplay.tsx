@@ -22,7 +22,12 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
         if (!graphics) return;
 
         graphics.clear();
-        const { trackers, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId, viewScale } = useSubmarineStore.getState();
+        const { trackers: allTrackers, contacts, gameTime, ownShipHistory, heading: currentHeading, selectedTrackerId, viewScale } = useSubmarineStore.getState();
+
+        const trackers = allTrackers.filter(t => {
+            const c = contacts.find(c => c.id === t.contactId);
+            return !c || c.status !== 'DESTROYED';
+        });
 
         // Calculate Pixels Per Second based on viewScale
         // Sonar Update Rates:

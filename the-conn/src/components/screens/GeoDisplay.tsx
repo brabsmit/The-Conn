@@ -2,7 +2,7 @@ import React from 'react';
 import { Stage, Container, Graphics, Text } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
-import type { Tracker, Torpedo } from '../../store/useSubmarineStore';
+import type { Contact, Tracker, Torpedo } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 
 // Colors
@@ -32,9 +32,11 @@ const GeoDisplay: React.FC = () => {
     const ownShip = React.useMemo(() => ({ x, y, heading }), [x, y, heading]);
 
     const trackers = useSubmarineStore(state => state.trackers);
+    const contacts = useSubmarineStore(state => state.contacts);
     const selectedTrackerId = useSubmarineStore(state => state.selectedTrackerId);
     const torpedoes = useSubmarineStore(state => state.torpedoes);
     const gameTime = useSubmarineStore(state => state.gameTime);
+    const [isGodMode, setGodMode] = React.useState(false);
 
     // Coordinate Transform: World (Yards) -> Screen (Pixels)
     // Scale: Fit 12k yards?
@@ -104,8 +106,8 @@ const GeoDisplay: React.FC = () => {
                         {/* 1. Grid / Range Rings */}
                         <RangeRings scale={scale} />
 
-                        {/* 2. Trackers */}
-                        {trackers.map(tracker => (
+                        {/* 2. Trackers (Normal Mode) */}
+                        {!isGodMode && trackers.map(tracker => (
                             <TrackerSymbol
                                 key={tracker.id}
                                 tracker={tracker}
@@ -113,6 +115,16 @@ const GeoDisplay: React.FC = () => {
                                 scale={scale}
                                 isSelected={tracker.id === selectedTrackerId}
                                 gameTime={gameTime}
+                            />
+                        ))}
+
+                        {/* 2b. God Mode (Truth) */}
+                        {isGodMode && contacts.filter(c => c.status !== 'DESTROYED').map(contact => (
+                            <GodModeSymbol
+                                key={contact.id}
+                                contact={contact}
+                                ownShip={ownShip}
+                                scale={scale}
                             />
                         ))}
 
@@ -136,6 +148,20 @@ const GeoDisplay: React.FC = () => {
             <div className="absolute top-2 left-2 text-cyan-500 font-mono text-xs opacity-70 pointer-events-none">
                 <div>MODE: NORTH-UP</div>
                 <div>SCALE: 10k YDS</div>
+            </div>
+
+            {/* GOD MODE TOGGLE */}
+            <div className="absolute top-2 right-2 pointer-events-auto">
+                <button
+                    onClick={() => setGodMode(!isGodMode)}
+                    className={`px-2 py-1 text-xs font-bold font-mono border rounded ${
+                        isGodMode
+                        ? 'bg-purple-900/80 text-purple-200 border-purple-500 animate-pulse'
+                        : 'bg-black/50 text-zinc-600 border-zinc-800 hover:text-zinc-400'
+                    }`}
+                >
+                    GOD
+                </button>
             </div>
 
             {/* SOLUTION IDEAL INDICATOR */}
@@ -254,7 +280,6 @@ const TrackerSymbol: React.FC<{
         while (aspect > 180) aspect -= 360;
         while (aspect <= -180) aspect += 360;
 
-        targetAngle = aspect;
         inGreenZone = Math.abs(aspect) >= 120;
     }
 
@@ -402,6 +427,65 @@ const TorpedoSymbol: React.FC<{
     return (
         <Container x={relX} y={relY}>
             <Graphics draw={draw} />
+        </Container>
+    );
+};
+
+const GodModeSymbol: React.FC<{
+    contact: Contact,
+    ownShip: { x: number, y: number },
+    scale: number
+}> = ({ contact, ownShip, scale }) => {
+    // Colors
+    // Enemy (SUB/ESCORT) -> Red
+    // Neutral (MERCHANT/BIOLOGICAL) -> Green
+    const isEnemy = contact.classification === 'SUB' || contact.classification === 'ESCORT';
+    const color = isEnemy ? 0xFF0000 : 0x00FF00;
+
+    const relX = (contact.x - ownShip.x) * scale;
+    const relY = -(contact.y - ownShip.y) * scale;
+
+    const draw = React.useCallback((g: PIXI.Graphics) => {
+        g.clear();
+        g.lineStyle(2, color, 1);
+
+        // Symbol
+        if (isEnemy) {
+            // Square for Enemy
+            g.drawRect(-6, -6, 12, 12);
+        } else {
+            // Circle for Neutral
+            g.drawCircle(0, 0, 6);
+        }
+
+        // Heading Vector
+        if (contact.heading !== undefined) {
+            const len = 20;
+            const rad = (contact.heading * Math.PI) / 180;
+            const vecX = Math.sin(rad) * len;
+            const vecY = -Math.cos(rad) * len; // -Y is North (Up) on screen
+            g.moveTo(0, 0);
+            g.lineTo(vecX, vecY);
+        }
+
+        // ID Label
+        // (Handled by Text component below)
+
+    }, [color, isEnemy, contact.heading]);
+
+    return (
+        <Container x={relX} y={relY}>
+            <Graphics draw={draw} />
+            <Text
+                text={contact.classification?.substring(0, 3) || 'UNK'}
+                x={10}
+                y={-10}
+                style={new PIXI.TextStyle({
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    fill: color
+                })}
+            />
         </Container>
     );
 };
