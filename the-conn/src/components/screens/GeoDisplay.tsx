@@ -200,21 +200,40 @@ const TrackerSymbol: React.FC<{
 }> = ({ tracker, ownShip, scale, isSelected, gameTime }) => {
     const { solution } = tracker;
 
-    // Calculate projected position
-    const timeDelta = gameTime - solution.anchorTime;
-    const speedYps = solution.speed * 0.5629;
-    const distTraveled = speedYps * timeDelta;
+    // --- Dead Reckoning Projection ---
+    // 1. Get the "Anchor" (The Fix)
+    // We use computedWorldX/Y if available (it should be), otherwise fallback to calculating it.
+    // Fallback is necessary for existing state that hasn't been updated yet (though a refresh fixes that).
+    let fixX = solution.computedWorldX;
+    let fixY = solution.computedWorldY;
 
-    const radAnchorBearing = (solution.bearing * Math.PI) / 180;
-    const anchorTargetX = solution.anchorOwnShip.x + Math.sin(radAnchorBearing) * solution.range;
-    const anchorTargetY = solution.anchorOwnShip.y + Math.cos(radAnchorBearing) * solution.range;
+    if (fixX === undefined || fixY === undefined) {
+         const radAnchorBearing = (solution.bearing * Math.PI) / 180;
+         fixX = solution.anchorOwnShip.x + Math.sin(radAnchorBearing) * solution.range * 3;
+         fixY = solution.anchorOwnShip.y + Math.cos(radAnchorBearing) * solution.range * 3;
+    }
+
+    // 2. Project Forward (The DR Track)
+    const timeDelta = gameTime - solution.anchorTime;
+    // Speed in knots -> ft/sec. 1 knot = 1.6878 ft/sec
+    const speedFps = solution.speed * 1.6878;
+    const distTraveledFt = speedFps * timeDelta;
 
     const radCourse = (solution.course * Math.PI) / 180;
-    const currentTargetX = anchorTargetX + Math.sin(radCourse) * distTraveled;
-    const currentTargetY = anchorTargetY + Math.cos(radCourse) * distTraveled;
+    const currentTargetX = fixX + Math.sin(radCourse) * distTraveledFt;
+    const currentTargetY = fixY + Math.cos(radCourse) * distTraveledFt;
 
+    // 3. Screen Coordinates (Relative to Ownship)
+    // Map View: +Y is Up on Screen.
+    // World: +Y is North.
+    // So ScreenY = -(WorldY - OwnY).
+    // ScreenX = (WorldX - OwnX).
     const relX = (currentTargetX - ownShip.x) * scale;
     const relY = -(currentTargetY - ownShip.y) * scale;
+
+    // Fix Position (for visualization)
+    const fixRelX = (fixX - ownShip.x) * scale;
+    const fixRelY = -(fixY - ownShip.y) * scale;
 
     const isSolutionIncomplete = !solution.range || solution.range < 100;
 
@@ -262,6 +281,18 @@ const TrackerSymbol: React.FC<{
             g.endFill();
 
         } else {
+            // --- DRAW DR VISUALIZATION (Fix + Track) ---
+            // Only draw if we have moved enough to see it (e.g. > 1 px)
+            // Fix Marker (Small X or Dot)
+            g.lineStyle(1, color, 0.5);
+            g.moveTo(fixRelX - 3, fixRelY - 3); g.lineTo(fixRelX + 3, fixRelY + 3);
+            g.moveTo(fixRelX + 3, fixRelY - 3); g.lineTo(fixRelX - 3, fixRelY + 3);
+
+            // DR Track (Dashed Line) - Pixi doesn't do dashed lines natively easily, so just thin solid line
+            g.lineStyle(1, color, 0.3);
+            g.moveTo(fixRelX, fixRelY);
+            g.lineTo(relX, relY);
+
             // --- DRAW TACTICAL ZONES (Underneath Symbol) ---
             // Only draw zones if solution is valid.
             // Radius of cones: Let's pick a reasonable visual size, e.g. 2000 yards scaled or fixed pixels?
@@ -321,7 +352,7 @@ const TrackerSymbol: React.FC<{
             g.lineTo(tipX, tipY);
         }
 
-    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, inGreenZone, scale]);
+    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, inGreenZone, scale, fixRelX, fixRelY]);
 
     return (
         <React.Fragment>

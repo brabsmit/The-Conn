@@ -48,6 +48,8 @@ export interface TrackerSolution {
     y: number;
     heading: number;
   };
+  computedWorldX: number;
+  computedWorldY: number;
 }
 
 export interface Tracker {
@@ -261,7 +263,9 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         course: 0,
         bearing: normalizeAngle(bearing + state.heading),
         anchorTime: state.gameTime,
-        anchorOwnShip: { x: state.x, y: state.y, heading: state.heading }
+        anchorOwnShip: { x: state.x, y: state.y, heading: state.heading },
+        computedWorldX: state.x + 30000 * Math.sin(normalizeAngle(bearing + state.heading) * Math.PI / 180), // 10k yds * 3
+        computedWorldY: state.y + 30000 * Math.cos(normalizeAngle(bearing + state.heading) * Math.PI / 180)
       },
       classificationStatus: 'PENDING',
       timeToClassify: 15
@@ -279,12 +283,30 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     selectedTrackerId: state.selectedTrackerId === id ? null : state.selectedTrackerId
   })),
 
-  updateTrackerSolution: (trackerId, solution) => set((state) => ({
-    trackers: state.trackers.map(t =>
-      t.id === trackerId
-        ? { ...t, solution: { ...t.solution, ...solution } }
-        : t
-    )
+  updateTrackerSolution: (trackerId, solutionUpdates) => set((state) => ({
+    trackers: state.trackers.map(t => {
+      if (t.id !== trackerId) return t;
+
+      const mergedSolution = { ...t.solution, ...solutionUpdates };
+
+      // Re-calculate anchor position based on current ownship and new solution parameters
+      const bearingRad = (mergedSolution.bearing * Math.PI) / 180;
+      const rangeFt = mergedSolution.range * 3;
+
+      const relX = rangeFt * Math.sin(bearingRad);
+      const relY = rangeFt * Math.cos(bearingRad);
+
+      return {
+        ...t,
+        solution: {
+          ...mergedSolution,
+          anchorTime: state.gameTime,
+          anchorOwnShip: { x: state.x, y: state.y, heading: state.heading },
+          computedWorldX: state.x + relX,
+          computedWorldY: state.y + relY
+        }
+      };
+    })
   })),
 
   setViewScale: (scale) => set({ viewScale: scale }),
