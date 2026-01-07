@@ -192,7 +192,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                 </g>
 
                 {/* Contacts */}
-                {contacts.map(c => {
+                {contacts.filter(c => c.status !== 'DESTROYED').map(c => {
                     const pos = worldToScreen(c.x, c.y);
                     const isSelected = selectedEntityId === c.id;
                     const isNeutral = c.type === 'NEUTRAL';

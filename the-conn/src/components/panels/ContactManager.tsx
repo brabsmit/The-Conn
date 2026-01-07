@@ -3,14 +3,26 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useInterval } from '../../hooks/useInterval';
 
 export const ContactManager = () => {
-    const [trackers, setTrackers] = useState(() => useSubmarineStore.getState().trackers);
+    const [trackers, setTrackers] = useState(() => {
+        const state = useSubmarineStore.getState();
+        return state.trackers.filter(t => {
+            const c = state.contacts.find(c => c.id === t.contactId);
+            return !c || c.status !== 'DESTROYED';
+        });
+    });
 
     // Poll for tracker updates every 1000ms (1Hz) to stabilize UI values
     useInterval(() => {
-        setTrackers(useSubmarineStore.getState().trackers);
+        const state = useSubmarineStore.getState();
+        const active = state.trackers.filter(t => {
+            const c = state.contacts.find(c => c.id === t.contactId);
+            return !c || c.status !== 'DESTROYED';
+        });
+        setTrackers(active);
     }, 1000);
 
     const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
+    const heading = useSubmarineStore((state) => state.heading);
     const setSelectedTracker = useSubmarineStore((state) => state.setSelectedTracker);
     const deleteTracker = useSubmarineStore((state) => state.deleteTracker);
 
@@ -19,7 +31,7 @@ export const ContactManager = () => {
             {/* Header */}
             <div className="flex items-center px-2 py-1 bg-white/5 border-b border-white/10 text-zinc-500 font-bold uppercase tracking-wider">
                 <div className="w-12 text-center">ID</div>
-                <div className="w-16 text-center">BRG</div>
+                <div className="w-16 text-center">TRUE BRG</div>
                 <div className="flex-grow text-center">CLASS</div>
                 <div className="w-8"></div>
             </div>
@@ -51,7 +63,7 @@ export const ContactManager = () => {
 
                                 {/* Bearing */}
                                 <div className={`w-16 text-center tabular-nums font-mono ${isSub ? 'text-red-200' : 'text-zinc-300'}`}>
-                                    {tracker.currentBearing.toFixed(0).padStart(3, '0')}
+                                    {((tracker.currentBearing + heading) % 360).toFixed(0).padStart(3, '0')}
                                 </div>
 
                                 {/* Class */}

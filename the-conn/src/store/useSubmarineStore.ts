@@ -7,7 +7,7 @@ interface EntityHistory {
   heading?: number;
 }
 
-interface Contact {
+export interface Contact {
   id: string;
   x: number;
   y: number;
@@ -397,7 +397,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   })),
 
   removeContact: (id) => set((state) => ({
-    contacts: state.contacts.filter(c => c.id !== id)
+    contacts: state.contacts.map(c => c.id === id ? { ...c, status: 'DESTROYED' } : c)
   })),
 
   loadScenario: (newState) => set((state) => ({
