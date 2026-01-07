@@ -139,7 +139,7 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
 
             // Generate Pixel Buffer for ONE line
             const pixelBuffer = new Uint8Array(width * 4);
-            const { sensorReadings, contacts, torpedoes, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel } = state;
+            const { sensorReadings, contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel, gameTime } = state;
 
             const noiseFloor = Math.min(255, 30 + (ownshipNoiseLevel * 100));
             const selfNoisePenalty = ownshipNoiseLevel * 0.5;
@@ -149,6 +149,8 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
             sensorReadings.forEach((reading) => {
                 const contact = contacts.find(c => c.id === reading.contactId);
                 if (!contact) return;
+                // Skip signal for destroyed contacts (transient handles the explosion)
+                if (contact.status === 'DESTROYED') return;
 
                 let sourceLevel = contact.sourceLevel || 1.0;
                 const cavitationSpeed = contact.cavitationSpeed || 100;
@@ -205,7 +207,32 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
                 }
             });
 
-            // 3. BQQ Processing
+            // 3. Visual Transients (Explosions)
+            // Stored bearing is absolute true bearing, need relative
+            const transientBuffer = new Float32Array(width).fill(0);
+            visualTransients.forEach(t => {
+                const age = gameTime - t.timestamp;
+                if (age > 5) return; // Ignore old (should be filtered by store anyway)
+
+                // Simple linear decay over 3 seconds
+                const decay = Math.max(0, 1 - (age / 3.0));
+                if (decay <= 0) return;
+
+                const relBearing = getShortestAngle(t.bearing, ownHeading);
+                if (relBearing >= -150 && relBearing <= 150) {
+                     const cx = Math.floor(((relBearing + 150) / 300) * width);
+                     const spread = 2; // +/- 2 pixels wide
+                     for (let off = -spread; off <= spread; off++) {
+                         const x = cx + off;
+                         if (x >= 0 && x < width) {
+                             // Max intensity (Pure White)
+                             transientBuffer[x] = Math.max(transientBuffer[x], decay);
+                         }
+                     }
+                }
+            });
+
+            // 4. BQQ Processing
             const processedBuffer = new Float32Array(signalBuffer);
             for (let i = 1; i < width - 1; i++) {
                 if (signalBuffer[i] > 0.8) {
@@ -214,20 +241,33 @@ const Waterfall = forwardRef<WaterfallRef, WaterfallProps>(({ width, height, vie
                 }
             }
 
-            // 4. Render to Pixel Buffer
+            // 5. Render to Pixel Buffer
             for (let i = 0; i < width; i++) {
+                // Base Sonar
                 const noise = Math.random() * noiseFloor;
                 const signalVal = processedBuffer[i];
                 const intensity = Math.min(255, noise + signalVal * 255);
                 let r = 0;
+                let g = intensity;
                 let b = 0;
                 if (signalVal > 0.9) {
                     const clip = (signalVal - 0.9) * 10 * 150;
                     r = Math.min(255, clip);
                     b = Math.min(255, clip);
                 }
+
+                // Apply Transients (Pure White Overlay)
+                const transientVal = transientBuffer[i];
+                if (transientVal > 0) {
+                    const white = transientVal * 255;
+                    // Additive mix or max? Max ensures it clips to white.
+                    r = Math.max(r, white);
+                    g = Math.max(g, white);
+                    b = Math.max(b, white);
+                }
+
                 pixelBuffer[i * 4 + 0] = r;
-                pixelBuffer[i * 4 + 1] = intensity;
+                pixelBuffer[i * 4 + 1] = g;
                 pixelBuffer[i * 4 + 2] = b;
                 pixelBuffer[i * 4 + 3] = 255;
             }
