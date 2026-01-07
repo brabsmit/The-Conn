@@ -13,6 +13,8 @@ interface Contact {
   cavitationSpeed?: number;
   aiMode?: 'IDLE' | 'ATTACK' | 'EVADE';
   aiLastUpdate?: number;
+  aiReactionTimer?: number;
+  canDetectTorpedoes?: boolean;
   sensitivity?: number;
   status?: 'ACTIVE' | 'DESTROYED';
 }
@@ -90,6 +92,7 @@ export interface Torpedo {
   speed: number;
   status: 'RUNNING' | 'DUD' | 'EXPLODED';
   launchTime: number;
+  searchMode: 'ACTIVE' | 'PASSIVE';
   // Guidance Params
   designatedTargetId?: string; // Target assigned at launch (hint)
   activeTargetId?: string; // Target actually locked on
@@ -414,6 +417,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       speed: 20, // Launch speed
       status: 'RUNNING',
       launchTime: state.gameTime,
+      searchMode: tube.weaponData?.searchMode || 'PASSIVE',
       designatedTargetId,
       activeTargetId: undefined, // Not locked initially
       enableRange: launchEnableRange,
@@ -509,24 +513,90 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
             if (timeSinceLastUpdate >= 1.0) {
                 currentContact.aiLastUpdate = state.gameTime;
 
-                // 1. Detection
+                // Merchant: Return immediately (No reaction)
+                if (currentContact.classification === 'MERCHANT') {
+                    // Force maintain IDLE or existing state without processing threats/ownship
+                    return currentContact;
+                }
+
+                // 1. Detection (Ownship)
                 const dx = state.x - currentContact.x;
                 const dy = state.y - currentContact.y;
                 const distSquared = (dx * dx + dy * dy);
-                const sensitivity = currentContact.sensitivity || 300000000;
+                const sensitivity = currentContact.sensitivity !== undefined ? currentContact.sensitivity : 300000000;
                 const alertLevel = (totalNoise / Math.max(1, distSquared)) * sensitivity;
 
-                // 2. Triggers
-                if (alertLevel > 0.5) {
+                // 2. Triggers (Ownship)
+                if (alertLevel > 0.5 && currentContact.aiMode !== 'EVADE') {
                     currentContact.aiMode = 'ATTACK';
                 }
 
-                const launchTransient = state.transients.find(t => t.type === 'LAUNCH' && (state.gameTime - t.startTime) < 5);
-                if (launchTransient) {
-                    currentContact.aiMode = 'EVADE';
+                // 3. Threat Perception (Torpedoes)
+                let detectedThreatType: 'NONE' | 'PASSIVE' | 'ACTIVE' = 'NONE';
+                let detectedInBaffles = false;
+
+                // Check capability (Merchant defaults to false/oblivious if set, or check type)
+                const canDetect = currentContact.canDetectTorpedoes !== undefined ? currentContact.canDetectTorpedoes : true;
+
+                if (canDetect) {
+                     for (const torpedo of state.torpedoes) {
+                         if (torpedo.status !== 'RUNNING') continue;
+                         const tDx = torpedo.position.x - currentContact.x;
+                         const tDy = torpedo.position.y - currentContact.y;
+                         const distToTorp = Math.sqrt(tDx*tDx + tDy*tDy) / 3; // yards
+
+                         // Calculate Bearing Info
+                         const angleToTorp = Math.atan2(tDy, tDx) * (180 / Math.PI);
+                         const bearingToTorp = normalizeAngle(90 - angleToTorp);
+                         let relBrg = Math.abs((currentContact.heading || 0) - bearingToTorp);
+                         if (relBrg > 180) relBrg = 360 - relBrg;
+                         const inBaffles = relBrg > 150;
+
+                         // Active Intercept (Ping)
+                         const isPinging = torpedo.distanceTraveled >= torpedo.enableRange && torpedo.searchMode === 'ACTIVE';
+                         if (isPinging && distToTorp < 4000) {
+                              detectedThreatType = 'ACTIVE';
+                              detectedInBaffles = inBaffles;
+                              break; // Priority
+                         }
+
+                         // Passive Detection
+                         const detectionRange = inBaffles ? 1000 : 3000;
+                         if (distToTorp < detectionRange) {
+                              detectedThreatType = 'PASSIVE';
+                              detectedInBaffles = inBaffles;
+                              // Don't break, check for active
+                         }
+                     }
                 }
 
-                // 3. Behavior
+                // 4. Reaction Logic
+                if (detectedThreatType !== 'NONE') {
+                    if (currentContact.aiMode !== 'EVADE') {
+                         if (currentContact.aiReactionTimer === undefined) {
+                              if (detectedThreatType === 'ACTIVE') {
+                                  currentContact.aiReactionTimer = 0; // Immediate
+                              } else {
+                                  currentContact.aiReactionTimer = detectedInBaffles ? 10 : 2;
+                              }
+                         }
+
+                         if (currentContact.aiReactionTimer <= 0) {
+                             currentContact.aiMode = 'EVADE';
+                             currentContact.aiReactionTimer = undefined;
+                         } else {
+                             currentContact.aiReactionTimer -= 1;
+                         }
+                    }
+                } else {
+                     // If threat lost, reset timer?
+                     // If we were counting down but threat disappeared (e.g. out of range), reset.
+                     if (currentContact.aiMode !== 'EVADE') {
+                        currentContact.aiReactionTimer = undefined;
+                     }
+                }
+
+                // 5. Behavior
                 if (currentContact.aiMode === 'EVADE') {
                     currentContact.speed = 25;
                     const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
