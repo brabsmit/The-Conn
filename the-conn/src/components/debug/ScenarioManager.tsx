@@ -316,6 +316,21 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                     >
                         DELETE ENTITY
                     </button>
+
+                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-zinc-700">
+                         <button
+                            onClick={() => updateContact(selectedEntityId, { aiMode: 'APPROACH' })}
+                            className="bg-yellow-800 hover:bg-yellow-700 text-yellow-100 text-xs py-2 rounded font-mono"
+                         >
+                            [FORCE DETECT]
+                         </button>
+                         <button
+                            onClick={() => updateContact(selectedEntityId, { aiMode: 'ATTACK' })}
+                            className="bg-red-800 hover:bg-red-700 text-red-100 text-xs py-2 rounded font-mono"
+                         >
+                            [FORCE FIRE]
+                         </button>
+                    </div>
                 </div>
             ) : (
                 <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm italic">
