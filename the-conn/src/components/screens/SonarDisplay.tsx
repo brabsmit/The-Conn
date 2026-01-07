@@ -15,13 +15,20 @@ const SonarBezel = ({ width }: { width: number }) => {
     return (
         <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }}>
             {visibleTrackers.map((tracker) => {
-                 let signedBearing = tracker.currentBearing;
-                 if (signedBearing > 180) signedBearing -= 360;
+                 // Helper for Viewport Mapping (300 deg)
+                 const relBearing = (tracker.currentBearing % 360 + 360) % 360; // Normalize 0-360
 
-                 // Check visibility within the +/- 150 degree window
-                 if (signedBearing < -150 || signedBearing > 150) return null;
+                 // Baffles: 150 < rb < 210
+                 if (relBearing > 150 && relBearing < 210) return null;
 
-                 const x = ((signedBearing + 150) / 300) * width;
+                 let viewAngle = 0;
+                 if (relBearing >= 210) {
+                     viewAngle = relBearing - 210; // 210..360 -> 0..150
+                 } else {
+                     viewAngle = relBearing + 150; // 0..150 -> 150..300
+                 }
+
+                 const x = (viewAngle / 300) * width;
 
                  return (
                      <div
