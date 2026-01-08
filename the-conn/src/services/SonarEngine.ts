@@ -34,7 +34,7 @@ interface OverlayContext {
     lastPoints: Map<string, number>;
 }
 
-class SonarEngine {
+export class SonarEngine {
     // PIXI Core
     public app: PIXI.Application | null = null;
     private view: HTMLCanvasElement | null = null;
@@ -100,8 +100,6 @@ class SonarEngine {
         // Setup Event Mode
         this.stage.eventMode = 'static';
         this.stage.hitArea = new PIXI.Rectangle(0, 0, width, height);
-        // REMOVED: Pointer interactions moved to React Overlay
-        // this.stage.on('pointerdown', (e) => this.handlePointerDown(e));
 
         // Create Containers
         this.sonarContainer = new PIXI.Container();
@@ -181,8 +179,13 @@ class SonarEngine {
     }
 
     public destroy(): void {
-        // DO NOT CALL THIS unless you really mean it (e.g. app shutdown)
-        // For this task, we persist.
+        // In the "Ref Persistence" model, we actually might want to destroy if the component really unmounts (e.g. changing tabs?)
+        // But for now, we follow instructions to use Ref to persist across re-renders.
+        // If the Ref is eventually cleared, we might want to destroy.
+        if (this.app) {
+            this.app.destroy(true, { children: true, texture: true, baseTexture: true });
+            this.app = null;
+        }
     }
 
     // --- Internal Logic ---
@@ -245,8 +248,6 @@ class SonarEngine {
         this.sonarSprite.tilePosition.y = -sl;
     }
 
-    // REMOVED: handlePointerDown
-
     private tick(delta: number): void {
         if (!this.app || !this.history || !this.textures.fast || !this.overlayContexts) return;
 
@@ -262,6 +263,11 @@ class SonarEngine {
         if (updateSlow) this.accumulators.slow -= RATE_SLOW;
 
         const state = useSubmarineStore.getState();
+
+        // 0. Sync View Scale from Store (Task 94.2)
+        if (state.viewScale !== this.currentViewScale) {
+            this.setViewScale(state.viewScale);
+        }
 
         // 1. Generate Sonar Line
         const pixelBuffer = this.generateSonarLine(state);
@@ -295,8 +301,6 @@ class SonarEngine {
         }
 
         const pixelBuffer = this._tempRowBuffer!;
-        // Optimization: Zero-fill not strictly needed for pixelBuffer as we overwrite R,G,B,A for every pixel below.
-        // But if needed: pixelBuffer.fill(0);
 
         const signalBuffer = this.signalLineBuffer!.fill(0); // Reset
         const transientBuffer = this.transientLineBuffer!.fill(0); // Reset
@@ -593,6 +597,3 @@ class SonarEngine {
         });
     }
 }
-
-// Export Singleton
-export const sonarEngine = new SonarEngine();

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { useInterval } from '../../hooks/useInterval';
-import { sonarEngine } from '../../services/SonarEngine';
+import { SonarEngine } from '../../services/SonarEngine';
 import SonarOverlay from './SonarOverlay';
 
 const SonarBezel = ({ width }: { width: number }) => {
@@ -51,34 +51,48 @@ const SonarBezel = ({ width }: { width: number }) => {
     );
 };
 
-const SonarDisplay = React.memo(() => {
+// Task 94.1: The "Zombie" Component - Decoupled rendering
+const SonarComponent = () => {
     const { ref, width: rawWidth, height: rawHeight } = useResize();
     const width = Math.floor(rawWidth);
     const height = Math.floor(rawHeight);
 
     const [showSolution, setShowSolution] = useState(true);
-    const viewScale = useSubmarineStore(state => state.viewScale);
+    // REMOVED: useSubmarineStore subscription for viewScale
+
+    // Task 94.3: Ref Persistence Safety Net
+    const engineRef = useRef<SonarEngine | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Initialize Engine
+    // Initialize Engine (Run Once)
     useEffect(() => {
-        if (width > 0 && height > 0) {
-            sonarEngine.initialize(width, height);
+        if (!engineRef.current) {
+            engineRef.current = new SonarEngine();
+        }
+        // No cleanup that destroys the engine
+    }, []);
+
+    // Initialize/Resize Engine when dimensions change
+    useEffect(() => {
+        if (engineRef.current && width > 0 && height > 0) {
+            engineRef.current.initialize(width, height);
         }
     }, [width, height]);
 
     // Attach View
     useEffect(() => {
         const container = containerRef.current;
-        if (container && width > 0 && height > 0) {
+        const engine = engineRef.current;
+
+        if (container && engine && width > 0 && height > 0) {
             try {
-                const canvas = sonarEngine.getView();
+                const canvas = engine.getView();
                 // Ensure canvas is not already attached elsewhere
                 if (canvas.parentElement !== container) {
                     container.appendChild(canvas);
                 }
             } catch (e) {
-                // Engine might not be ready yet if width/height 0
+                // Engine might not be ready yet
             }
         }
 
@@ -92,13 +106,11 @@ const SonarDisplay = React.memo(() => {
         };
     }, [width, height]); // Re-attach if dimensions change
 
-    // Sync Props
+    // Sync Local State (ShowSolution)
     useEffect(() => {
-        sonarEngine.setViewScale(viewScale);
-    }, [viewScale]);
-
-    useEffect(() => {
-        sonarEngine.setShowSolution(showSolution);
+        if (engineRef.current) {
+            engineRef.current.setShowSolution(showSolution);
+        }
     }, [showSolution]);
 
     return (
@@ -126,6 +138,21 @@ const SonarDisplay = React.memo(() => {
             </div>
         </div>
     );
+};
+
+// Task 94.1: Strict Memo
+export const SonarDisplay = React.memo(SonarComponent, (prev, next) => {
+    // Only re-render if props change (which there are none currently) or if internal state changes.
+    // React.memo only compares props. Since SonarComponent has no props, this comparison function
+    // effectively makes it never re-render due to parent updates.
+    // BUT the component uses hooks (useResize, useState). Those will still trigger re-renders.
+    // The requirement says: "ONLY re-render if the physical pixel size changes".
+    // Since useResize is inside the component, it triggers the re-render.
+    // However, React.memo wraps the component export. The props are empty.
+    // So if the parent re-renders, this component won't re-render unless we return false.
+    // Since there are no props, we can return true always? No, if we return true, it skips re-render.
+    // The requirement implies we should ignore parent renders.
+    return true;
 });
 
 export default SonarDisplay;
