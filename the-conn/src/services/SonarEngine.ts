@@ -325,7 +325,6 @@ class SonarEngine {
 
         const { sensorReadings, contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel, gameTime } = state;
 
-        const noiseFloor = Math.min(255, 30 + (ownshipNoiseLevel * 100));
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
         // Helper for Viewport Mapping (300 deg)
@@ -363,15 +362,21 @@ class SonarEngine {
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
             signal = Math.max(0, signal - selfNoisePenalty);
 
+            // Sub-Task 88.3: Scintillation
+            signal *= (0.8 + Math.random() * 0.4);
+
             // reading.bearing is already Relative (0-360) (noisy) from Store
             const rb = normalizeAngle(reading.bearing);
             const cx = getScreenX(rb);
 
+            // Sub-Task 88.1: Gaussian Signal Spread
             if (cx !== null) {
-                 for (let off = -1; off <= 2; off++) {
+                 const kernel = [0.5, 1.0, 0.5];
+                 for (let k = 0; k < 3; k++) {
+                     const off = k - 1;
                      const x = cx + off;
                      if (x >= 0 && x < width) {
-                         signalBuffer[x] = Math.max(signalBuffer[x], signal);
+                         signalBuffer[x] = Math.max(signalBuffer[x], signal * kernel[k]);
                      }
                  }
             }
@@ -386,7 +391,10 @@ class SonarEngine {
             const distYards = distance / 3;
             const sourceLevel = 1.2;
             const scaleFactor = 0.0002;
-            const signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+            let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+
+            // Sub-Task 88.3: Scintillation
+            signal *= (0.8 + Math.random() * 0.4);
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
@@ -394,11 +402,14 @@ class SonarEngine {
 
             const cx = getScreenX(relBearing);
 
+            // Sub-Task 88.1: Gaussian Signal Spread
             if (cx !== null) {
-                 for (let off = -1; off <= 1; off++) {
+                 const kernel = [0.5, 1.0, 0.5];
+                 for (let k = 0; k < 3; k++) {
+                     const off = k - 1;
                      const x = cx + off;
                      if (x >= 0 && x < width) {
-                         signalBuffer[x] = Math.max(signalBuffer[x], signal);
+                         signalBuffer[x] = Math.max(signalBuffer[x], signal * kernel[k]);
                      }
                  }
             }
@@ -440,16 +451,30 @@ class SonarEngine {
 
         // 5. Render
         for (let i = 0; i < width; i++) {
-            const noise = Math.random() * noiseFloor;
+            // Sub-Task 88.2: The Noise Floor (Dynamic Grain)
+            // Generate low-level static noise (0.05 - 0.1)
+            const staticNoise = 0.05 + (Math.random() * 0.05);
+            // Ownship noise contribution (washout effect)
+            const ownshipContribution = ownshipNoiseLevel * 0.15;
+
+            const totalNoise = staticNoise + ownshipContribution;
             const signalVal = processedBuffer[i];
-            const intensity = Math.min(255, noise + signalVal * 255);
+
+            // Sub-Task 88.4: The Gain Palette (Intensity Mapping)
+            // Combine signal and noise
+            const totalIntensity = totalNoise + signalVal;
+
             let r = 0;
-            let g = intensity;
+            let g = Math.min(255, totalIntensity * 255);
             let b = 0;
-            if (signalVal > 0.9) {
-                const clip = (signalVal - 0.9) * 10 * 150;
-                r = Math.min(255, clip);
-                b = Math.min(255, clip);
+
+            // High Intensity Bloom (White/Yellow-Green)
+            // Threshold > 0.8
+            if (totalIntensity > 0.8) {
+                const bloom = (totalIntensity - 0.8) * 5.0; // Map 0.2 range -> 1.0
+                const bloomVal = Math.min(255, bloom * 255);
+                r = bloomVal;
+                b = bloomVal;
             }
 
             const transientVal = transientBuffer[i];
