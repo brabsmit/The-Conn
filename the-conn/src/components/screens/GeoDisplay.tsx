@@ -132,7 +132,20 @@ const GeoDisplay: React.FC = () => {
                         ))}
 
                         {/* 3. Torpedoes */}
-                        {torpedoes.map(torpedo => (
+                        {torpedoes.filter(torpedo => {
+                            // Fog of War: Only render if:
+                            // 1. Ownship weapon (or God Mode)
+                            // 2. Detected (Tracker exists)
+                            // Note: Weapon Trackers use ID format `W-{torpID}`
+                            if (isGodMode) return true;
+                            if (torpedo.designatedTargetId === 'OWNSHIP' && torpedo.isHostile === false) return true; // Failsafe? Actually Ownship torpedoes are not hostile.
+                            if (!torpedo.isHostile) return true; // Own weapons
+
+                            // Check for tracker
+                            const trackerId = `W-${torpedo.id}`;
+                            const isDetected = trackers.some(t => t.id === trackerId);
+                            return isDetected;
+                        }).map(torpedo => (
                             <TorpedoSymbol
                                 key={torpedo.id}
                                 torpedo={torpedo}
