@@ -42,6 +42,7 @@ export const TopBar = () => {
   const [showScenarioMenu, setShowScenarioMenu] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState(false);
+  const expertMode = useSubmarineStore(state => state.expertMode);
 
   // Subscribe to latest log for ticker
   const latestLog = useSubmarineStore(state => state.logs[state.logs.length - 1]);
@@ -182,12 +183,14 @@ export const TopBar = () => {
                 )}
             </div>
 
-            <button
-                onClick={() => setShowScenarioManager(true)}
-                className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
-            >
-                DEV
-            </button>
+            {!expertMode && (
+                <button
+                    onClick={() => setShowScenarioManager(true)}
+                    className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+                >
+                    DEV
+                </button>
+            )}
           </div>
       </div>
 

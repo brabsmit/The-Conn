@@ -4,9 +4,11 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 export const DebriefModal: React.FC = () => {
     const gameState = useSubmarineStore(state => state.gameState);
     const resetSimulation = useSubmarineStore(state => state.resetSimulation);
+    const setAppState = useSubmarineStore(state => state.setAppState);
     const ownShipHistory = useSubmarineStore(state => state.ownShipHistory);
     const contacts = useSubmarineStore(state => state.contacts);
     const torpedoes = useSubmarineStore(state => state.torpedoes);
+    const metrics = useSubmarineStore(state => state.metrics);
 
     // Initial Ownship Start position (first history point or current if empty)
     const startX = ownShipHistory[0]?.x || 0;
@@ -78,15 +80,45 @@ export const DebriefModal: React.FC = () => {
         return d;
     };
 
+    const handleExit = () => {
+        setAppState('MENU');
+        resetSimulation();
+    };
+
     if (gameState === 'RUNNING') return null;
 
     return (
-        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center backdrop-blur-md animate-in fade-in duration-500">
+        <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-500 overflow-y-auto p-8">
             <h1 className={`text-6xl font-black tracking-tighter mb-4 ${gameState === 'VICTORY' ? 'text-green-500' : 'text-red-600'}`}>
-                {gameState === 'VICTORY' ? 'MISSION ACCOMPLISHED' : 'LOST AT SEA'}
+                {gameState === 'VICTORY' ? 'MISSION ACCOMPLISHED' : 'MISSION FAILED'}
             </h1>
 
-            <div className="bg-zinc-900 border-2 border-zinc-700 rounded-lg shadow-2xl overflow-hidden relative" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}>
+            {/* METRICS PANEL */}
+            <div className="grid grid-cols-3 gap-8 mb-8 w-full max-w-4xl">
+                 <div className="bg-zinc-900 border border-zinc-700 p-4 rounded text-center">
+                     <div className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-2">Safety (Min Range)</div>
+                     <div className={`text-3xl font-mono ${metrics.minRangeToContact < 2000 ? 'text-red-500' : 'text-green-500'}`}>
+                         {metrics.minRangeToContact === Infinity ? '-' : Math.round(metrics.minRangeToContact)} yds
+                     </div>
+                 </div>
+                 <div className="bg-zinc-900 border border-zinc-700 p-4 rounded text-center">
+                     <div className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-2">Stealth (Exposure)</div>
+                     <div className={`text-3xl font-mono ${metrics.counterDetectionTime > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                         {Math.round(metrics.counterDetectionTime)} sec
+                     </div>
+                 </div>
+                 <div className="bg-zinc-900 border border-zinc-700 p-4 rounded text-center">
+                     <div className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-2">Accuracy (Avg Err)</div>
+                     <div className="text-3xl font-mono text-cyan-500">
+                         {metrics.tmaErrorCount > 0
+                             ? Math.round(metrics.tmaErrorAccumulator / metrics.tmaErrorCount)
+                             : '-'} yds
+                     </div>
+                 </div>
+            </div>
+
+            {/* MAP */}
+            <div className="bg-zinc-900 border-2 border-zinc-700 rounded-lg shadow-2xl overflow-hidden relative mb-8" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}>
                  <svg width={CANVAS_SIZE} height={CANVAS_SIZE} className="bg-[#000810]">
                      {/* Grid Lines */}
                      <defs>
@@ -143,12 +175,12 @@ export const DebriefModal: React.FC = () => {
                  </div>
             </div>
 
-            <div className="mt-8 flex gap-4">
+            <div className="flex gap-4">
                 <button
-                    onClick={() => resetSimulation()}
+                    onClick={() => handleExit()}
                     className="px-8 py-3 bg-white text-black font-bold text-lg rounded hover:bg-gray-200 transition-colors uppercase tracking-widest"
                 >
-                    Replay Mission
+                    Return to Lobby
                 </button>
             </div>
         </div>
