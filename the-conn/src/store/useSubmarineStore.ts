@@ -150,6 +150,10 @@ interface SubmarineState {
   visualTransients: VisualTransient[];
   scriptedEvents: ScriptedEvent[];
 
+  // Resources
+  fuel: number;
+  battery: number;
+
   // Truth Data
   contacts: Contact[];
 
@@ -221,6 +225,33 @@ const gaussianRandom = (mean: number, stdev: number) => {
   return num * stdev + mean;
 };
 
+// Collision Helper (Raycast Segment vs Circle)
+const checkCollision = (p1x: number, p1y: number, p2x: number, p2y: number, cx: number, cy: number, radius: number) => {
+    const dx = p2x - p1x;
+    const dy = p2y - p1y;
+    const lengthSq = dx*dx + dy*dy;
+
+    // If segment is zero length, point check
+    if (lengthSq === 0) {
+        const distSq = (p1x - cx)**2 + (p1y - cy)**2;
+        return distSq < radius*radius;
+    }
+
+    // Projection of C onto line P1P2
+    // t = ((cx - p1x) * dx + (cy - p1y) * dy) / lengthSq
+    let t = ((cx - p1x) * dx + (cy - p1y) * dy) / lengthSq;
+
+    // Clamp t to segment [0, 1]
+    t = Math.max(0, Math.min(1, t));
+
+    // Closest point
+    const closestX = p1x + t * dx;
+    const closestY = p1y + t * dy;
+
+    const distSq = (closestX - cx)**2 + (closestY - cy)**2;
+    return distSq < radius*radius;
+};
+
 // FULL DEFAULT STATE FOR RESET
 const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
   gameState: 'RUNNING',
@@ -229,6 +260,8 @@ const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrder
   depth: 0,
   x: 0,
   y: 0,
+  fuel: 100,
+  battery: 100,
   ownShipHistory: [],
   ownshipNoiseLevel: 0.1,
   cavitating: false,
@@ -398,7 +431,17 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
   })),
 
   updateContact: (id, updates) => set((state) => ({
-    contacts: state.contacts.map(c => c.id === id ? { ...c, ...updates } : c)
+    contacts: state.contacts.map(c => {
+        if (c.id === id) {
+            const updated = { ...c, ...updates };
+            // Auto-disable AI if kinematics are manually adjusted (Task 70 God Hand)
+            if (updates.x !== undefined || updates.y !== undefined || updates.heading !== undefined || updates.speed !== undefined || updates.depth !== undefined) {
+                updated.aiDisabled = true;
+            }
+            return updated;
+        }
+        return c;
+    })
   })),
 
   removeContact: (id) => set((state) => ({
@@ -524,6 +567,17 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const distance = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
       const newX = state.x + distance * Math.sin(radHeading);
       const newY = state.y + distance * Math.cos(radHeading);
+
+      // --- Resource Consumption ---
+      let newFuel = state.fuel;
+      let newBattery = state.battery;
+
+      if (newSpeed > 0) {
+        // Arbitrary consumption rates
+        const consumption = (newSpeed / 30.0) * 0.01 * delta;
+        newFuel = Math.max(0, newFuel - consumption);
+        newBattery = Math.max(0, newBattery - consumption);
+      }
 
       // --- Noise Calculation ---
       const baseNoise = 0.1;
@@ -873,6 +927,11 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
             newHeading = torpedo.gyroAngle;
         }
 
+        // Apply Heading Prediction for Collision Check
+        const torpRadHeading = (newHeading * Math.PI) / 180;
+        const torpNewX = torpedo.position.x + distThisTick * Math.sin(torpRadHeading);
+        const torpNewY = torpedo.position.y + distThisTick * Math.cos(torpRadHeading);
+
         // Phase 3: Homing (Pure Pursuit) and COLLISION CHECK
         if (finalActiveTargetId && finalStatus === 'RUNNING') {
              let targetX = 0, targetY = 0;
@@ -896,11 +955,29 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                  const dy = targetY - torpedo.position.y;
                  const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
                  const bearingToContact = normalizeAngle(90 - mathAngle);
-                 newHeading = bearingToContact;
 
-                 // Proximity Fuse (Detonation)
-                 const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                 if (distToContact < 40) { // Updated Threshold (40 yards)
+                 // Update heading for next tick (or current tick?)
+                 // If we update heading now, we should re-calculate torpNewX?
+                 // Homing implies we turn towards target.
+                 // "Pure Pursuit".
+                 // If we turn now, we move in that direction THIS tick?
+                 // Usually yes.
+                 newHeading = bearingToContact;
+                 const newRad = (newHeading * Math.PI) / 180;
+                 // Re-calculate position based on new heading
+                 const correctedNewX = torpedo.position.x + distThisTick * Math.sin(newRad);
+                 const correctedNewY = torpedo.position.y + distThisTick * Math.cos(newRad);
+
+                 // Proximity Fuse (Detonation) with Raycast
+                 // Radius 40 yards = 120 units
+                 const hit = checkCollision(
+                     torpedo.position.x, torpedo.position.y,
+                     correctedNewX, correctedNewY,
+                     targetX, targetY,
+                     120
+                 );
+
+                 if (hit) {
                      finalStatus = 'EXPLODED';
 
                      // IMPACT LOGIC
@@ -965,16 +1042,16 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
              }
         }
 
-        // Apply Heading
-        const torpRadHeading = (newHeading * Math.PI) / 180;
-        const torpNewX = torpedo.position.x + distThisTick * Math.sin(torpRadHeading);
-        const torpNewY = torpedo.position.y + distThisTick * Math.cos(torpRadHeading);
+        // Recalculate final position (redundant but safe if homing didn't run)
+        const finalRad = (newHeading * Math.PI) / 180;
+        const finalNewX = torpedo.position.x + distThisTick * Math.sin(finalRad);
+        const finalNewY = torpedo.position.y + distThisTick * Math.cos(finalRad);
 
         return {
           ...torpedo,
           speed: newSpeed,
           heading: newHeading,
-          position: { x: torpNewX, y: torpNewY },
+          position: { x: finalNewX, y: finalNewY },
           distanceTraveled: newTotalDistance,
           status: finalStatus,
           activeTargetId: finalActiveTargetId
@@ -1315,6 +1392,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         depth: newDepth,
         x: newX,
         y: newY,
+        fuel: newFuel,
+        battery: newBattery,
         ownShipHistory: newOwnShipHistory,
         contacts: newContacts,
         sensorReadings: newSensorReadings,
