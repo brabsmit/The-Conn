@@ -101,6 +101,12 @@ export class SonarEngine {
         this.stage.eventMode = 'static';
         this.stage.hitArea = new PIXI.Rectangle(0, 0, width, height);
 
+        // Suspect 2: Handle Context Loss
+        this.view.addEventListener('webglcontextlost', (event) => {
+            console.error("FATAL: WebGL Context Lost!", event);
+            event.preventDefault();
+        });
+
         // Create Containers
         this.sonarContainer = new PIXI.Container();
         this.solutionOverlay = new PIXI.Container();
@@ -525,6 +531,9 @@ export class SonarEngine {
         const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = state;
         const { width, height } = this;
 
+        // Suspect 1: Safety Safeguard - Limit Trackers to prevent overload
+        const safeTrackers = trackers.slice(0, 16);
+
         // 1. Scroll
         container.y += 1;
         const localY = -container.y;
@@ -554,7 +563,7 @@ export class SonarEngine {
         const ownShip = { x: currX, y: currY, heading: currHeading };
         g.lineStyle(2, 0xffffff, 0.5);
 
-        trackers.forEach((tracker) => {
+        safeTrackers.forEach((tracker) => {
             if (!tracker.solution) return;
             const targetPos = calculateTargetPosition(tracker.solution, gameTime);
             const dx = targetPos.x - ownShip.x;
