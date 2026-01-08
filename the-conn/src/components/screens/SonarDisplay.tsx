@@ -3,6 +3,7 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { useInterval } from '../../hooks/useInterval';
 import { sonarEngine } from '../../services/SonarEngine';
+import SonarOverlay from './SonarOverlay';
 
 const SonarBezel = ({ width }: { width: number }) => {
     // Throttled visual state (1Hz)
@@ -13,7 +14,7 @@ const SonarBezel = ({ width }: { width: number }) => {
     }, 1000);
 
     return (
-        <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }}>
+        <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }} data-testid="sonar-bezel">
             {visibleTrackers.map((tracker) => {
                  // Helper for Viewport Mapping (300 deg)
                  const relBearing = (tracker.currentBearing % 360 + 360) % 360; // Normalize 0-360
@@ -72,7 +73,7 @@ const SonarDisplay = React.memo(() => {
         if (container && width > 0 && height > 0) {
             try {
                 const canvas = sonarEngine.getView();
-                // Ensure canvas is not already attached elsewhere (though singleton handles this conceptually, DOM wise we need to move it)
+                // Ensure canvas is not already attached elsewhere
                 if (canvas.parentElement !== container) {
                     container.appendChild(canvas);
                 }
@@ -89,7 +90,7 @@ const SonarDisplay = React.memo(() => {
                 }
             }
         };
-    }, [width, height]); // Re-attach if dimensions change (engine handles resize, but we need to ensure it's in the DOM)
+    }, [width, height]); // Re-attach if dimensions change
 
     // Sync Props
     useEffect(() => {
@@ -108,11 +109,14 @@ const SonarDisplay = React.memo(() => {
                     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-[#001100]" />
 
                     <SonarBezel width={width} />
+
+                    {/* New Independent Overlay Layer */}
+                    <SonarOverlay width={width} height={height} />
                 </div>
             )}
 
             {/* UI Overlay */}
-            <div className="absolute top-2 right-2 flex gap-2">
+            <div className="absolute top-2 right-2 flex gap-2 z-30">
                 <button
                     className={`px-2 py-1 text-xs font-mono border rounded ${showSolution ? 'bg-green-900/50 text-green-400 border-green-600' : 'bg-gray-900/50 text-gray-500 border-gray-700'}`}
                     onClick={() => setShowSolution(!showSolution)}
