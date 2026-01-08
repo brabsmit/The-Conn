@@ -83,7 +83,8 @@ class SonarEngine {
         // Setup Event Mode
         this.stage.eventMode = 'static';
         this.stage.hitArea = new PIXI.Rectangle(0, 0, width, height);
-        this.stage.on('pointerdown', (e) => this.handlePointerDown(e));
+        // REMOVED: Pointer interactions moved to React Overlay
+        // this.stage.on('pointerdown', (e) => this.handlePointerDown(e));
 
         // Create Containers
         this.sonarContainer = new PIXI.Container();
@@ -122,6 +123,7 @@ class SonarEngine {
     }
 
     public resize(width: number, height: number): void {
+        // Safe-guard against redundant resizes
         if (!this.app || (this.width === width && this.height === height)) return;
 
         this.width = width;
@@ -226,47 +228,7 @@ class SonarEngine {
         this.sonarSprite.tilePosition.y = -sl;
     }
 
-    private handlePointerDown(e: PIXI.FederatedPointerEvent): void {
-        if (!this.width) return;
-
-        // Since stage is root and sized to canvas, global is relative to canvas (if canvas is full window or we account for offset).
-        // Actually, let's use local to sonarSprite which is (0,0)
-        const local = this.stage!.toLocal(e.global);
-
-        const x = local.x;
-
-        // Inverse Mapping: ScreenX -> ViewAngle -> RelativeBearing
-        // ScreenX = (viewAngle / 300) * CanvasWidth
-        // viewAngle = (ScreenX / CanvasWidth) * 300
-        const viewAngle = (x / this.width) * 300;
-
-        let relBearing = 0;
-
-        // If viewAngle <= 150 (Left half), it maps to 210..360
-        // If viewAngle > 150 (Right half), it maps to 0..150
-        // Wait:
-        // 210 -> 0 (viewAngle)
-        // 360 -> 150
-        // 0 -> 150
-        // 150 -> 300
-
-        // Inverse:
-        // if viewAngle <= 150: rb = viewAngle + 210
-        // if viewAngle > 150: rb = viewAngle - 150
-
-        // Edge case: viewAngle = 150. rb = 360 (0).
-        // viewAngle = 150.1 -> rb = 0.1
-
-        if (viewAngle <= 150) {
-            relBearing = viewAngle + 210;
-        } else {
-            relBearing = viewAngle - 150;
-        }
-
-        relBearing = normalizeAngle(relBearing);
-
-        useSubmarineStore.getState().designateTracker(relBearing);
-    }
+    // REMOVED: handlePointerDown
 
     private tick(delta: number): void {
         if (!this.app || !this.history || !this.textures.fast || !this.overlayContexts) return;
