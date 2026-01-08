@@ -328,6 +328,7 @@ class SonarEngine {
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
         // Helper for Viewport Mapping (300 deg)
+        // Mapping: Port (210-360) -> Left, Starboard (0-150) -> Right
         const getScreenX = (relBearing: number): number | null => {
             // Baffles: 150 < rb < 210
             if (relBearing > 150 && relBearing < 210) return null;

@@ -1561,3 +1561,8 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       };
     }),
 }));
+
+// EXPOSE FOR VERIFICATION TESTS
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as any).useSubmarineStore = useSubmarineStore;
+}

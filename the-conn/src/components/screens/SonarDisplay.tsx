@@ -13,7 +13,7 @@ const SonarBezel = ({ width }: { width: number }) => {
     }, 1000);
 
     return (
-        <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }}>
+        <div data-testid="sonar-bezel" className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }}>
             {visibleTrackers.map((tracker) => {
                  // Helper for Viewport Mapping (300 deg)
                  const relBearing = (tracker.currentBearing % 360 + 360) % 360; // Normalize 0-360
