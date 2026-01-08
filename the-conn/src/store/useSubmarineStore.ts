@@ -1029,7 +1029,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
                           type: 'ALERT'
                       }].slice(-50);
 
-                      newAlertLevel = 'COMBAT';
+                      // Note: We don't set alertLevel here directly, it is calculated at the end of the tick based on trackers.
 
                       tracker = {
                           id: trackerId,
