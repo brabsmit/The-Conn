@@ -28,7 +28,7 @@ class SonarEngine {
     private history: { fast: Uint8Array; med: Uint8Array; slow: Uint8Array } | null = null;
 
     // Persistent Scratch Buffers (Reused per tick to avoid GC)
-    private pixelLineBuffer: Uint8Array | null = null;
+    private _tempRowBuffer: Uint8Array | null = null;
     private signalLineBuffer: Float32Array | null = null;
     private transientLineBuffer: Float32Array | null = null;
     private processedLineBuffer: Float32Array | null = null;
@@ -93,6 +93,8 @@ class SonarEngine {
 
         // Setup Sprite (Placeholder)
         this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height);
+        this.sonarSprite.scale.y = -1;
+        this.sonarSprite.y = height;
         this.sonarContainer.addChild(this.sonarSprite);
 
         // Init Overlay Contexts
@@ -130,6 +132,7 @@ class SonarEngine {
         if (this.sonarSprite) {
             this.sonarSprite.width = width;
             this.sonarSprite.height = height;
+            this.sonarSprite.y = height;
         }
 
         // Re-initialize buffers (clears sonar history)
@@ -180,7 +183,7 @@ class SonarEngine {
         };
 
         // Allocate Scratch Buffers
-        this.pixelLineBuffer = new Uint8Array(w * 4);
+        this._tempRowBuffer = new Uint8Array(w * 4);
         this.signalLineBuffer = new Float32Array(w);
         this.transientLineBuffer = new Float32Array(w);
         this.processedLineBuffer = new Float32Array(w);
@@ -307,12 +310,15 @@ class SonarEngine {
         const { width } = this;
 
         // Use Pre-allocated Buffers
-        if (!this.pixelLineBuffer || !this.signalLineBuffer || !this.transientLineBuffer || !this.processedLineBuffer) {
+        if (!this._tempRowBuffer || !this.signalLineBuffer || !this.transientLineBuffer || !this.processedLineBuffer) {
              // Fallback if not init (should not happen)
              this.initBuffers(width, this.height);
         }
 
-        const pixelBuffer = this.pixelLineBuffer!;
+        const pixelBuffer = this._tempRowBuffer!;
+        // Optimization: Zero-fill not strictly needed for pixelBuffer as we overwrite R,G,B,A for every pixel below.
+        // But if needed: pixelBuffer.fill(0);
+
         const signalBuffer = this.signalLineBuffer!.fill(0); // Reset
         const transientBuffer = this.transientLineBuffer!.fill(0); // Reset
         const processedBuffer = this.processedLineBuffer!; // Will be overwritten

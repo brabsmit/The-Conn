@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { useInterval } from '../../hooks/useInterval';
@@ -50,7 +50,7 @@ const SonarBezel = ({ width }: { width: number }) => {
     );
 };
 
-const SonarDisplay = () => {
+const SonarDisplay = React.memo(() => {
     const { ref, width: rawWidth, height: rawHeight } = useResize();
     const width = Math.floor(rawWidth);
     const height = Math.floor(rawHeight);
@@ -122,6 +122,6 @@ const SonarDisplay = () => {
             </div>
         </div>
     );
-};
+});
 
 export default SonarDisplay;
