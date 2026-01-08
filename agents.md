@@ -1,43 +1,66 @@
-# Project Context: "The Conn"
-
-## 1. Mission Overview
-We are building a **High-Fidelity Submarine Command Simulator** called "The Conn."
-The player acts as the Officer of the Deck (OOD), managing a submarine through a "Glass Cockpit" interface. The gameplay focuses on information management, mental modeling, and tension—not twitch reflexes.
-
-* **Genre:** Simulation / Strategy
-* **Visual Style:** "Industrial Low-Fi" / Diegetic Pixel Art (Reference: *Highfleet*, *Slots & Daggers*).
-* **Core Loop:** Cross-referencing data from three distinct stations (Sonar, Helm, TMA) to build a firing solution.
-
-## 2. Technical Architecture
-We are using a **Web-Native Sim** approach. The simulation logic runs "headless" in the background, updating a global state store. The UI is a "dumb terminal" that renders this state 60 times a second.
-
-* **Framework:** React + TypeScript (Vite)
-* **Styling:** Tailwind CSS (v3 legacy mode for stability)
-* **Simulation State:** Zustand (Global store for physics/contacts)
-* **High-Perf Rendering:** PixiJS (For Sonar/Radar/TMA screens)
-* **Effects:** `pixi-filters` (CRT scanlines, glow, noise)
-
-## 3. Design Language & Constraints
-* **The "Desk" Metaphor:** The screen is a physical metal bulkhead. UI elements are "Panels" bolted to the wall.
-* **No 3D Models:** Depth is achieved via CSS shadows (`box-shadow`), borders, and lighting tricks.
-* **Color Palette:**
-    * Background: `#1a1b1e` (Bulkhead)
-    * Phosphor: `#33ff33` (Active Data)
-    * Alert: `#ff4444` (Danger)
-    * Screen Off: `#021204` (The "black level" of a CRT)
-
-## 4. Current Status
-* [x] **Phase 1: Skeleton:** Project initialized. Grid layout established. `Panel` components created. Tailwind theme configured.
-* [x] **Phase 2: The Brain:** Implementing the simulation loop and physics (Zustand).
-* [x] **Phase 3: The Eyes:** Implementing the active PixiJS Sonar screen.
-* [ ] **Phase 4: The UI:** Implementing Multi Function Displays (MFDs).
-* [ ] **Phase 5: The Teeth:** Weapons Launch.
-
-# 5. Weapon Control System (WCS)
-
-## 1. Mission Overview
-**Objective:** Implement a high-fidelity "Tube Board" simulation.
-* **UI Pattern:** The Center Console becomes a Multi-Function Display (Swappable between TMA/WCS).
-* **Core Mechanic:** The "Make Ready" procedure (Load -> Flood -> Equalize -> Open).
+# Project: SUBMARINE COMMAND (Alpha 1.0)
+**Description:** A realistic, browser-based submarine simulation set in the late Cold War. The player commands a diesel-electric submarine (SS-581 Blueback), managing sensors, Target Motion Analysis (TMA), and weapon systems to hunt enemy nuclear submarines.
+**Tech Stack:** React (UI), PixiJS (WebGL Rendering), Zustand (State), Vitest (Testing).
 
 ---
+
+## 1. THE "IRONCLAD" REGRESSION SUITE (Mandatory)
+**Directive:** "Si Vis Pacem, Para Bellum."
+No new code may be merged unless the following **Six Sectors** of automated tests pass 100%.
+
+### Sector 1: The Hull (Physics & Navigation)
+* **Kinematics:** Verify `currentSpeed` approaches `orderedSpeed` using correct inertia/drag curves.
+* **Turning (The Dateline):** Verify `heading` updates correctly and wraps from `359°` -> `000°` without visual or logic artifacts.
+* **Depth:** Verify depth changes based on plane angles and clamps hard at Surface (0ft) and Test Depth.
+
+### Sector 2: The Eyes (Sensors & TMA)
+* **The Baffles:** Assert that any contact in the rear 60° arc (Rel. Bearing 150°-210°) returns `SignalStrength: 0` and pauses tracker history.
+* **Sonar Ring Buffer:** Assert the Sonar Engine uses a static GPU buffer. No array allocations (`new Array`) allowed in the render loop.
+* **Visual Cull:** Assert the TMA display skips rendering history points that are < 2 pixels apart (Downsampling).
+* **Projection:** Assert World Coordinates (Yards) map precisely to Screen Coordinates (Pixels) at all zoom levels.
+
+### Sector 3: The Teeth (Combat & Weapons)
+* **Launch:** Calling `fireTube()` must decrement ammo, spawn a weapon entity, and empty the tube status.
+* **Guidance:** `PASSIVE` weapons must turn to intercept noise. `ACTIVE` weapons must perform a snake search.
+* **Collision:** Weapon proximity < 40yds to a target must trigger `DESTROYED` status.
+* **Game Over:** Weapon proximity < 40yds to Ownship must trigger `GameState: DEFEAT`.
+
+### Sector 4: The Mind (AI Doctrine)
+* **Reaction:** AI must transition to `COMBAT_EVADE` upon detecting a loud transient (e.g., player launch).
+* **The Stalk:** AI must transition to `APPROACH` if Ownship noise exceeds detection threshold.
+* **Override:** If the Scenario Editor is used to modify an AI unit, `aiDisabled` must set to `true` and AI logic must halt.
+
+### Sector 5: The Watch Team (Automation)
+* **Auto-Detect:** Incoming weapons within range (and outside baffles) must auto-generate a `Tracker` (Type: WEAPON).
+* **Red Alert:** Weapon detection must trigger `AlertLevel: COMBAT` and expose the `[EMERGENCY EVADE]` button.
+
+### Sector 6: Destructive Testing (Edge Cases)
+* **Ghost Target:** Deleting a target currently being tracked by a torpedo must NOT crash the simulation.
+* **Tunneling:** Projectiles moving at high speed (>200kts) must detect collisions via Raycast, not point-overlap.
+* **Baffle Flutter:** Contacts on the baffle edge (150.0°) must not spam "Lost/Regained" logs (Debounce required).
+
+---
+
+## 2. PROJECT ROADMAP
+
+### **Current Status: Alpha 1.0 (Core Loop Closed)**
+* **Completed:** Navigation, Physics, Sonar (Waterfall + Audio), TMA (Dot Stacking + Solutions), Weapons (Firing + Logic), AI (Retaliation + Evasion), AAR (Mission Debrief).
+* **Recent Fixes:** Zero-Allocation Rendering (Task 83), Ring Buffer Sonar (Task 82), Regression Suite (Phase 15).
+
+### **Next Priority: Phase 13 - The Soundscape**
+The simulation is currently functional but silent. We need to implement the audio engine to provide visceral feedback.
+* **Task 65:** `AudioEngine.ts` Singleton.
+* **Task 66:** Tactical SFX (Launch transients, Hull creaks, Torpedo screws, Active Pings).
+* **Task 67:** Dynamic Ambience (Flow noise scaling with speed).
+
+### **Future Phases (Backlog)**
+* **Phase 11: Career Mode.** Ship progression (Barbel -> Sturgeon -> Seawolf). Persistent save state.
+* **Phase 12: Evasion Tools.** Countermeasures (Decoys), Noisemakers, and Wake Knuckles.
+* **Phase 16: Environmental Layers.** Thermal layers (ducts), Bottom Bounce, and Ice Canopy mechanics.
+
+---
+
+## 3. ARCHITECTURE RULES
+1.  **The Singleton Rule:** `SonarEngine`, `AudioEngine`, and `PhysicsEngine` exist *outside* the React Lifecycle. They are Singletons. React only displays their output.
+2.  **Zero-Allocation Rule:** The main render loop (`tick`) must NOT allocate new memory (Arrays/Objects). Reuse pre-allocated buffers.
+3.  **The Truth Rule:** The UI never reads from `truthX/Y`. It only reads from `trackers`. Only the `GeoDisplay` (in God Mode) allows access to Truth data.
