@@ -5,6 +5,23 @@ import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../li
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
 
+// Signature Profiles (Task 93.1)
+const SIGNATURES = {
+    MERCHANT: { width: 3, stability: 1.0, hash: 0.8, gain: 1.2 },
+    BIOLOGICAL: { width: 1, stability: 0.4, hash: 0.2, gain: 0.8 },
+    WARSHIP: { width: 2, stability: 0.9, hash: 0.5, gain: 1.0 },
+    SUB: { width: 0, stability: 0.95, hash: 0.0, gain: 0.6 },
+    TORPEDO: { width: 1, stability: 1.0, hash: 0.1, gain: 1.2 },
+    UNKNOWN: { width: 1, stability: 0.8, hash: 0.3, gain: 1.0 }
+};
+
+const PROFILE_MAP: Record<string, keyof typeof SIGNATURES> = {
+    'MERCHANT': 'MERCHANT',
+    'ESCORT': 'WARSHIP',
+    'SUB': 'SUB',
+    'BIOLOGICAL': 'BIOLOGICAL'
+};
+
 // Constants
 const RATE_MED = 1000;
 const RATE_SLOW = 6000;
@@ -309,6 +326,13 @@ class SonarEngine {
             const contact = contacts.find(c => c.id === reading.contactId);
             if (!contact || contact.status === 'DESTROYED') return;
 
+            // Task 93.1: Profile Application
+            const profileKey = PROFILE_MAP[contact.classification || 'UNKNOWN'] || 'UNKNOWN';
+            const profile = SIGNATURES[profileKey] || SIGNATURES.UNKNOWN;
+
+            // Stability Check (Task 93.2 Biologic Logic)
+            if (Math.random() > profile.stability) return;
+
             let sourceLevel = contact.sourceLevel || 1.0;
             const cavitationSpeed = contact.cavitationSpeed || 100;
             if (contact.speed !== undefined && contact.speed > cavitationSpeed) {
@@ -324,29 +348,47 @@ class SonarEngine {
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
             signal = Math.max(0, signal - selfNoisePenalty);
 
-            // Sub-Task 88.3: Scintillation
+            // Sub-Task 88.3: Scintillation + Task 93.1 Gain
+            signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
 
             // reading.bearing is already Relative (0-360) (noisy) from Store
             const rb = normalizeAngle(reading.bearing);
             const cx = getScreenX(rb);
 
-            // Sub-Task 88.1: Gaussian Signal Spread
             if (cx !== null) {
-                 const kernel = [0.5, 1.0, 0.5];
-                 for (let k = 0; k < 3; k++) {
-                     const off = k - 1;
-                     const x = cx + off;
-                     if (x >= 0 && x < width) {
-                         signalBuffer[x] = Math.max(signalBuffer[x], signal * kernel[k]);
-                     }
-                 }
+                // Task 93.3: Washout (Close Range / Loud)
+                let renderWidth = profile.width;
+                if (signal > 0.9) {
+                    renderWidth += 4; // Bloom
+                }
+
+                // Render Logic (Task 93.2)
+                for (let off = -renderWidth; off <= renderWidth; off++) {
+                    const x = cx + off;
+                    if (x >= 0 && x < width) {
+                        // Calculate falloff
+                        let falloff = 1.0;
+                        if (renderWidth > 0) {
+                            falloff = 1.0 - (Math.abs(off) / (renderWidth + 1));
+                        }
+
+                        // Hash Application
+                        const noise = 1.0 - (profile.hash * 0.5) + (Math.random() * profile.hash);
+
+                        const val = signal * falloff * noise;
+                        signalBuffer[x] = Math.max(signalBuffer[x], val);
+                    }
+                }
             }
         });
 
         // 2. Torpedoes
         torpedoes.forEach((torp) => {
             if (torp.status !== 'RUNNING') return;
+
+            const profile = SIGNATURES.TORPEDO;
+
             const dx = torp.position.x - ownX;
             const dy = torp.position.y - ownY;
             const distance = Math.sqrt(dx * dx + dy * dy);
@@ -355,7 +397,8 @@ class SonarEngine {
             const scaleFactor = 0.0002;
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
 
-            // Sub-Task 88.3: Scintillation
+            // Scintillation + Gain
+            signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
@@ -364,14 +407,17 @@ class SonarEngine {
 
             const cx = getScreenX(relBearing);
 
-            // Sub-Task 88.1: Gaussian Signal Spread
             if (cx !== null) {
-                 const kernel = [0.5, 1.0, 0.5];
-                 for (let k = 0; k < 3; k++) {
-                     const off = k - 1;
+                 const renderWidth = profile.width;
+                 for (let off = -renderWidth; off <= renderWidth; off++) {
                      const x = cx + off;
                      if (x >= 0 && x < width) {
-                         signalBuffer[x] = Math.max(signalBuffer[x], signal * kernel[k]);
+                         let falloff = 1.0;
+                         if (renderWidth > 0) {
+                             falloff = 1.0 - (Math.abs(off) / (renderWidth + 1));
+                         }
+                         const val = signal * falloff; // Torpedoes are clean (low hash)
+                         signalBuffer[x] = Math.max(signalBuffer[x], val);
                      }
                  }
             }
