@@ -28,6 +28,12 @@ class SonarEngine {
     // Persistent History (Buffers)
     private history: { fast: Uint8Array; med: Uint8Array; slow: Uint8Array } | null = null;
 
+    // Persistent Scratch Buffers (Reused per tick to avoid GC)
+    private pixelLineBuffer: Uint8Array | null = null;
+    private signalLineBuffer: Float32Array | null = null;
+    private transientLineBuffer: Float32Array | null = null;
+    private processedLineBuffer: Float32Array | null = null;
+
     // Textures
     private textures: { fast: PIXI.Texture | null; med: PIXI.Texture | null; slow: PIXI.Texture | null } = {
         fast: null, med: null, slow: null
@@ -171,12 +177,18 @@ class SonarEngine {
         // Reset Scanlines
         this.scanlines = { fast: 0, med: 0, slow: 0 };
 
-        // Allocate Buffers
+        // Allocate History Buffers
         this.history = {
             fast: new Uint8Array(size),
             med: new Uint8Array(size),
             slow: new Uint8Array(size)
         };
+
+        // Allocate Scratch Buffers
+        this.pixelLineBuffer = new Uint8Array(w * 4);
+        this.signalLineBuffer = new Float32Array(w);
+        this.transientLineBuffer = new Float32Array(w);
+        this.processedLineBuffer = new Float32Array(w);
 
         // Clean up old textures
         if (this.textures.fast) this.textures.fast.destroy(true);
@@ -300,12 +312,22 @@ class SonarEngine {
 
     private generateSonarLine(state: SubmarineState): Uint8Array {
         const { width } = this;
-        const pixelBuffer = new Uint8Array(width * 4);
+
+        // Use Pre-allocated Buffers
+        if (!this.pixelLineBuffer || !this.signalLineBuffer || !this.transientLineBuffer || !this.processedLineBuffer) {
+             // Fallback if not init (should not happen)
+             this.initBuffers(width, this.height);
+        }
+
+        const pixelBuffer = this.pixelLineBuffer!;
+        const signalBuffer = this.signalLineBuffer!.fill(0); // Reset
+        const transientBuffer = this.transientLineBuffer!.fill(0); // Reset
+        const processedBuffer = this.processedLineBuffer!; // Will be overwritten
+
         const { sensorReadings, contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel, gameTime } = state;
 
         const noiseFloor = Math.min(255, 30 + (ownshipNoiseLevel * 100));
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
-        const signalBuffer = new Float32Array(width).fill(0);
 
         // Helper for Viewport Mapping (300 deg)
         const getScreenX = (relBearing: number): number | null => {
@@ -384,7 +406,6 @@ class SonarEngine {
         });
 
         // 3. Visual Transients
-        const transientBuffer = new Float32Array(width).fill(0);
         visualTransients.forEach(t => {
             const age = gameTime - t.timestamp;
             if (age > 5) return;
@@ -408,7 +429,9 @@ class SonarEngine {
         });
 
         // 4. BQQ
-        const processedBuffer = new Float32Array(signalBuffer);
+        // Copy signalBuffer to processedBuffer
+        processedBuffer.set(signalBuffer);
+
         for (let i = 1; i < width - 1; i++) {
             if (signalBuffer[i] > 0.8) {
                 if (signalBuffer[i-1] < 0.8) processedBuffer[i-1] *= 0.1;

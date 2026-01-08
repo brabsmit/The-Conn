@@ -165,6 +165,9 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
                 // Reverse Iteration
                 let osIndex = ownShipHistory.length - 1;
+                let lastDrawX = -999;
+                let lastDrawY = -999;
+
                 for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
                     const history = tracker.bearingHistory[i];
                     const age = gameTime - history.time;
@@ -185,7 +188,13 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
                         if (angleDiff >= -180 && angleDiff <= 180) {
                              const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
-                             graphics.drawCircle(x, y, 2.5);
+
+                             // OPTIMIZATION: Visual Delta Check
+                             if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
+                                graphics.drawCircle(x, y, 2.5);
+                                lastDrawX = x;
+                                lastDrawY = y;
+                             }
                         }
                     }
                 }
@@ -220,6 +229,9 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                 if (selectedTracker && selectedTracker.solution) {
                      // Reverse Iteration
                      let osIndex = ownShipHistory.length - 1;
+                     let lastDrawX = -999;
+                     let lastDrawY = -999;
+
                      for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
                         const history = tracker.bearingHistory[i];
                         const age = gameTime - history.time;
@@ -253,7 +265,12 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
                              // Clip to screen width to avoid drawing outside if error is huge
                              if (x >= 0 && x <= width) {
-                                 graphics.drawCircle(x, y, 2.5);
+                                 // OPTIMIZATION: Visual Delta Check
+                                 if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
+                                     graphics.drawCircle(x, y, 2.5);
+                                     lastDrawX = x;
+                                     lastDrawY = y;
+                                 }
                              }
                         }
                      }
