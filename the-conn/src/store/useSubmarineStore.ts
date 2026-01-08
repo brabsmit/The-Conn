@@ -133,8 +133,21 @@ interface ScriptedEvent {
   payload: any;
 }
 
+export interface GameMetrics {
+  minRangeToContact: number;
+  counterDetectionTime: number;
+  tmaErrorAccumulator: number;
+  tmaErrorCount: number;
+}
+
 interface SubmarineState {
   // Game State
+  appState: 'MENU' | 'GAME';
+  expertMode: boolean;
+  godMode: boolean;
+  scenarioId: string | null;
+  metrics: GameMetrics;
+
   gameState: 'RUNNING' | 'VICTORY' | 'DEFEAT';
 
   // OwnShip Data
@@ -179,6 +192,9 @@ interface SubmarineState {
   orderedDepth: number;
 
   // Actions
+  setAppState: (state: 'MENU' | 'GAME') => void;
+  setExpertMode: (enabled: boolean) => void;
+  toggleGodMode: () => void;
   setOrderedHeading: (heading: number) => void;
   setOrderedSpeed: (speed: number) => void;
   setOrderedDepth: (depth: number) => void;
@@ -197,7 +213,7 @@ interface SubmarineState {
   addContact: (contact: Contact) => void;
   updateContact: (id: string, updates: Partial<Contact>) => void;
   removeContact: (id: string) => void;
-  loadScenario: (state: Partial<SubmarineState>) => void;
+  loadScenario: (state: Partial<SubmarineState>, id?: string) => void;
   resetSimulation: () => void;
   tick: (delta?: number) => void;
 }
@@ -253,7 +269,17 @@ const checkCollision = (p1x: number, p1y: number, p2x: number, p2y: number, cx: 
 };
 
 // FULL DEFAULT STATE FOR RESET
-const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
+const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
+  appState: 'MENU',
+  expertMode: false,
+  godMode: false,
+  scenarioId: null,
+  metrics: {
+      minRangeToContact: Infinity,
+      counterDetectionTime: 0,
+      tmaErrorAccumulator: 0,
+      tmaErrorCount: 0
+  },
   gameState: 'RUNNING',
   heading: 0,
   speed: 0,
@@ -268,18 +294,7 @@ const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrder
   transients: [],
   visualTransients: [],
   scriptedEvents: [],
-  contacts: [{
-    id: 'Sierra-1',
-    x: 5000,
-    y: 5000,
-    type: 'ENEMY',
-    classification: 'MERCHANT',
-    depth: 50,
-    sourceLevel: 1.0,
-    cavitationSpeed: 10,
-    status: 'ACTIVE',
-    history: []
-  }],
+  contacts: [],
   sensorReadings: [],
   logs: [],
   alertLevel: 'NORMAL',
@@ -302,8 +317,12 @@ const getInitialState = (): Omit<SubmarineState, 'setOrderedHeading' | 'setOrder
   orderedDepth: 150,
 });
 
-export const useSubmarineStore = create<SubmarineState>((set) => ({
+export const useSubmarineStore = create<SubmarineState>((set, get) => ({
   ...getInitialState(),
+
+  setAppState: (appState) => set({ appState }),
+  setExpertMode: (expertMode) => set({ expertMode, godMode: false }), // Disable god mode if expert enabled (default)
+  toggleGodMode: () => set((state) => ({ godMode: !state.godMode })),
 
   setOrderedHeading: (heading) => set({ orderedHeading: normalizeAngle(heading) }),
   setOrderedSpeed: (speed) => set({ orderedSpeed: Math.max(0, Math.min(30, speed)) }),
@@ -448,11 +467,10 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     contacts: state.contacts.map(c => c.id === id ? { ...c, status: 'DESTROYED' } : c)
   })),
 
-  loadScenario: (newState) => set((state) => ({
-    ...state,
+  loadScenario: (newState, id) => set((state) => ({
+    ...getInitialState(), // Reset to defaults first
     ...newState,
-    // Ensure deep merge or reset of complex objects if needed, but simple replacement works for now
-    // Reset history if not provided
+    // Ensure complex objects are handled
     ownShipHistory: newState.ownShipHistory || [],
     trackers: newState.trackers || [],
     contacts: newState.contacts || [],
@@ -465,7 +483,9 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
     incomingTorpedoDetected: false,
     scriptedEvents: [],
     visualTransients: [],
-    gameState: 'RUNNING'
+    gameState: 'RUNNING',
+    scenarioId: id || null,
+    appState: 'GAME'
   })),
 
   resetSimulation: () => set(getInitialState()),
@@ -513,7 +533,7 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
 
   tick: (delta = 1) =>
     set((state) => {
-      if (state.gameState !== 'RUNNING') {
+      if (state.gameState !== 'RUNNING' || state.appState !== 'GAME') {
         return {};
       }
 
@@ -589,12 +609,41 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       const transientNoise = activeTransients.reduce((sum, t) => sum + t.magnitude, 0);
       const totalNoise = baseNoise + flowNoise + cavitationNoise + transientNoise;
 
+      // --- Scenario Event Logic Pre-check ---
+      // Crazy Ivan Trigger (Scenario 1)
+      const isCrazyIvanTime = state.scenarioId === 'sc1' && (state.tickCount + 1) % 18000 === 0;
+      let crazyIvanTargetId: string | null = null;
+      if (isCrazyIvanTime) {
+           const merchants = state.contacts.filter(c => c.classification === 'MERCHANT');
+           if (merchants.length > 0) {
+               const idx = Math.floor(Math.random() * merchants.length);
+               crazyIvanTargetId = merchants[idx].id;
+           }
+      }
+
       // Update Contacts (Truth movement & AI)
       let newContacts = state.contacts.map(contact => {
         // Skip destroyed contacts movement logic
         if (contact.status === 'DESTROYED') return contact;
 
         let currentContact = { ...contact };
+
+        // Scenario 1: Crazy Ivan
+        if (contact.id === crazyIvanTargetId) {
+             const turn = Math.random() > 0.5 ? 30 : -30;
+             currentContact.heading = normalizeAngle((currentContact.heading || 0) + turn);
+        }
+
+        // Scenario 3: Sprint & Drift (Escorts)
+        if (state.scenarioId === 'sc3' && currentContact.classification === 'ESCORT' && currentContact.type === 'ENEMY') {
+             // 10 min cycle (600s). 0-240 Sprint, 240-600 Drift
+             const cycleTime = state.gameTime % 600;
+             if (cycleTime < 240) { // Sprint
+                 currentContact.speed = 25;
+             } else { // Drift
+                 currentContact.speed = 5;
+             }
+        }
 
         // AI Logic (Only for ENEMY)
         if (currentContact.type === 'ENEMY') {
@@ -1264,9 +1313,62 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
       // Clean up old visual transients (> 5 seconds)
       newVisualTransients = newVisualTransients.filter(t => newGameTime - t.timestamp < 5);
 
-      // Every 60 ticks (approx 1 sec), record history
+      let newMetrics = { ...state.metrics };
       let newOwnShipHistory = state.ownShipHistory;
+
+      // Every 60 ticks (approx 1 sec)
       if (newTickCount % 60 === 0) {
+        // --- SCORING / METRICS ---
+        // 1. Min Range (to any active enemy)
+        let minDistToEnemy = Infinity;
+        let isDetectedByEnemy = false;
+
+        newContacts.forEach(c => {
+            if (c.status === 'ACTIVE' && c.type === 'ENEMY') {
+                const dx = c.x - newX;
+                const dy = c.y - newY;
+                const distYards = Math.sqrt(dx*dx + dy*dy) / 3;
+                if (distYards < minDistToEnemy) minDistToEnemy = distYards;
+
+                // 2. Counter-Detection Check
+                // Re-use logic: Signal Strength at Enemy = OwnshipNoise / DistSq * Sensitivity
+                const sensitivity = c.sensitivity !== undefined ? c.sensitivity : 300000000;
+                const signalStrength = (totalNoise / Math.max(1, dx*dx + dy*dy)) * sensitivity;
+                if (signalStrength > 0.5) { // 0.5 is threshold used in AI
+                    isDetectedByEnemy = true;
+                }
+            }
+        });
+        if (minDistToEnemy < newMetrics.minRangeToContact) {
+            newMetrics.minRangeToContact = minDistToEnemy;
+        }
+        if (isDetectedByEnemy) {
+            newMetrics.counterDetectionTime += 1; // 1 second
+        }
+
+        // 3. TMA Error
+        newTrackers.forEach(t => {
+            if (t.classificationStatus === 'CLASSIFIED' && t.contactId) {
+                 const c = newContacts.find(c => c.id === t.contactId);
+                 if (c && c.status === 'ACTIVE') {
+                     // Calculate Solution Position at current time
+                     // DR from Anchor
+                     const dt = newGameTime - t.solution.anchorTime;
+                     const spd = t.solution.speed * 1.6878;
+                     const radC = (t.solution.course * Math.PI) / 180;
+                     const solX = t.solution.computedWorldX + Math.sin(radC) * spd * dt;
+                     const solY = t.solution.computedWorldY + Math.cos(radC) * spd * dt;
+
+                     const dx = c.x - solX;
+                     const dy = c.y - solY;
+                     const err = Math.sqrt(dx*dx + dy*dy) / 3; // yards
+                     newMetrics.tmaErrorAccumulator += err;
+                     newMetrics.tmaErrorCount += 1;
+                 }
+            }
+        });
+
+        // Record Tracker History
         newTrackers = newTrackers.map(tracker => {
           // Check for active sensor reading (Baffle Cutoff)
           const hasReading = newSensorReadings.some(r => r.contactId === tracker.contactId);
@@ -1376,12 +1478,57 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
           return tube;
       });
 
-      // VICTORY CHECK
-      // If no active enemy contacts AND Alert Level is NORMAL
+      // VICTORY / FAILURE CHECKS (SCENARIO SPECIFIC)
       if (newGameState === 'RUNNING') {
-          const activeEnemies = newContacts.filter(c => c.type === 'ENEMY' && c.status === 'ACTIVE');
-          if (activeEnemies.length === 0 && newAlertLevel === 'NORMAL') {
-               newGameState = 'VICTORY';
+          // Failure: Ownship Hit (handled in Torpedo Collision)
+          // Additional Failure Conditions
+          if (state.scenarioId === 'sc1') { // Safety of Nav
+              if (newMetrics.minRangeToContact < 2000) {
+                   newGameState = 'DEFEAT';
+                   newLogs = [...newLogs, { message: "MISSION FAILED: COLLISION RISK!", timestamp: newGameTime, type: 'ALERT' }];
+              }
+              if (newGameTime > 30 * 60) {
+                   newGameState = 'VICTORY';
+              }
+          }
+          else if (state.scenarioId === 'sc2') { // Duel
+              const enemy = newContacts.find(c => c.classification === 'SUB' && c.status === 'ACTIVE');
+              if (!enemy) {
+                  newGameState = 'VICTORY';
+              }
+          }
+          else if (state.scenarioId === 'sc3') { // SAG
+              const hvu = newContacts.find(c => c.classification === 'MERCHANT' && c.type === 'ENEMY'); // HVU usually merchant class but Enemy
+              if (!hvu || hvu.status === 'DESTROYED') {
+                  newGameState = 'VICTORY';
+              }
+          }
+          else if (state.scenarioId === 'sc4') { // Shadow
+               // Win: Sol Quality > 50% for 15 mins (Simplification: Just track duration of contact)
+               // Lose: Lose contact > 5 mins or Counter-Detected
+               if (newMetrics.counterDetectionTime > 0) { // Instant fail on detection? Task says "Counter Detected".
+                   newGameState = 'DEFEAT';
+                   newLogs = [...newLogs, { message: "MISSION FAILED: COUNTER-DETECTED!", timestamp: newGameTime, type: 'ALERT' }];
+               }
+
+               // Check Contact Loss
+               const sub = newContacts.find(c => c.classification === 'SUB');
+               if (sub) {
+                   const dx = sub.x - newX;
+                   const dy = sub.y - newY;
+                   const dist = Math.sqrt(dx*dx + dy*dy) / 3;
+                   // Assuming detection range 10k?
+                   if (dist > 12000) {
+                       // Lost contact logic needed? For now strict range check.
+                   }
+               }
+          }
+          // Default Victory (Elimination)
+          else {
+              const activeEnemies = newContacts.filter(c => c.type === 'ENEMY' && c.status === 'ACTIVE');
+              if (activeEnemies.length === 0 && newAlertLevel === 'NORMAL') {
+                   newGameState = 'VICTORY';
+              }
           }
       }
 
@@ -1409,7 +1556,8 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         visualTransients: newVisualTransients,
         scriptedEvents: newScriptedEvents,
         alertLevel: newAlertLevel,
-        incomingTorpedoDetected: newIncomingTorpedoDetected
+        incomingTorpedoDetected: newIncomingTorpedoDetected,
+        metrics: newMetrics
       };
     }),
 }));

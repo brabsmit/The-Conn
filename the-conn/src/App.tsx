@@ -1,7 +1,7 @@
+import { useEffect } from 'react';
 import { Panel } from './components/ui/Panel';
 import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
-import { useEffect } from 'react';
 import SonarDisplay from './components/screens/SonarDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import WCSDisplay from './components/screens/WCSDisplay';
@@ -12,15 +12,44 @@ import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
 import { AlertOverlay } from './components/effects/AlertOverlay';
 import { DebriefModal } from './components/modals/DebriefModal';
+import { ScenarioSelect } from './components/screens/ScenarioSelect';
 
 function App() {
   const tick = useSubmarineStore(state => state.tick);
   const activeStation = useSubmarineStore(state => state.activeStation);
   const setActiveStation = useSubmarineStore(state => state.setActiveStation);
+  const appState = useSubmarineStore(state => state.appState);
+  const toggleGodMode = useSubmarineStore(state => state.toggleGodMode);
+
+  // Expose store to window for debugging and Playwright tests
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // @ts-ignore - Exposing for debug/test
+      window.useSubmarineStore = useSubmarineStore;
+    }
+  }, []);
+
+  // Global Key Listeners
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // God Mode Toggle: Ctrl + Shift + D
+      if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        toggleGodMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleGodMode]);
 
   useInterval(() => {
     tick();
   }, 16); // ~60fps
+
+  if (appState === 'MENU') {
+      return <ScenarioSelect />;
+  }
 
   return (
     // MAIN CONTAINER: Triptych Layout

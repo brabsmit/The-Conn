@@ -37,18 +37,28 @@ const GeoDisplay: React.FC = () => {
     const selectedTrackerId = useSubmarineStore(state => state.selectedTrackerId);
     const torpedoes = useSubmarineStore(state => state.torpedoes);
     const gameTime = useSubmarineStore(state => state.gameTime);
-    const [isGodMode, setGodMode] = React.useState(false);
+
+    // Store God Mode
+    const isGodMode = useSubmarineStore(state => state.godMode);
+    const expertMode = useSubmarineStore(state => state.expertMode);
+    const toggleGodMode = useSubmarineStore(state => state.toggleGodMode);
+
+    // Keyboard Handler for Hidden Toggle
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+                toggleGodMode();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [toggleGodMode]);
 
     // Coordinate Transform: World (Yards) -> Screen (Pixels)
     // Scale: Fit 12k yards?
     const scale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
 
     // Check if Ownship is in the Green Zone of any TRACKED target with a valid solution
-    // If selectedTrackerId is set, prioritize that. Or just any?
-    // "If Ownship is physically inside the Green Zone" - implies relative to the specific target being viewed or all?
-    // Usually tactical geometry is most relevant for the selected target.
-    // Let's compute a global "idealSolution" flag based on the selected tracker.
-
     const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
     let isSolutionIdeal = false;
 
@@ -76,10 +86,6 @@ const GeoDisplay: React.FC = () => {
        const dy = ownShip.y - currentTargetY;
 
        // Bearing from Target to Ownship (0 is North)
-       // Math.atan2(x, y) gives angle from North clockwise if x is East, y is North?
-       // Standard atan2(y,x) is from East counter-clockwise.
-       // Nav Math: atan2(x, y) = bearing from North (Y axis) clockwise.
-       // x = East, y = North.
        let bearingFromTarget = Math.atan2(dx, dy) * (180 / Math.PI);
        if (bearingFromTarget < 0) bearingFromTarget += 360;
 
@@ -90,25 +96,21 @@ const GeoDisplay: React.FC = () => {
        while (aspect <= -180) aspect += 360;
 
        // Green Zone: Stern +/- 60 deg -> Abs(Aspect) > 120 (since Stern is 180)
-       // Wait. Stern is 180. +/- 60 is 120 to 240.
-       // Normalized: 120 to 180 and -180 to -120.
-       // So abs(aspect) >= 120.
-
        if (Math.abs(aspect) >= 120) {
            isSolutionIdeal = true;
        }
     }
 
     return (
-        <div ref={parentRef} className="w-full h-full bg-[#001133] relative overflow-hidden select-none">
+        <div ref={parentRef} className={`w-full h-full bg-[#001133] relative overflow-hidden select-none ${isGodMode ? 'border-4 border-red-500/50' : ''}`}>
             {width > 0 && height > 0 && (
                 <Stage width={width} height={height} options={{ background: COLOR_BG, antialias: true }}>
                     <Container x={width / 2} y={height / 2}>
                         {/* 1. Grid / Range Rings */}
                         <RangeRings scale={scale} />
 
-                        {/* 2. Trackers (Normal Mode) */}
-                        {!isGodMode && trackers.map(tracker => (
+                        {/* 2. Trackers (Normal Mode) - Hide if God Mode enabled to avoid clutter? Or Overlay? Usually overlay. */}
+                        {trackers.map(tracker => (
                             <TrackerSymbol
                                 key={tracker.id}
                                 tracker={tracker}
@@ -151,19 +153,28 @@ const GeoDisplay: React.FC = () => {
                 <div>SCALE: 10k YDS</div>
             </div>
 
-            {/* GOD MODE TOGGLE */}
-            <div className="absolute top-2 right-2 pointer-events-auto">
-                <button
-                    onClick={() => setGodMode(!isGodMode)}
-                    className={`px-2 py-1 text-xs font-bold font-mono border rounded ${
-                        isGodMode
-                        ? 'bg-purple-900/80 text-purple-200 border-purple-500 animate-pulse'
-                        : 'bg-black/50 text-zinc-600 border-zinc-800 hover:text-zinc-400'
-                    }`}
-                >
-                    GOD
-                </button>
-            </div>
+            {/* GOD MODE WARNING */}
+            {isGodMode && (
+                <div className="absolute top-2 left-1/2 transform -translate-x-1/2 text-red-500 font-bold animate-pulse pointer-events-none">
+                    SIMULATION UNSAFE - GOD MODE ACTIVE
+                </div>
+            )}
+
+            {/* GOD MODE TOGGLE - Hidden in Expert Mode */}
+            {!expertMode && (
+                <div className="absolute top-2 right-2 pointer-events-auto">
+                    <button
+                        onClick={() => toggleGodMode()}
+                        className={`px-2 py-1 text-xs font-bold font-mono border rounded ${
+                            isGodMode
+                            ? 'bg-purple-900/80 text-purple-200 border-purple-500 animate-pulse'
+                            : 'bg-black/50 text-zinc-600 border-zinc-800 hover:text-zinc-400'
+                        }`}
+                    >
+                        GOD
+                    </button>
+                </div>
+            )}
 
             {/* SOLUTION IDEAL INDICATOR */}
             {isSolutionIdeal && (
