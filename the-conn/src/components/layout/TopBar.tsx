@@ -58,6 +58,7 @@ export const TopBar = () => {
   const headingRef = useRef<HTMLSpanElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
   const depthRef = useRef<HTMLSpanElement>(null);
+  const lastUpdateRef = useRef<number>(0);
 
   useEffect(() => {
     // Initial Update
@@ -68,10 +69,16 @@ export const TopBar = () => {
     if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
 
     const unsub = useSubmarineStore.subscribe((state) => {
-      if (timeRef.current) timeRef.current.innerText = formatTime(state.gameTime);
-      if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
-      if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
-      if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
+        // OPTIMIZATION: Throttle text updates to 10Hz (100ms)
+        const now = Date.now();
+        if (now - lastUpdateRef.current < 100) return;
+
+        if (timeRef.current) timeRef.current.innerText = formatTime(state.gameTime);
+        if (headingRef.current) headingRef.current.innerText = Math.round(state.heading).toString().padStart(3, '0');
+        if (speedRef.current) speedRef.current.innerText = state.speed.toFixed(1);
+        if (depthRef.current) depthRef.current.innerText = Math.round(state.depth).toString().padStart(4, '0');
+
+        lastUpdateRef.current = now;
     });
 
     return unsub;
