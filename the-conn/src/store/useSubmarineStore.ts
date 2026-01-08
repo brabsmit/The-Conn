@@ -313,7 +313,7 @@ const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode'
   viewScale: 'FAST',
   activeStation: 'TMA',
   orderedHeading: 0,
-  orderedSpeed: 10,
+  orderedSpeed: 5,
   orderedDepth: 150,
 });
 
