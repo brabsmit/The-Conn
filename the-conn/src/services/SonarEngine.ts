@@ -1,6 +1,5 @@
 import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../store/useSubmarineStore';
-import { SonarSweepFilter } from '../components/screens/SonarShader';
 import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../lib/tma';
 
 // Types
@@ -48,14 +47,11 @@ class SonarEngine {
     // Scene Graph
     private stage: PIXI.Container | null = null;
     private sonarContainer: PIXI.Container | null = null;
-    private sonarSprite: PIXI.Sprite | null = null;
+    private sonarSprite: PIXI.TilingSprite | null = null;
     private solutionOverlay: PIXI.Container | null = null;
 
     // Overlay Contexts
     private overlayContexts: { fast: OverlayContext; med: OverlayContext; slow: OverlayContext } | null = null;
-
-    // Shader
-    private filter: SonarSweepFilter | null = null;
 
     // State
     private currentViewScale: 'FAST' | 'MED' | 'SLOW' = 'FAST';
@@ -95,13 +91,8 @@ class SonarEngine {
         this.stage.addChild(this.sonarContainer);
         this.stage.addChild(this.solutionOverlay);
 
-        // Setup Filter
-        this.filter = new SonarSweepFilter();
-        this.filter.uniforms.uResolution = [width, height];
-        this.sonarContainer.filters = [this.filter];
-
         // Setup Sprite (Placeholder)
-        this.sonarSprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
+        this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height);
         this.sonarContainer.addChild(this.sonarSprite);
 
         // Init Overlay Contexts
@@ -135,7 +126,11 @@ class SonarEngine {
         this.height = height;
         this.app.renderer.resize(width, height);
         if (this.stage) this.stage.hitArea = new PIXI.Rectangle(0, 0, width, height);
-        if (this.filter) this.filter.uniforms.uResolution = [width, height];
+
+        if (this.sonarSprite) {
+            this.sonarSprite.width = width;
+            this.sonarSprite.height = height;
+        }
 
         // Re-initialize buffers (clears sonar history)
         this.initBuffers(width, height);
@@ -196,10 +191,11 @@ class SonarEngine {
         if (this.textures.slow) this.textures.slow.destroy(true);
 
         // Create new textures
+        const opts = { width: w, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT };
         this.textures = {
-            fast: PIXI.Texture.fromBuffer(this.history.fast, w, h),
-            med: PIXI.Texture.fromBuffer(this.history.med, w, h),
-            slow: PIXI.Texture.fromBuffer(this.history.slow, w, h)
+            fast: PIXI.Texture.fromBuffer(this.history.fast, w, h, opts),
+            med: PIXI.Texture.fromBuffer(this.history.med, w, h, opts),
+            slow: PIXI.Texture.fromBuffer(this.history.slow, w, h, opts)
         };
 
         this.updateVisibility();
@@ -220,13 +216,11 @@ class SonarEngine {
             this.overlayContexts.slow.container.visible = this.showSolution && this.currentViewScale === 'SLOW';
         }
 
-        // Update Shader Scanline
-        if (this.filter) {
-            let sl = this.scanlines.fast;
-            if (this.currentViewScale === 'MED') sl = this.scanlines.med;
-            else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
-            this.filter.uniforms.uScanline = sl;
-        }
+        // Update Sprite Tile Position
+        let sl = this.scanlines.fast;
+        if (this.currentViewScale === 'MED') sl = this.scanlines.med;
+        else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
+        this.sonarSprite.tilePosition.y = -sl;
     }
 
     private handlePointerDown(e: PIXI.FederatedPointerEvent): void {
@@ -300,13 +294,12 @@ class SonarEngine {
         if (updateMed) this.processOverlay(this.overlayContexts.med, state);
         if (updateSlow) this.processOverlay(this.overlayContexts.slow, state);
 
-        // 4. Update Shader
-        if (this.filter) {
+        // 4. Update Sprite Position
+        if (this.sonarSprite) {
             let sl = this.scanlines.fast;
             if (this.currentViewScale === 'MED') sl = this.scanlines.med;
             else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
-            this.filter.uniforms.uScanline = sl;
-            this.filter.uniforms.uTime += delta * 0.01;
+            this.sonarSprite.tilePosition.y = -sl;
         }
     }
 
