@@ -499,14 +499,36 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
     const torpedoId = `T-${Date.now()}-${tube.id}`;
 
     // Defaults if not provided
-    const launchHeading = gyroAngle !== undefined ? gyroAngle : state.heading;
+    const launchHeading = state.heading;
+    let commandedGyro = gyroAngle !== undefined ? gyroAngle : state.heading;
+
+    // Fix 91.1: Calculate Gyro if targeted
+    if (designatedTargetId && gyroAngle === undefined) {
+         if (designatedTargetId === 'OWNSHIP') {
+             commandedGyro = state.heading;
+         } else {
+             const tracker = state.trackers.find(t => t.id === designatedTargetId);
+             if (tracker) {
+                 commandedGyro = tracker.solution.bearing;
+             } else {
+                 const contact = state.contacts.find(c => c.id === designatedTargetId);
+                 if (contact) {
+                     const dx = contact.x - state.x;
+                     const dy = contact.y - state.y;
+                     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                     commandedGyro = normalizeAngle(90 - angle);
+                 }
+             }
+         }
+    }
+
     const launchEnableRange = enableRange !== undefined ? enableRange : 1000;
 
     const newTorpedo: Torpedo = {
       id: torpedoId,
       position: { x: state.x, y: state.y },
       heading: launchHeading,
-      targetHeading: launchHeading, // Used for pure straight run if not homing
+      targetHeading: commandedGyro,
       speed: 20, // Launch speed
       status: 'RUNNING',
       launchTime: state.gameTime,
@@ -514,7 +536,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       designatedTargetId,
       activeTargetId: undefined, // Not locked initially
       enableRange: launchEnableRange,
-      gyroAngle: launchHeading,
+      gyroAngle: commandedGyro,
       distanceTraveled: 0,
       isHostile: false,
       history: []
@@ -969,11 +991,34 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                const searchPeriod = 2000; // yards
                const phase = ((newTotalDistance - torpedo.enableRange) % searchPeriod) / searchPeriod;
                const offset = Math.sin(phase * Math.PI * 2) * searchWidth;
-               newHeading = normalizeAngle(torpedo.gyroAngle + offset);
+
+               // Turn towards Search Heading
+               const desired = normalizeAngle(torpedo.gyroAngle + offset);
+               const diff = desired - newHeading;
+               let turnAmount = diff;
+               if (diff > 180) turnAmount = diff - 360;
+               if (diff < -180) turnAmount = diff + 360;
+               const maxTurn = 3.0 * delta;
+               if (Math.abs(turnAmount) < maxTurn) {
+                   newHeading = desired;
+               } else {
+                   newHeading = normalizeAngle(newHeading + Math.sign(turnAmount) * maxTurn);
+               }
            }
         }
         else {
-            newHeading = torpedo.gyroAngle;
+            // Transit Phase: Turn towards Gyro
+            const desired = torpedo.gyroAngle;
+            const diff = desired - newHeading;
+            let turnAmount = diff;
+            if (diff > 180) turnAmount = diff - 360;
+            if (diff < -180) turnAmount = diff + 360;
+            const maxTurn = 3.0 * delta; // Fast turn for torpedo
+            if (Math.abs(turnAmount) < maxTurn) {
+                newHeading = desired;
+            } else {
+                newHeading = normalizeAngle(newHeading + Math.sign(turnAmount) * maxTurn);
+            }
         }
 
         // Apply Heading Prediction for Collision Check
@@ -1136,6 +1181,13 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
 
                   // Update or Create Weapon Tracker
                   const trackerId = `W-${torp.id}`;
+
+                  // Task 91.2: Watch Team Deduplication
+                  // Prevent processing the same weapon multiple times in one tick
+                  if (weaponTrackers.some(t => t.id === trackerId)) {
+                      return;
+                  }
+
                   let tracker = state.trackers.find(t => t.id === trackerId);
 
                   // Solution Logic (Truth + Noise if passive)
