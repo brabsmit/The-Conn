@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../store/useSubmarineStore';
-import { normalizeAngle } from '../lib/tma';
+import { normalizeAngle, calculateTargetPosition } from '../lib/tma';
 
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
@@ -42,6 +42,7 @@ void main(void) {
     float bloom = 0.0;
 
     for (int i = 0; i < 16; i++) {
+        if (uContactBearings[i] < -1.0) continue; // Sentinel Check (Fix 101.1)
         if (i >= int(uContactCount)) break;
 
         float bearingX = uContactBearings[i];
@@ -104,6 +105,7 @@ export class SonarEngine {
     // State
     private currentViewScale: 'FAST' | 'MED' | 'SLOW' = 'FAST';
     private initialized: boolean = false;
+    private showSolutions: boolean = false; // Task 101.2: State for Solution Overlay
 
     // Initialization
     public initialize(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number): void {
@@ -216,6 +218,10 @@ export class SonarEngine {
     public setViewScale(scale: 'FAST' | 'MED' | 'SLOW'): void {
         this.currentViewScale = scale;
         this.updateVisibility();
+    }
+
+    public setShowSolutions(show: boolean): void {
+        this.showSolutions = show;
     }
 
     public destroy(): void {
@@ -366,6 +372,7 @@ export class SonarEngine {
         // Wipe the glass
         ctx.clearRect(0, 0, width, height);
 
+        // Render Current Bearing Lines
         trackers.forEach(t => {
             const x = this.mapBearingToX(t.currentBearing);
 
@@ -391,6 +398,97 @@ export class SonarEngine {
             ctx.lineTo(x, height);
             ctx.stroke();
         });
+
+        // Task 101.3: Render Solution Curves
+        if (this.showSolutions) {
+            this.renderSolutionCurves(state);
+        }
+    }
+
+    private renderSolutionCurves(state: SubmarineState): void {
+        const { height } = this;
+        const ctx = this.overlayCtx;
+        if (!ctx) return;
+
+        const msPerPixel = this.getMsPerPixel();
+        const currentTime = state.gameTime;
+        const history = state.ownShipHistory;
+
+        if (history.length < 2) return;
+
+        // Iterate Trackers
+        state.trackers.forEach(tracker => {
+            // Skip weapons for user solution overlay
+            if (tracker.kind === 'WEAPON') return;
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1;
+
+            let firstPoint = true;
+            let hIdx = history.length - 1; // Optimization: Search backwards
+
+            for (let y = 0; y < height; y += 10) { // Step 10px for performance
+                 const timeAtRow = currentTime - (y * msPerPixel / 1000); // seconds
+
+                 // Find OwnShip at timeAtRow (Searching backwards from hIdx)
+                 while(hIdx > 0 && history[hIdx].time > timeAtRow) {
+                     hIdx--;
+                 }
+
+                 // Get Interpolated OwnShip State
+                 const p1 = history[hIdx];
+                 const p2 = history[hIdx+1]; // Might be undefined if hIdx is last
+
+                 let ownX = p1.x;
+                 let ownY = p1.y;
+                 let ownHeading = p1.heading;
+
+                 if (p2) {
+                     const total = p2.time - p1.time;
+                     if (total > 0) {
+                         const curr = timeAtRow - p1.time;
+                         const t = Math.max(0, Math.min(1, curr / total));
+                         ownX = p1.x + (p2.x - p1.x) * t;
+                         ownY = p1.y + (p2.y - p1.y) * t;
+                         // Simple heading lerp
+                         ownHeading = p1.heading + (p2.heading - p1.heading) * t;
+                     }
+                 }
+
+                 // Calculate Solution Target Position (DR from anchor)
+                 const targetPos = calculateTargetPosition(tracker.solution, timeAtRow);
+
+                 // Bearing Own -> Target
+                 const dx = targetPos.x - ownX;
+                 const dy = targetPos.y - ownY;
+                 const trueBearing = normalizeAngle(Math.atan2(dx, dy) * (180 / Math.PI));
+                 const relBearing = normalizeAngle(trueBearing - ownHeading);
+
+                 const x = this.mapBearingToX(relBearing);
+
+                 if (x !== null && isFinite(x)) {
+                     if (firstPoint) {
+                         ctx.moveTo(x, y);
+                         firstPoint = false;
+                     } else {
+                         // Check for large jumps (wrap-around or baffle clip)
+                         // We assume continuous within view except baffles
+                         ctx.lineTo(x, y);
+                     }
+                 } else {
+                     firstPoint = true; // Break line
+                 }
+            }
+            ctx.stroke();
+        });
+    }
+
+    private getMsPerPixel(): number {
+         if (this.currentViewScale === 'FAST') return 1000 / 60; // Approx 16.6ms
+         if (this.currentViewScale === 'MED') return 1000;
+         if (this.currentViewScale === 'SLOW') return 6000;
+         return 1000;
     }
 
     private mapBearingToX(relBearing: number): number | null {
