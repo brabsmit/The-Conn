@@ -6,7 +6,9 @@ import { useResize } from '../../hooks/useResize';
 
 const SonarDisplay: React.FC = () => {
     // We now use a flex container for correct sizing, but we need refs for the layers
-    const { ref: containerRef, width, height } = useResize();
+    const { ref: containerRef, width: rawWidth, height: rawHeight } = useResize();
+    const width = Math.floor(rawWidth);
+    const height = Math.floor(rawHeight);
 
     // Layer 0: WebGL Container
     const webglContainerRef = useRef<HTMLDivElement>(null);
