@@ -152,14 +152,12 @@ export const TopBar = () => {
           <div className="flex gap-4 items-center relative">
             <TimeControls />
 
-            {!expertMode && (
-                <button
-                    onClick={() => setShowScenarioManager(true)}
-                    className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
-                >
-                    DEV
-                </button>
-            )}
+            <button
+                onClick={() => setShowScenarioManager(true)}
+                className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+            >
+                DEV
+            </button>
           </div>
       </div>
 
