@@ -356,8 +356,12 @@ export class SonarEngine {
         // Wipe the glass
         ctx.clearRect(0, 0, width, height);
 
+        // Task 113.1: The Header Scrubber
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, HEADER_HEIGHT);
+
         // Task 112.2: The Compass Scale (Header Context)
-        ctx.fillStyle = '#005500';
+        ctx.fillStyle = '#008888'; // Dark Cyan
         ctx.strokeStyle = '#005500';
         ctx.lineWidth = 1;
         ctx.font = '10px monospace';
@@ -375,7 +379,7 @@ export class SonarEngine {
 
                 // Number
                 const label = b.toString().padStart(3, '0');
-                ctx.fillText(label, x, 10);
+                ctx.fillText(label, x, 15);
             }
         }
 
@@ -407,14 +411,14 @@ export class SonarEngine {
             ctx.lineWidth = lineWidth;
 
             // Short tick pointing into waterfall
-            ctx.moveTo(x, 25);
-            ctx.lineTo(x, HEADER_HEIGHT + 10);
+            ctx.moveTo(x, 38);
+            ctx.lineTo(x, 50);
             ctx.stroke();
 
             // Label
             ctx.fillStyle = textColor;
             ctx.font = 'bold 12px monospace';
-            ctx.fillText(t.id, x, 20);
+            ctx.fillText(t.id, x, 35);
         });
 
         // Task 101.3: Render Solution Curves

@@ -24,7 +24,7 @@ const ContactListRow = memo(({ tracker, isSelected, setSelectedTracker, deleteTr
     useEffect(() => {
         const unsub = useSubmarineStore.subscribe((state) => {
             const now = Date.now();
-            if (now - lastUpdateRef.current < 100) return; // 10Hz throttle
+            if (now - lastUpdateRef.current < 1000) return; // 1Hz throttle
 
             const currentTracker = state.trackers.find(t => t.id === tracker.id);
             if (currentTracker && bearingRef.current) {
