@@ -6,6 +6,8 @@ export const ScenarioSelect: React.FC = () => {
     const loadScenario = useSubmarineStore(state => state.loadScenario);
     const setExpertMode = useSubmarineStore(state => state.setExpertMode);
 
+    loadScenario(scenarios[0].setup(), 'sc1');
+
     // Always force Expert Mode for these scenarios as per requirement
     // But maybe allow toggle for dev? No, req says "Expert Mode is forced ON".
     const handleSelect = (scenario: any) => {
