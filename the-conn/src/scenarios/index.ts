@@ -32,7 +32,7 @@ export const scenarios = [
             // 1. Define the Transit Lane Geometry
             const laneHeading = Math.random() * 360; // The direction of the "Highway"
             const laneWidth = 4000; // 4,000yd wide highway
-            const laneOffset = (Math.random() - 0.5) * 6000; // The lane center might be up to 3k yds left or right of ownship
+            const laneOffset = (8000 + (Math.random() * 10000) % 10000); // The lane center might be 8-10k yds from ownship
 
             // 2. Spawn 4-5 Merchants
             const numMerchants = 4;
@@ -113,7 +113,7 @@ export const scenarios = [
             for (let i = 0; i < 4; i++) {
                 const bioPos = getPolarPosition(
                     { x: 0, y: 0 },
-                    getRandomRange(4000, 25000),
+                    getRandomRange(12000, 25000),
                     Math.random() * 360
                 );
 
