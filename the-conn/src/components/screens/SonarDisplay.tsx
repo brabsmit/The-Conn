@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { SonarEngine } from '../../services/SonarEngine';
 import SonarOverlay from './SonarOverlay';
 import SonarBezel from '../panels/SonarBezel';
@@ -7,8 +7,25 @@ import { useResize } from '../../hooks/useResize';
 const SonarDisplay: React.FC = () => {
     // We now use a flex container for correct sizing, but we need refs for the layers
     const { ref: containerRef, width: rawWidth, height: rawHeight } = useResize();
-    const width = Math.floor(rawWidth);
-    const height = Math.floor(rawHeight);
+
+    // Task 99.1: Layout Isolation
+    // Lock dimensions after initial valid measurement to prevent flex-induced resizing/clearing
+    const [lockedSize, setLockedSize] = useState<{ width: number, height: number } | null>(null);
+
+    useEffect(() => {
+        // Only lock if we haven't yet, and we have valid dimensions
+        if (!lockedSize && rawWidth > 0 && rawHeight > 0) {
+            // Round to ensure pixel-perfect alignment
+            setLockedSize({
+                width: Math.floor(rawWidth),
+                height: Math.floor(rawHeight)
+            });
+        }
+    }, [rawWidth, rawHeight, lockedSize]);
+
+    // Use locked dimensions if available, otherwise raw
+    const width = lockedSize ? lockedSize.width : Math.floor(rawWidth);
+    const height = lockedSize ? lockedSize.height : Math.floor(rawHeight);
 
     // Layer 0: WebGL Container
     const webglContainerRef = useRef<HTMLDivElement>(null);
@@ -47,15 +64,33 @@ const SonarDisplay: React.FC = () => {
         };
     }, []);
 
-    // Ensure we handle the "initial" 0 height elegantly in styling if needed,
-    // though Playwright is catching it at 0.
-    // The flex-grow should enforce size.
+    // Task 99.1: Apply rigid styling once locked
+    const containerStyle: React.CSSProperties = lockedSize ? {
+        width: `${width}px`,
+        height: `${height}px`,
+        flexGrow: 0,
+        flexShrink: 0,
+        minHeight: `${height}px`, // Enforce minimum
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: 'black'
+    } : {
+        flexGrow: 1,
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: 'black'
+    };
 
     return (
         <div className="w-full h-full relative border-t-2 border-gray-800 bg-black min-h-0 flex flex-col">
             {/* Main Container for Resize Observer */}
-            {/* Added flex-grow to this container too to ensure it pushes out */}
-            <div ref={containerRef} className="flex-grow w-full h-full relative overflow-hidden bg-black select-none">
+            <div
+                ref={containerRef}
+                className="select-none"
+                style={containerStyle}
+            >
 
                 {/* Layer 0: The WebGL Waterfall */}
                 <div ref={webglContainerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }} />
