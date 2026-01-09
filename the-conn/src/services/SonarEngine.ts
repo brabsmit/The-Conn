@@ -473,37 +473,39 @@ export class SonarEngine {
     }
 
     private getColor(value: number): { r: number, g: number, b: number } {
-        // Task 104.3: Gain Curve Tuning (Visual Triage)
-        // If signal > 0.95 -> Pure White (Saturation Point)
-        if (value > 0.95) {
-            return { r: 255, g: 255, b: 255 };
-        }
-
+        // Task 111.2: The Color Gradient (Visual Tuning)
         // Palette:
-        // 0.0 - 0.3: Dark Green (Background/Noise)
-        // 0.3 - 0.7: Bright Green (Faint Contact)
-        // 0.7 - 0.95: Yellow/Light Green (Strong Contact)
+        // 0.0 - 0.2: Dark Noise (#003300)
+        // 0.2 - 0.6: Signal Green (#00CC00)
+        // 0.6 - 0.9: High Intensity (#AAFF00)
+        // 0.9 - 1.0: Saturation (#FFFFFF)
 
         let r = 0, g = 0, b = 0;
 
-        if (value < 0.3) {
-            // 0.0 -> 0.3 (0,20,0 -> 0,60,0)
-            const t = value / 0.3;
+        if (value < 0.2) {
+            // 0.0 -> 0.2 (0,0,0 -> 0,51,0)
+            const t = value / 0.2;
             r = 0;
-            g = 20 + (40 * t);
+            g = 51 * t; // 0x33 = 51
             b = 0;
-        } else if (value < 0.7) {
-            // 0.3 -> 0.7 (0,60,0 -> 0,255,0)
-            const t = (value - 0.3) / 0.4;
+        } else if (value < 0.6) {
+            // 0.2 -> 0.6 (0,51,0 -> 0,204,0)
+            const t = (value - 0.2) / 0.4;
             r = 0;
-            g = 60 + (195 * t);
+            g = 51 + (153 * t); // 204 - 51 = 153. 0xCC = 204
+            b = 0;
+        } else if (value < 0.9) {
+            // 0.6 -> 0.9 (0,204,0 -> 170,255,0)
+            const t = (value - 0.6) / 0.3;
+            r = 170 * t; // 0xAA = 170
+            g = 204 + (51 * t); // 255 - 204 = 51
             b = 0;
         } else {
-            // 0.7 -> 0.95 (0,255,0 -> 200,255,0)
-            const t = (value - 0.7) / 0.25;
-            r = 200 * t;
+            // 0.9 -> 1.0 (170,255,0 -> 255,255,255)
+            const t = (value - 0.9) / 0.1;
+            r = 170 + (85 * t); // 255 - 170 = 85
             g = 255;
-            b = 0;
+            b = 255 * t;
         }
 
         return { r: Math.floor(r), g: Math.floor(g), b: Math.floor(b) };
@@ -628,7 +630,9 @@ export class SonarEngine {
             // Map dB to Color (Dynamic Range 50dB .. 90dB)
             // Normalize 0..1
             // Floor 50dB (Black), Ceiling 90dB (White)
-            let val = (db - 50) / 40;
+            const floor = 50;
+            const ceiling = 90;
+            let val = (db - floor) / (ceiling - floor);
             
             // Visual Transients (Override)
             // These are strictly visual overlay effects, not acoustic physics
@@ -646,7 +650,7 @@ export class SonarEngine {
                 }
             });
 
-            val = Math.max(0, val);
+            val = Math.max(0, Math.min(1, val));
             const color = this.getColor(val);
 
             pixelBuffer[i * 4 + 0] = color.r;
