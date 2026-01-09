@@ -30,7 +30,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
     heading: 90,
     speed: 10,
     type: 'ENEMY' as 'ENEMY' | 'NEUTRAL',
-    classification: 'MERCHANT' as 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL'
+    classification: 'MERCHANT' as 'MERCHANT' | 'ESCORT' | 'SUB' | 'TRAWLER' | 'BIOLOGICAL'
   });
 
   const handleSelect = (id: string, type: 'CONTACT' | 'OWNSHIP') => {
@@ -89,6 +89,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
               cavitationSpeed = 12;
               type = 'ENEMY';
               break;
+          case 'TRAWLER':
+              sourceLevel = 0.8;
+              cavitationSpeed = 10;
+              type = 'NEUTRAL';
           case 'BIOLOGICAL':
               sourceLevel = 0.5;
               cavitationSpeed = 100; // No cavitation
@@ -300,6 +304,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                             <option value="MERCHANT">MERCHANT</option>
                             <option value="ESCORT">MILITANT (ESCORT)</option>
                             <option value="SUB">SUBMARINE</option>
+                            <option value="TRAWLER">TRAWLER</option>
                             <option value="BIOLOGICAL">BIOLOGICAL</option>
                         </select>
                     </div>
