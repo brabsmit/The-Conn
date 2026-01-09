@@ -489,7 +489,7 @@ const GodModeSymbol: React.FC<{
 }> = ({ contact, ownShip, scale }) => {
     // Colors
     // Enemy (SUB/ESCORT) -> Red
-    // Neutral (MERCHANT/BIOLOGICAL) -> Green
+    // Neutral (MERCHANT/BIOLOGICAL/TRAWLER) -> Green
     const isEnemy = contact.classification === 'SUB' || contact.classification === 'ESCORT';
     const color = isEnemy ? 0xFF0000 : 0x00FF00;
 
@@ -504,6 +504,14 @@ const GodModeSymbol: React.FC<{
         if (isEnemy) {
             // Square for Enemy
             g.drawRect(-6, -6, 12, 12);
+        } else if (contact.classification === 'TRAWLER') {
+            // Diamond for Trawler
+            g.drawPolygon([
+                0, -8,
+                6, 0,
+                0, 8,
+                -6, 0
+            ]);
         } else {
             // Circle for Neutral
             g.drawCircle(0, 0, 6);

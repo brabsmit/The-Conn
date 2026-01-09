@@ -12,6 +12,7 @@ const SIGNATURES = {
     WARSHIP: { width: 2, stability: 0.9, hash: 0.5, gain: 1.0 },
     SUB: { width: 0, stability: 0.95, hash: 0.0, gain: 0.6 },
     TORPEDO: { width: 1, stability: 1.0, hash: 0.1, gain: 1.2 },
+    TRAWLER: { width: 4, stability: 0.7, hash: 0.9, gain: 1.3 },
     UNKNOWN: { width: 1, stability: 0.8, hash: 0.3, gain: 1.0 }
 };
 
@@ -19,7 +20,8 @@ const PROFILE_MAP: Record<string, keyof typeof SIGNATURES> = {
     'MERCHANT': 'MERCHANT',
     'ESCORT': 'WARSHIP',
     'SUB': 'SUB',
-    'BIOLOGICAL': 'BIOLOGICAL'
+    'BIOLOGICAL': 'BIOLOGICAL',
+    'TRAWLER': 'TRAWLER'
 };
 
 // Constants
@@ -353,6 +355,16 @@ export class SonarEngine {
             // Sub-Task 88.3: Scintillation + Task 93.1 Gain
             signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
+
+            // TRAWLER TRANSIENT LOGIC (Mechanical Clank)
+            if (contact.classification === 'TRAWLER') {
+                if (Math.random() < 0.0005) { // Approx once per 33 secs at 60Hz
+                    // Inject loud broadband noise directly into transient line buffer?
+                    // Or boost signal temporarily?
+                    // Let's boost signal to simulate a pop
+                    signal += 0.8;
+                }
+            }
 
             // reading.bearing is already Relative (0-360) (noisy) from Store
             const rb = normalizeAngle(reading.bearing);
