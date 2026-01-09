@@ -9,6 +9,7 @@ type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
 // Constants
 const RATE_MED = 1000;
 const RATE_SLOW = 6000;
+const HEADER_HEIGHT = 40;
 
 // Task 99.2: Shader Definition
 const WASHOUT_FRAG = `
@@ -129,7 +130,7 @@ export class SonarEngine {
         });
 
         // Task 99.3: Context Restoration
-        this.view.addEventListener('webglcontextrestored', (event) => {
+        this.view.addEventListener('webglcontextrestored', () => {
             console.log("WebGL Context Restored - Reinitializing Buffers");
             this.restoreContext();
         });
@@ -139,7 +140,9 @@ export class SonarEngine {
         this.stage.addChild(this.sonarContainer);
 
         // Setup Sprite (Placeholder)
-        this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height);
+        // Task 112.1: The Header Reservation
+        // The waterfall lives in (0, HEADER_HEIGHT, width, height - HEADER_HEIGHT)
+        this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height - HEADER_HEIGHT);
         this.sonarSprite.scale.y = -1;
         this.sonarSprite.y = height;
 
@@ -191,7 +194,7 @@ export class SonarEngine {
 
         if (this.sonarSprite) {
             this.sonarSprite.width = width;
-            this.sonarSprite.height = height;
+            this.sonarSprite.height = height - HEADER_HEIGHT;
             this.sonarSprite.y = height;
         }
 
@@ -275,7 +278,7 @@ export class SonarEngine {
         this.sonarSprite.tilePosition.y = -sl;
     }
 
-    private tick(delta: number): void {
+    private tick(_delta: number): void {
         if (!this.app || !this.history || !this.textures.fast) return;
 
         // Time Management
@@ -353,31 +356,65 @@ export class SonarEngine {
         // Wipe the glass
         ctx.clearRect(0, 0, width, height);
 
-        // Render Current Bearing Lines
+        // Task 112.2: The Compass Scale (Header Context)
+        ctx.fillStyle = '#005500';
+        ctx.strokeStyle = '#005500';
+        ctx.lineWidth = 1;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (let b = 0; b < 360; b += 10) {
+            const x = this.mapBearingToX(b);
+            if (x !== null && isFinite(x)) {
+                // Tick
+                ctx.beginPath();
+                ctx.moveTo(x, HEADER_HEIGHT - 5);
+                ctx.lineTo(x, HEADER_HEIGHT);
+                ctx.stroke();
+
+                // Number
+                const label = b.toString().padStart(3, '0');
+                ctx.fillText(label, x, 10);
+            }
+        }
+
+        // Render Trackers
         trackers.forEach(t => {
             const x = this.mapBearingToX(t.currentBearing);
 
             // Sub-Task 96.3: The Data Sanity Check (The "NaN" Hunter)
             if (x === null || !isFinite(x)) return;
 
-            // Draw line using standard 2D API
-            ctx.beginPath();
-
             // Visual Distinction for Selected/Weapon
+            let color = '#005500';
+            let textColor = '#FFFFFF'; // Default White for Visibility
+            let lineWidth = 1;
+
             if (t.kind === 'WEAPON') {
-                ctx.strokeStyle = '#FFFF00'; // Yellow for Weapons
-                ctx.lineWidth = 2;
+                color = '#FFFF00'; // Yellow
+                textColor = '#FFFF00';
+                lineWidth = 2;
             } else if (t.id === selectedTrackerId) {
-                ctx.strokeStyle = '#00FF00'; // Bright Green for Selected
-                ctx.lineWidth = 2;
-            } else {
-                ctx.strokeStyle = '#005500'; // Dim Green for others
-                ctx.lineWidth = 1;
+                color = '#00FF00'; // Bright Green
+                textColor = '#00FFFF'; // Cyan for Selected Text
+                lineWidth = 2;
             }
 
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
+            // Task 112.3: The "Short Tick" Fix
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+
+            // Short tick pointing into waterfall
+            ctx.moveTo(x, 25);
+            ctx.lineTo(x, HEADER_HEIGHT + 10);
             ctx.stroke();
+
+            // Label
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 12px monospace';
+            ctx.fillText(t.id, x, 20);
         });
 
         // Task 101.3: Render Solution Curves
