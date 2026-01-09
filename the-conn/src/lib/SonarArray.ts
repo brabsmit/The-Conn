@@ -19,8 +19,8 @@ export class SonarArray {
         }
     }
 
-    public addSignal(bearing: number, sourceLevelDB: number): void {
-        const power = Math.pow(10, sourceLevelDB / 10);
+    public addSignal(bearing: number, receivedLevelDB: number): void {
+        const power = Math.pow(10, receivedLevelDB / 10);
 
         // Window optimization: +/- 10 degrees is enough for the main lobe and first side lobe of a narrow beam
         const windowSize = 10;
