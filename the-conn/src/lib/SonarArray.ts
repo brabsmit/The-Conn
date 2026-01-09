@@ -10,7 +10,9 @@ export class SonarArray {
     }
 
     public clear(ambientNoiseDB: number): void {
-        const basePower = Math.pow(10, ambientNoiseDB / 10);
+        // Base ambient noise power calculation removed as it was unused
+        // const basePower = Math.pow(10, ambientNoiseDB / 10);
+
         for (let i = 0; i < this.numBeams; i++) {
             // Add some random jitter to the ambient noise (in dB domain converted to power)
             // Jitter +/- 2dB?
@@ -33,29 +35,10 @@ export class SonarArray {
              let beamIndex = i % this.numBeams;
              if (beamIndex < 0) beamIndex += this.numBeams;
 
-             let diff = Math.abs(i - bearing);
+             const diff = Math.abs(i - bearing);
 
              const response = this.arrayResponse(diff);
              // Energy accumulation (Linear)
-             // response can be negative (sinc), but power is usually positive?
-             // Sinc is amplitude response. Power response is Sinc^2.
-             // "Energy += RL * Sinc" in the prompt.
-             // If RL is Intensity (Power), we should use Power Pattern (Sinc^2).
-             // If RL is Amplitude (Pressure), we sum amplitudes then square.
-             // But simulating phase interference (constructive/destructive) requires complex numbers or keeping phase.
-             // The prompt mentions "Beam Convolution... SincFunction".
-             // And "Energy += RL * Sinc".
-             // If Sinc is negative, Energy decreases? That implies interference.
-             // But we are adding to a float array of "Energy".
-             // Let's assume incoherent summation for now (Power + Power), but apply the Sinc *Pattern* as a weight?
-             // "Beam 093 gets -10% (The Null)". This implies subtracting from the noise floor?
-             // Physics: A null in a beam pattern means the array is deaf in that direction.
-             // It does NOT mean it subtracts existing noise from other directions.
-             // However, the prompt might be asking for a visual "dip" around the contact (Destructive Interference simulation).
-
-             // Let's interpret "Energy" as "Signal Strength" which can be manipulated.
-             // If I add negative energy, I dig a hole in the noise floor.
-             // Let's try Linear summation with Sinc.
 
              this.beams[beamIndex] += power * response;
 
@@ -87,8 +70,17 @@ export class SonarArray {
         if (Math.abs(degreesDiff) < 0.001) return 1.0;
 
         // Zero crossing at beamWidth
-        const x = (degreesDiff / this.beamWidth) * Math.PI;
+        // Sub-Task 110.1: Tighten main lobe by scaling frequency (divide by 0.5)
+        const x = (degreesDiff / (this.beamWidth * 0.5)) * Math.PI;
 
-        return Math.sin(x) / x;
+        let response = Math.sin(x) / x;
+
+        // Sub-Task 110.2: Side Lobe Suppression
+        // If outside main lobe (x > PI), suppress by 50%
+        if (Math.abs(x) > Math.PI) {
+            response *= 0.5;
+        }
+
+        return response;
     }
 }
