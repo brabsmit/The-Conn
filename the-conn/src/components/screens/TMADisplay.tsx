@@ -467,15 +467,6 @@ const TMADisplay = () => {
                 </Stage>
             )}
 
-            {/* UI Overlay */}
-            {!selectedTrackerId && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="bg-black/80 text-zinc-500 font-mono text-xl border border-zinc-700 px-6 py-4 rounded shadow-2xl">
-                        NO TRACKER SELECTED
-                    </div>
-                </div>
-            )}
-
             <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
                 <button
                     className="bg-gray-800 text-green-500 border border-green-700 px-3 py-1 rounded cursor-pointer hover:bg-gray-700 font-mono text-sm"

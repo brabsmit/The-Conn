@@ -80,9 +80,10 @@ export class SonarEngine {
 
     // Persistent Scratch Buffers (Reused per tick to avoid GC)
     private _tempRowBuffer: Uint8Array | null = null;
-    private signalLineBuffer: Float32Array | null = null;
+    // Task 104.1: Split buffers for Constructive/Destructive interference
+    private constructiveBuffer: Float32Array | null = null;
+    private destructiveBuffer: Float32Array | null = null;
     private transientLineBuffer: Float32Array | null = null;
-    private processedLineBuffer: Float32Array | null = null;
     private lastFrameBuffer: Float32Array | null = null;
 
     // Textures
@@ -261,9 +262,9 @@ export class SonarEngine {
 
         // Allocate Scratch Buffers
         this._tempRowBuffer = new Uint8Array(w * 4);
-        this.signalLineBuffer = new Float32Array(w);
+        this.constructiveBuffer = new Float32Array(w);
+        this.destructiveBuffer = new Float32Array(w);
         this.transientLineBuffer = new Float32Array(w);
-        this.processedLineBuffer = new Float32Array(w);
         this.lastFrameBuffer = new Float32Array(w);
 
         // Clean up old textures
@@ -495,11 +496,16 @@ export class SonarEngine {
     }
 
     private getColor(value: number): { r: number, g: number, b: number } {
+        // Task 104.3: Gain Curve Tuning (Visual Triage)
+        // If signal > 0.95 -> Pure White (Saturation Point)
+        if (value > 0.95) {
+            return { r: 255, g: 255, b: 255 };
+        }
+
         // Palette:
         // 0.0 - 0.3: Dark Green (Background/Noise)
         // 0.3 - 0.7: Bright Green (Faint Contact)
-        // 0.7 - 0.9: Yellow/Light Green (Strong Contact)
-        // 0.9 - 1.0: White (Transient/Active Ping)
+        // 0.7 - 0.95: Yellow/Light Green (Strong Contact)
 
         let r = 0, g = 0, b = 0;
 
@@ -515,18 +521,12 @@ export class SonarEngine {
             r = 0;
             g = 60 + (195 * t);
             b = 0;
-        } else if (value < 0.9) {
-            // 0.7 -> 0.9 (0,255,0 -> 200,255,0)
-            const t = (value - 0.7) / 0.2;
+        } else {
+            // 0.7 -> 0.95 (0,255,0 -> 200,255,0)
+            const t = (value - 0.7) / 0.25;
             r = 200 * t;
             g = 255;
             b = 0;
-        } else {
-            // 0.9 -> 1.0+ (200,255,0 -> 255,255,255)
-            const t = Math.min(1.0, (value - 0.9) / 0.1);
-            r = 200 + (55 * t);
-            g = 255;
-            b = 255 * t;
         }
 
         return { r: Math.floor(r), g: Math.floor(g), b: Math.floor(b) };
@@ -550,15 +550,16 @@ export class SonarEngine {
         const { width } = this;
 
         // Use Pre-allocated Buffers
-        if (!this._tempRowBuffer || !this.signalLineBuffer || !this.transientLineBuffer || !this.processedLineBuffer) {
+        if (!this._tempRowBuffer || !this.constructiveBuffer || !this.destructiveBuffer || !this.transientLineBuffer) {
              this.initBuffers(width, this.height);
         }
 
         const pixelBuffer = this._tempRowBuffer!;
 
-        const signalBuffer = this.signalLineBuffer!.fill(0); // Reset
-        const transientBuffer = this.transientLineBuffer!.fill(0); // Reset
-        const processedBuffer = this.processedLineBuffer!; // Will be overwritten
+        // Reset buffers
+        const constructive = this.constructiveBuffer!.fill(0);
+        const destructive = this.destructiveBuffer!.fill(0);
+        const transientBuffer = this.transientLineBuffer!.fill(0); 
         
         // Ensure lastFrameBuffer exists
         if (!this.lastFrameBuffer) this.lastFrameBuffer = new Float32Array(width);
@@ -568,7 +569,50 @@ export class SonarEngine {
 
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
-        // 1. Phase 1: Raw Signals (Peak Gathering)
+        // Helper to accumulate signal shapes
+        const applySignal = (cx: number, signalStrength: number, widthParams: { width: number }) => {
+            // Task 104.1: Dynamic Beam Width (The "Booming" Effect)
+            // Calculate kernel width based on strength: 0.0 -> 2px, 1.5 -> 12px
+            const kernelWidth = Math.max(2, Math.floor(signalStrength * 8));
+            const sigma = kernelWidth / 2.0;
+
+            // Constructive Loop (The Signal Blob)
+            for (let i = -kernelWidth; i <= kernelWidth; i++) {
+                const x = cx + i;
+                if (x >= 0 && x < width) {
+                    // Gaussian-ish falloff for natural look
+                    const dx = i;
+                    const falloff = Math.exp(-(dx * dx) / (2 * sigma * sigma));
+                    const val = signalStrength * falloff;
+                    constructive[x] = Math.max(constructive[x], val);
+                }
+            }
+
+            // Destructive Loop (The Deep Nulls)
+            // Task 104.2: Nulls at the "skirts" of the signal
+            const nullOffsets = [kernelWidth + 1, kernelWidth + 2];
+            const nullWeights = [0.2, 0.5]; // Per Task 104.2 spec (implied from -0.2 and -0.5)
+
+            for (let j = 0; j < nullOffsets.length; j++) {
+                const off = nullOffsets[j];
+                const weight = nullWeights[j];
+                const val = signalStrength * weight;
+
+                // Left Null
+                const leftX = cx - off;
+                if (leftX >= 0 && leftX < width) {
+                    destructive[leftX] = Math.max(destructive[leftX], val);
+                }
+
+                // Right Null
+                const rightX = cx + off;
+                if (rightX >= 0 && rightX < width) {
+                    destructive[rightX] = Math.max(destructive[rightX], val);
+                }
+            }
+        };
+
+        // 1. Process Contacts
         sensorReadings.forEach((reading) => {
             const contact = contacts.find(c => c.id === reading.contactId);
             if (!contact || contact.status === 'DESTROYED') return;
@@ -590,7 +634,7 @@ export class SonarEngine {
             const distYards = distance / 3;
 
             const scaleFactor = 0.0002;
-            let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+            let signal = Math.min(1.5, sourceLevel / (Math.max(1, distYards) * scaleFactor)); // Allow > 1.0 for saturation
             signal = Math.max(0, signal - selfNoisePenalty);
 
             // Scintillation
@@ -603,7 +647,7 @@ export class SonarEngine {
                 }
             }
             
-            // Apply Hash to the raw peak (simulating internal noise before spreading)
+            // Apply Hash
             const noise = 1.0 - (profile.hash * 0.5) + (Math.random() * profile.hash);
             signal *= noise;
 
@@ -611,11 +655,11 @@ export class SonarEngine {
             const cx = this.mapBearingToX(rb);
 
             if (cx !== null && cx >= 0 && cx < width) {
-                signalBuffer[cx] = Math.max(signalBuffer[cx], signal);
+                applySignal(cx, signal, profile);
             }
         });
 
-        // 2. Torpedoes (Raw)
+        // 2. Torpedoes
         torpedoes.forEach((torp) => {
             if (torp.status !== 'RUNNING') return;
 
@@ -627,7 +671,7 @@ export class SonarEngine {
             const distYards = distance / 3;
             const sourceLevel = 1.2;
             const scaleFactor = 0.0002;
-            let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
+            let signal = Math.min(1.5, sourceLevel / (Math.max(1, distYards) * scaleFactor));
 
             signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
@@ -639,11 +683,11 @@ export class SonarEngine {
             const cx = this.mapBearingToX(relBearing);
 
             if (cx !== null && cx >= 0 && cx < width) {
-                signalBuffer[cx] = Math.max(signalBuffer[cx], signal);
+                 applySignal(cx, signal, profile);
             }
         });
 
-        // 3. Visual Transients (Raw)
+        // 3. Visual Transients (Keep as overlay)
         visualTransients.forEach(t => {
             const age = gameTime - t.timestamp;
             if (age > 5) return;
@@ -658,39 +702,35 @@ export class SonarEngine {
                 transientBuffer[cx] = Math.max(transientBuffer[cx], decay);
             }
         });
-
-        // 4. Phase 2: Convolution (First Null Kernel)
-        // Kernel: [-0.3, 0.2, 1.0, 0.2, -0.3]
-        for (let i = 0; i < width; i++) {
-            let sum = 0;
-            // Center
-            sum += signalBuffer[i] * 1.0;
-            
-            // Neighbors (+/- 1) -> 0.2
-            if (i > 0) sum += signalBuffer[i - 1] * 0.2;
-            if (i < width - 1) sum += signalBuffer[i + 1] * 0.2;
-            
-            // Neighbors (+/- 2) -> -0.3 (The Black Band)
-            if (i > 1) sum += signalBuffer[i - 2] * -0.3;
-            if (i < width - 2) sum += signalBuffer[i + 2] * -0.3;
-
-            // Clamp? Or allow negative to carve noise? 
-            // Logic: "Subtracts from the noise". So we allow negative values here.
-            processedBuffer[i] = sum;
-        }
         
-        // 5. Phase 3: Temporal Smoothing (De-Flicker)
-        // Logic: RenderStrength = (Current * 0.3) + (Last * 0.7)
+        // 4. Temporal Smoothing (Phase 3 in memory)
+        // Apply smoothing to constructive buffer BEFORE mixing with noise?
+        // Or smooth the final result?
+        // Previous logic smoothed the "processedBuffer" which was the result of convolution.
+        // Here we can smooth the constructive buffer to keep signal stable.
         for (let i = 0; i < width; i++) {
-            const current = processedBuffer[i];
-            const last = lastFrameBuffer[i];
-            const smoothed = (current * 0.3) + (last * 0.7);
-            
-            lastFrameBuffer[i] = smoothed; // Update history
-            processedBuffer[i] = smoothed; // Update for render
+            // Smooth constructive signal
+             // Note: We're not smoothing the Destructive buffer for now, assuming nulls follow signal.
+             // But to be consistent, we should probably smooth the final composite or just the signal.
+             // Let's smooth the constructive signal to reduce flicker.
+             
+             // Wait, `lastFrameBuffer` is a single buffer.
+             // Let's calculate the "Net Signal" first.
+             // Net = Constructive - Destructive. Can be negative.
+             
+             let netSignal = constructive[i] - destructive[i];
+             
+             const last = lastFrameBuffer[i];
+             const smoothed = (netSignal * 0.3) + (last * 0.7);
+             
+             lastFrameBuffer[i] = smoothed;
+             
+             // Use smoothed value for composition
+             // We need to pass this to the next step
+             constructive[i] = smoothed; // Reusing constructive buffer to hold smoothed net signal
         }
 
-        // 6. Phase 4: Composition & Render (Gain Map)
+        // 5. Composition & Render (Gain Map)
         for (let i = 0; i < width; i++) {
             // Noise Floor (The Ocean Layer)
             const staticNoise = (Math.random() * 0.1); 
@@ -700,15 +740,14 @@ export class SonarEngine {
             // Ownship Noise penalty/washout
             const ownshipContribution = ownshipNoiseLevel * 0.15;
             
-            // Combine: Noise + Signal (Signal can be negative due to kernel)
-            // "pixelValue = Math.max(0, currentNoise + (signalStrength * kernelValue))"
-            // processedBuffer[i] contains the convolved signal (positive peak, negative bands)
+            // Task 104.2: "The Null must cut through the Noise"
+            // pixel = baseNoise + Signal (Constructive) - Signal (Destructive)
+            // We have `constructive[i]` holding the smoothed (Constructive - Destructive).
             
-            let val = baseNoise + ownshipContribution + processedBuffer[i];
+            let val = baseNoise + ownshipContribution + constructive[i];
             val = Math.max(0, val); // Clip negative
 
-            // Add transients (pure white overlay, no smoothing/kernels usually, or treated separately)
-            // If we treat them as just additive light:
+            // Add transients (pure white overlay)
             val += transientBuffer[i];
 
             const color = this.getColor(val);
