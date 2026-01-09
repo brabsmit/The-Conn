@@ -83,6 +83,7 @@ export class SonarEngine {
     private signalLineBuffer: Float32Array | null = null;
     private transientLineBuffer: Float32Array | null = null;
     private processedLineBuffer: Float32Array | null = null;
+    private lastFrameBuffer: Float32Array | null = null;
 
     // Textures
     private textures: { fast: PIXI.Texture | null; med: PIXI.Texture | null; slow: PIXI.Texture | null } = {
@@ -263,6 +264,7 @@ export class SonarEngine {
         this.signalLineBuffer = new Float32Array(w);
         this.transientLineBuffer = new Float32Array(w);
         this.processedLineBuffer = new Float32Array(w);
+        this.lastFrameBuffer = new Float32Array(w);
 
         // Clean up old textures
         if (this.textures.fast) this.textures.fast.destroy(true);
@@ -492,6 +494,44 @@ export class SonarEngine {
          return 1000;
     }
 
+    private getColor(value: number): { r: number, g: number, b: number } {
+        // Palette:
+        // 0.0 - 0.3: Dark Green (Background/Noise)
+        // 0.3 - 0.7: Bright Green (Faint Contact)
+        // 0.7 - 0.9: Yellow/Light Green (Strong Contact)
+        // 0.9 - 1.0: White (Transient/Active Ping)
+
+        let r = 0, g = 0, b = 0;
+
+        if (value < 0.3) {
+            // 0.0 -> 0.3 (0,20,0 -> 0,60,0)
+            const t = value / 0.3;
+            r = 0;
+            g = 20 + (40 * t);
+            b = 0;
+        } else if (value < 0.7) {
+            // 0.3 -> 0.7 (0,60,0 -> 0,255,0)
+            const t = (value - 0.3) / 0.4;
+            r = 0;
+            g = 60 + (195 * t);
+            b = 0;
+        } else if (value < 0.9) {
+            // 0.7 -> 0.9 (0,255,0 -> 200,255,0)
+            const t = (value - 0.7) / 0.2;
+            r = 200 * t;
+            g = 255;
+            b = 0;
+        } else {
+            // 0.9 -> 1.0+ (200,255,0 -> 255,255,255)
+            const t = Math.min(1.0, (value - 0.9) / 0.1);
+            r = 200 + (55 * t);
+            g = 255;
+            b = 255 * t;
+        }
+
+        return { r: Math.floor(r), g: Math.floor(g), b: Math.floor(b) };
+    }
+
     private mapBearingToX(relBearing: number): number | null {
         // Baffles: 150 < rb < 210
         if (relBearing > 150 && relBearing < 210) return null;
@@ -511,7 +551,6 @@ export class SonarEngine {
 
         // Use Pre-allocated Buffers
         if (!this._tempRowBuffer || !this.signalLineBuffer || !this.transientLineBuffer || !this.processedLineBuffer) {
-             // Fallback if not init (should not happen)
              this.initBuffers(width, this.height);
         }
 
@@ -520,21 +559,23 @@ export class SonarEngine {
         const signalBuffer = this.signalLineBuffer!.fill(0); // Reset
         const transientBuffer = this.transientLineBuffer!.fill(0); // Reset
         const processedBuffer = this.processedLineBuffer!; // Will be overwritten
+        
+        // Ensure lastFrameBuffer exists
+        if (!this.lastFrameBuffer) this.lastFrameBuffer = new Float32Array(width);
+        const lastFrameBuffer = this.lastFrameBuffer;
 
         const { sensorReadings, contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel, gameTime } = state;
 
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
-        // 1. Contacts
+        // 1. Phase 1: Raw Signals (Peak Gathering)
         sensorReadings.forEach((reading) => {
             const contact = contacts.find(c => c.id === reading.contactId);
             if (!contact || contact.status === 'DESTROYED') return;
 
-            // Task 93.1: Profile Application
             const profileKey = PROFILE_MAP[contact.classification || 'UNKNOWN'] || 'UNKNOWN';
             const profile = SIGNATURES[profileKey] || SIGNATURES.UNKNOWN;
 
-            // Stability Check
             if (Math.random() > profile.stability) return;
 
             let sourceLevel = contact.sourceLevel || 1.0;
@@ -552,52 +593,29 @@ export class SonarEngine {
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
             signal = Math.max(0, signal - selfNoisePenalty);
 
-            // Sub-Task 88.3: Scintillation + Task 93.1 Gain
+            // Scintillation
             signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
 
-            // TRAWLER TRANSIENT LOGIC (Mechanical Clank)
             if (contact.classification === 'TRAWLER') {
-                if (Math.random() < 0.0005) { // Approx once per 33 secs at 60Hz
-                    // Inject loud broadband noise directly into transient line buffer?
-                    // Or boost signal temporarily?
-                    // Let's boost signal to simulate a pop
+                if (Math.random() < 0.0005) { 
                     signal += 0.8;
                 }
             }
+            
+            // Apply Hash to the raw peak (simulating internal noise before spreading)
+            const noise = 1.0 - (profile.hash * 0.5) + (Math.random() * profile.hash);
+            signal *= noise;
 
-            // reading.bearing is already Relative (0-360) (noisy) from Store
             const rb = normalizeAngle(reading.bearing);
             const cx = this.mapBearingToX(rb);
 
-            if (cx !== null) {
-                // Task 93.3: Washout (Close Range / Loud)
-                let renderWidth = profile.width;
-                if (signal > 0.9) {
-                    renderWidth += 4; // Bloom
-                }
-
-                // Render Logic (Task 93.2)
-                for (let off = -renderWidth; off <= renderWidth; off++) {
-                    const x = cx + off;
-                    if (x >= 0 && x < width) {
-                        // Calculate falloff
-                        let falloff = 1.0;
-                        if (renderWidth > 0) {
-                            falloff = 1.0 - (Math.abs(off) / (renderWidth + 1));
-                        }
-
-                        // Hash Application
-                        const noise = 1.0 - (profile.hash * 0.5) + (Math.random() * profile.hash);
-
-                        const val = signal * falloff * noise;
-                        signalBuffer[x] = Math.max(signalBuffer[x], val);
-                    }
-                }
+            if (cx !== null && cx >= 0 && cx < width) {
+                signalBuffer[cx] = Math.max(signalBuffer[cx], signal);
             }
         });
 
-        // 2. Torpedoes
+        // 2. Torpedoes (Raw)
         torpedoes.forEach((torp) => {
             if (torp.status !== 'RUNNING') return;
 
@@ -611,7 +629,6 @@ export class SonarEngine {
             const scaleFactor = 0.0002;
             let signal = Math.min(1.0, sourceLevel / (Math.max(1, distYards) * scaleFactor));
 
-            // Scintillation + Gain
             signal *= profile.gain;
             signal *= (0.8 + Math.random() * 0.4);
 
@@ -621,23 +638,12 @@ export class SonarEngine {
 
             const cx = this.mapBearingToX(relBearing);
 
-            if (cx !== null) {
-                 const renderWidth = profile.width;
-                 for (let off = -renderWidth; off <= renderWidth; off++) {
-                     const x = cx + off;
-                     if (x >= 0 && x < width) {
-                         let falloff = 1.0;
-                         if (renderWidth > 0) {
-                             falloff = 1.0 - (Math.abs(off) / (renderWidth + 1));
-                         }
-                         const val = signal * falloff; // Torpedoes are clean (low hash)
-                         signalBuffer[x] = Math.max(signalBuffer[x], val);
-                     }
-                 }
+            if (cx !== null && cx >= 0 && cx < width) {
+                signalBuffer[cx] = Math.max(signalBuffer[cx], signal);
             }
         });
 
-        // 3. Visual Transients
+        // 3. Visual Transients (Raw)
         visualTransients.forEach(t => {
             const age = gameTime - t.timestamp;
             if (age > 5) return;
@@ -645,71 +651,71 @@ export class SonarEngine {
             const decay = Math.max(0, 1 - (age / 3.0));
             if (decay <= 0) return;
 
-            // t.bearing is True Bearing
             const relBearing = normalizeAngle(t.bearing - ownHeading);
             const cx = this.mapBearingToX(relBearing);
 
-            if (cx !== null) {
-                 const spread = 2;
-                 for (let off = -spread; off <= spread; off++) {
-                     const x = cx + off;
-                     if (x >= 0 && x < width) {
-                         transientBuffer[x] = Math.max(transientBuffer[x], decay);
-                     }
-                 }
+            if (cx !== null && cx >= 0 && cx < width) {
+                transientBuffer[cx] = Math.max(transientBuffer[cx], decay);
             }
         });
 
-        // 4. BQQ
-        // Copy signalBuffer to processedBuffer
-        processedBuffer.set(signalBuffer);
+        // 4. Phase 2: Convolution (First Null Kernel)
+        // Kernel: [-0.3, 0.2, 1.0, 0.2, -0.3]
+        for (let i = 0; i < width; i++) {
+            let sum = 0;
+            // Center
+            sum += signalBuffer[i] * 1.0;
+            
+            // Neighbors (+/- 1) -> 0.2
+            if (i > 0) sum += signalBuffer[i - 1] * 0.2;
+            if (i < width - 1) sum += signalBuffer[i + 1] * 0.2;
+            
+            // Neighbors (+/- 2) -> -0.3 (The Black Band)
+            if (i > 1) sum += signalBuffer[i - 2] * -0.3;
+            if (i < width - 2) sum += signalBuffer[i + 2] * -0.3;
 
-        for (let i = 1; i < width - 1; i++) {
-            if (signalBuffer[i] > 0.8) {
-                if (signalBuffer[i-1] < 0.8) processedBuffer[i-1] *= 0.1;
-                if (signalBuffer[i+1] < 0.8) processedBuffer[i+1] *= 0.1;
-            }
+            // Clamp? Or allow negative to carve noise? 
+            // Logic: "Subtracts from the noise". So we allow negative values here.
+            processedBuffer[i] = sum;
+        }
+        
+        // 5. Phase 3: Temporal Smoothing (De-Flicker)
+        // Logic: RenderStrength = (Current * 0.3) + (Last * 0.7)
+        for (let i = 0; i < width; i++) {
+            const current = processedBuffer[i];
+            const last = lastFrameBuffer[i];
+            const smoothed = (current * 0.3) + (last * 0.7);
+            
+            lastFrameBuffer[i] = smoothed; // Update history
+            processedBuffer[i] = smoothed; // Update for render
         }
 
-        // 5. Render
+        // 6. Phase 4: Composition & Render (Gain Map)
         for (let i = 0; i < width; i++) {
-            // Sub-Task 88.2: The Noise Floor (Dynamic Grain)
-            // Generate low-level static noise (0.05 - 0.1)
-            const staticNoise = 0.05 + (Math.random() * 0.05);
-            // Ownship noise contribution (washout effect)
+            // Noise Floor (The Ocean Layer)
+            const staticNoise = (Math.random() * 0.1); 
+            const noiseFloor = 0.15;
+            const baseNoise = noiseFloor + staticNoise;
+            
+            // Ownship Noise penalty/washout
             const ownshipContribution = ownshipNoiseLevel * 0.15;
+            
+            // Combine: Noise + Signal (Signal can be negative due to kernel)
+            // "pixelValue = Math.max(0, currentNoise + (signalStrength * kernelValue))"
+            // processedBuffer[i] contains the convolved signal (positive peak, negative bands)
+            
+            let val = baseNoise + ownshipContribution + processedBuffer[i];
+            val = Math.max(0, val); // Clip negative
 
-            const totalNoise = staticNoise + ownshipContribution;
-            const signalVal = processedBuffer[i];
+            // Add transients (pure white overlay, no smoothing/kernels usually, or treated separately)
+            // If we treat them as just additive light:
+            val += transientBuffer[i];
 
-            // Sub-Task 88.4: The Gain Palette (Intensity Mapping)
-            // Combine signal and noise
-            const totalIntensity = totalNoise + signalVal;
+            const color = this.getColor(val);
 
-            let r = 0;
-            let g = Math.min(255, totalIntensity * 255);
-            let b = 0;
-
-            // High Intensity Bloom (White/Yellow-Green)
-            // Threshold > 0.8
-            if (totalIntensity > 0.8) {
-                const bloom = (totalIntensity - 0.8) * 5.0; // Map 0.2 range -> 1.0
-                const bloomVal = Math.min(255, bloom * 255);
-                r = bloomVal;
-                b = bloomVal;
-            }
-
-            const transientVal = transientBuffer[i];
-            if (transientVal > 0) {
-                const white = transientVal * 255;
-                r = Math.max(r, white);
-                g = Math.max(g, white);
-                b = Math.max(b, white);
-            }
-
-            pixelBuffer[i * 4 + 0] = r;
-            pixelBuffer[i * 4 + 1] = g;
-            pixelBuffer[i * 4 + 2] = b;
+            pixelBuffer[i * 4 + 0] = color.r;
+            pixelBuffer[i * 4 + 1] = color.g;
+            pixelBuffer[i * 4 + 2] = color.b;
             pixelBuffer[i * 4 + 3] = 255;
         }
 
