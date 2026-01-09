@@ -39,15 +39,27 @@ export const scenarios = [
                     90 + (Math.random() - 0.5) * 20
                 ));
             }
-            // 10 Trawlers (Stationary/Slow)
+            // 4 Trawlers (Stationary/Slow)
             for (let i = 0; i < 10; i++) {
                 contacts.push(createContact(
                     `T-${i+1}`,
                     -15000 + Math.random() * 30000,
                     -5000 + Math.random() * 20000,
-                    'BIOLOGICAL', // Re-using BIO for small craft/noise
+                    'TRAWLER',
                     'NEUTRAL',
                     Math.random() * 3,
+                    Math.random() * 360
+                ));
+            }
+            // 4 Bios (Stationary)
+            for (let i = 0; i < 10; i++) {
+                contacts.push(createContact(
+                    `B-${i+1}`,
+                    -15000 + Math.random() * 30000,
+                    -5000 + Math.random() * 20000,
+                    'BIOLOGIC', 
+                    'NEUTRAL',
+                    0,
                     Math.random() * 360
                 ));
             }
