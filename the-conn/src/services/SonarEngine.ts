@@ -356,9 +356,16 @@ export class SonarEngine {
         // Wipe the glass
         ctx.clearRect(0, 0, width, height);
 
-        // Task 113.1: The Header Scrubber
+        // Task 114.1: The Header Wipe (Strict Redraw)
         ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, width, HEADER_HEIGHT);
+        ctx.fillRect(0, 0, width, 40); // Explicit 40px
+
+        // Task 114.1: Bottom Border
+        ctx.strokeStyle = '#333333';
+        ctx.beginPath();
+        ctx.moveTo(0, 40);
+        ctx.lineTo(width, 40);
+        ctx.stroke();
 
         // Task 112.2: The Compass Scale (Header Context)
         ctx.fillStyle = '#008888'; // Dark Cyan
