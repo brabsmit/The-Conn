@@ -41,23 +41,24 @@ void main(void) {
 
     float bloom = 0.0;
 
-    for (int i = 0; i < 16; i++) {
-        if (uContactBearings[i] < -1.0) continue; // Sentinel Check (Fix 101.1)
-        if (i >= int(uContactCount)) break;
+    // Task 102.1: Shader Exorcism - Disable GPU Bloom
+    // for (int i = 0; i < 16; i++) {
+    //     if (uContactBearings[i] < -1.0) continue; // Sentinel Check (Fix 101.1)
+    //     if (i >= int(uContactCount)) break;
 
-        float bearingX = uContactBearings[i];
+    //     float bearingX = uContactBearings[i];
 
-        // Check for valid bearing (0.0 - 1.0)
-        if (bearingX >= 0.0 && bearingX <= 1.0) {
-            float dist = abs(vTextureCoord.x - bearingX);
+    //     // Check for valid bearing (0.0 - 1.0)
+    //     if (bearingX >= 0.0 && bearingX <= 1.0) {
+    //         float dist = abs(vTextureCoord.x - bearingX);
 
-            // Washout Width (~1% of screen)
-            if (dist < 0.01) {
-                float intensity = 1.0 - (dist / 0.01);
-                bloom += intensity * 0.3; // Additive bloom
-            }
-        }
-    }
+    //         // Washout Width (~1% of screen)
+    //         if (dist < 0.01) {
+    //             float intensity = 1.0 - (dist / 0.01);
+    //             bloom += intensity * 0.3; // Additive bloom
+    //         }
+    //     }
+    // }
 
     // Apply bloom to all channels for a white-out effect
     gl_FragColor = color + vec4(bloom, bloom, bloom, 0.0);
