@@ -26,6 +26,41 @@ const PROFILE_MAP: Record<string, keyof typeof SIGNATURES> = {
 const RATE_MED = 1000;
 const RATE_SLOW = 6000;
 
+// Task 99.2: Shader Definition
+const WASHOUT_FRAG = `
+precision mediump float;
+varying vec2 vTextureCoord;
+uniform sampler2D uSampler;
+uniform float uContactBearings[16];
+uniform float uContactCount;
+
+void main(void) {
+    vec4 color = texture2D(uSampler, vTextureCoord);
+
+    float bloom = 0.0;
+
+    for (int i = 0; i < 16; i++) {
+        if (i >= int(uContactCount)) break;
+
+        float bearingX = uContactBearings[i];
+
+        // Check for valid bearing (0.0 - 1.0)
+        if (bearingX >= 0.0 && bearingX <= 1.0) {
+            float dist = abs(vTextureCoord.x - bearingX);
+
+            // Washout Width (~1% of screen)
+            if (dist < 0.01) {
+                float intensity = 1.0 - (dist / 0.01);
+                bloom += intensity * 0.3; // Additive bloom
+            }
+        }
+    }
+
+    // Apply bloom to all channels for a white-out effect
+    gl_FragColor = color + vec4(bloom, bloom, bloom, 0.0);
+}
+`;
+
 export class SonarEngine {
     // PIXI Core
     public app: PIXI.Application | null = null;
@@ -60,6 +95,9 @@ export class SonarEngine {
     private stage: PIXI.Container | null = null;
     private sonarContainer: PIXI.Container | null = null;
     private sonarSprite: PIXI.TilingSprite | null = null;
+
+    // Task 99.2: Shader Filter
+    private washoutFilter: PIXI.Filter | null = null;
 
     // State
     private currentViewScale: 'FAST' | 'MED' | 'SLOW' = 'FAST';
@@ -103,6 +141,12 @@ export class SonarEngine {
             event.preventDefault();
         });
 
+        // Task 99.3: Context Restoration
+        this.view.addEventListener('webglcontextrestored', (event) => {
+            console.log("WebGL Context Restored - Reinitializing Buffers");
+            this.restoreContext();
+        });
+
         // Create Container
         this.sonarContainer = new PIXI.Container();
         this.stage.addChild(this.sonarContainer);
@@ -111,6 +155,14 @@ export class SonarEngine {
         this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height);
         this.sonarSprite.scale.y = -1;
         this.sonarSprite.y = height;
+
+        // Task 99.2: Apply Shader
+        this.washoutFilter = new PIXI.Filter(undefined, WASHOUT_FRAG, {
+            uContactBearings: new Float32Array(16).fill(-999.0),
+            uContactCount: 0.0
+        });
+        this.sonarSprite.filters = [this.washoutFilter];
+
         this.sonarContainer.addChild(this.sonarSprite);
 
         // Initialize Buffers and Textures
@@ -125,6 +177,19 @@ export class SonarEngine {
     // Constructor Adapter
     constructor(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number) {
         this.initialize(container, overlayCanvas, width, height);
+    }
+
+    // Task 99.3: Restore Context Logic
+    private restoreContext() {
+        if (!this.width || !this.height) return;
+
+        // Re-initialize buffers but PRESERVE history content
+        this.initBuffers(this.width, this.height, true);
+
+        // Re-apply filter just in case
+        if (this.sonarSprite && this.washoutFilter) {
+            this.sonarSprite.filters = [this.washoutFilter];
+        }
     }
 
     public resize(width: number, height: number): void {
@@ -142,8 +207,8 @@ export class SonarEngine {
             this.sonarSprite.y = height;
         }
 
-        // Re-initialize buffers (clears sonar history)
-        this.initBuffers(width, height);
+        // Re-initialize buffers (clears sonar history on resize)
+        this.initBuffers(width, height, false);
     }
 
     public setViewScale(scale: 'FAST' | 'MED' | 'SLOW'): void {
@@ -161,19 +226,28 @@ export class SonarEngine {
 
     // --- Internal Logic ---
 
-    private initBuffers(w: number, h: number): void {
+    private initBuffers(w: number, h: number, preserveHistory: boolean = false): void {
         const size = w * h * 4;
         if (size <= 0) return;
 
-        // Reset Scanlines
-        this.scanlines = { fast: 0, med: 0, slow: 0 };
+        // Reset Scanlines if not preserving
+        if (!preserveHistory) {
+             this.scanlines = { fast: 0, med: 0, slow: 0 };
+        }
 
         // Allocate History Buffers
-        this.history = {
-            fast: new Uint8Array(size),
-            med: new Uint8Array(size),
-            slow: new Uint8Array(size)
-        };
+        if (!this.history || this.history.fast.length !== size) {
+            // If size changed or not active, we must re-allocate (cannot preserve)
+            this.history = {
+                fast: new Uint8Array(size),
+                med: new Uint8Array(size),
+                slow: new Uint8Array(size)
+            };
+            // Force reset scanlines if size changed
+            this.scanlines = { fast: 0, med: 0, slow: 0 };
+        }
+        // Else: If preserveHistory is true AND size matches, we do NOT overwrite this.history
+        // We simply create new textures pointing to the EXISTING buffers.
 
         // Allocate Scratch Buffers
         this._tempRowBuffer = new Uint8Array(w * 4);
@@ -244,7 +318,34 @@ export class SonarEngine {
         // 3. Update 2D Overlays (The "Ironclad" Separation)
         this.renderOverlays(state);
 
-        // 4. Update Sprite Position
+        // 4. Update Shader Uniforms (Task 99.2)
+        if (this.washoutFilter) {
+            // Paranoid Shader Data: Fixed Buffer
+            const uniformData = new Float32Array(16).fill(-999.0); // Default off-screen
+            let count = 0;
+
+            state.sensorReadings.forEach(reading => {
+                if (count >= 16) return;
+
+                // Only process active contacts? Or all sensors?
+                // Using all sensor readings.
+
+                const rb = normalizeAngle(reading.bearing);
+                const cx = this.mapBearingToX(rb); // Returns pixel X (0..width) or null
+
+                if (cx !== null && isFinite(cx)) {
+                     // Normalize to UV space (0..1)
+                     uniformData[count] = cx / this.width;
+                     count++;
+                }
+            });
+
+            // Upload to Shader
+            this.washoutFilter.uniforms.uContactBearings = uniformData;
+            this.washoutFilter.uniforms.uContactCount = count;
+        }
+
+        // 5. Update Sprite Position
         if (this.sonarSprite) {
             let sl = this.scanlines.fast;
             if (this.currentViewScale === 'MED') sl = this.scanlines.med;
