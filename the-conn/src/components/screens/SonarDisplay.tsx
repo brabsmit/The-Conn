@@ -12,6 +12,9 @@ const SonarDisplay: React.FC = () => {
     // Lock dimensions after initial valid measurement to prevent flex-induced resizing/clearing
     const [lockedSize, setLockedSize] = useState<{ width: number, height: number } | null>(null);
 
+    // Task 101.2: Solution Overlay State
+    const [showSolutions, setShowSolutions] = useState<boolean>(false);
+
     useEffect(() => {
         // Only lock if we haven't yet, and we have valid dimensions
         if (!lockedSize && rawWidth > 0 && rawHeight > 0) {
@@ -54,6 +57,13 @@ const SonarDisplay: React.FC = () => {
         }
     }, [width, height]);
 
+    // Sync Show Solutions
+    useEffect(() => {
+        if (engineRef.current) {
+            engineRef.current.setShowSolutions(showSolutions);
+        }
+    }, [showSolutions]);
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {
@@ -91,7 +101,6 @@ const SonarDisplay: React.FC = () => {
                 className="select-none"
                 style={containerStyle}
             >
-
                 {/* Layer 0: The WebGL Waterfall */}
                 <div ref={webglContainerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }} />
 
@@ -108,6 +117,17 @@ const SonarDisplay: React.FC = () => {
 
                 {/* UI Bezel (Compass, Indicators) - Topmost Visual */}
                 <SonarBezel width={width} height={height} />
+
+                {/* Task 101.2: [SOL] Toggle Button */}
+                <div className="absolute top-4 right-4 z-50 pointer-events-auto">
+                    <button
+                        onClick={() => setShowSolutions(!showSolutions)}
+                        className={`px-2 py-1 text-xs font-mono font-bold border border-current rounded
+                            ${showSolutions ? 'text-green-400 border-green-400 bg-green-900/50' : 'text-gray-500 border-gray-600 bg-black/50'}`}
+                    >
+                        [SOL]
+                    </button>
+                </div>
             </div>
         </div>
     );
