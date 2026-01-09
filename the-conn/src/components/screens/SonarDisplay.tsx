@@ -1,158 +1,79 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useSubmarineStore } from '../../store/useSubmarineStore';
-import { useResize } from '../../hooks/useResize';
-import { useInterval } from '../../hooks/useInterval';
+import React, { useRef, useEffect } from 'react';
 import { SonarEngine } from '../../services/SonarEngine';
 import SonarOverlay from './SonarOverlay';
+import SonarBezel from '../panels/SonarBezel';
+import { useResize } from '../../hooks/useResize';
 
-const SonarBezel = ({ width }: { width: number }) => {
-    // Throttled visual state (1Hz)
-    const [visibleTrackers, setVisibleTrackers] = useState(() => useSubmarineStore.getState().trackers);
+const SonarDisplay: React.FC = () => {
+    // We now use a flex container for correct sizing, but we need refs for the layers
+    const { ref: containerRef, width, height } = useResize();
 
-    useInterval(() => {
-        setVisibleTrackers(useSubmarineStore.getState().trackers);
-    }, 1000);
+    // Layer 0: WebGL Container
+    const webglContainerRef = useRef<HTMLDivElement>(null);
 
-    return (
-        <div className="absolute top-[-20px] left-0 pointer-events-none z-10" style={{ width: width, height: '100%' }} data-testid="sonar-bezel">
-            {visibleTrackers.map((tracker) => {
-                 // Helper for Viewport Mapping (300 deg)
-                 const relBearing = (tracker.currentBearing % 360 + 360) % 360; // Normalize 0-360
+    // Layer 1: 2D Overlay Canvas
+    const overlayRef = useRef<HTMLCanvasElement>(null);
 
-                 // Baffles: 150 < rb < 210
-                 if (relBearing > 150 && relBearing < 210) return null;
-
-                 let viewAngle = 0;
-                 if (relBearing >= 210) {
-                     viewAngle = relBearing - 210; // 210..360 -> 0..150
-                 } else {
-                     viewAngle = relBearing + 150; // 0..150 -> 150..300
-                 }
-
-                 const x = (viewAngle / 300) * width;
-
-                 return (
-                     <div
-                        key={tracker.id}
-                        className="absolute top-0 flex flex-col items-center"
-                        style={{ left: x, transform: 'translateX(-50%)' }}
-                     >
-                        {/* Triangle pointing DOWN */}
-                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[10px] border-t-[#33ff33]" />
-
-                        {/* Tracker ID */}
-                        <div className="text-[#33ff33] font-mono font-bold text-sm mt-0 shadow-black drop-shadow-md">
-                            {tracker.id}
-                        </div>
-                     </div>
-                 );
-            })}
-        </div>
-    );
-};
-
-// Task 94.1: The "Zombie" Component - Decoupled rendering
-const SonarComponent = () => {
-    const { ref, width: rawWidth, height: rawHeight } = useResize();
-    const width = Math.floor(rawWidth);
-    const height = Math.floor(rawHeight);
-
-    const [showSolution, setShowSolution] = useState(true);
-    // REMOVED: useSubmarineStore subscription for viewScale
-
-    // Task 94.3: Ref Persistence Safety Net
+    // Engine Instance
     const engineRef = useRef<SonarEngine | null>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
-    // Initialize Engine (Run Once)
+    // Initial Setup
     useEffect(() => {
+        // Ensure dimensions are valid and refs exist
+        if (!webglContainerRef.current || !overlayRef.current || width === 0 || height === 0) return;
+
+        // Initialize engine if needed
         if (!engineRef.current) {
-            engineRef.current = new SonarEngine();
-        }
-        // No cleanup that destroys the engine
-    }, []);
-
-    // Initialize/Resize Engine when dimensions change
-    useEffect(() => {
-        if (engineRef.current && width > 0 && height > 0) {
-            engineRef.current.initialize(width, height);
+             engineRef.current = new SonarEngine(webglContainerRef.current, overlayRef.current, width, height);
         }
     }, [width, height]);
 
-    // Attach View
+    // Handle Resize / View Update
     useEffect(() => {
-        const container = containerRef.current;
-        const engine = engineRef.current;
-
-        if (container && engine && width > 0 && height > 0) {
-            try {
-                const canvas = engine.getView();
-                // Ensure canvas is not already attached elsewhere
-                if (canvas.parentElement !== container) {
-                    container.appendChild(canvas);
-                }
-            } catch (e) {
-                // Engine might not be ready yet
-            }
+        if (engineRef.current && width > 0 && height > 0) {
+            engineRef.current.resize(width, height);
         }
+    }, [width, height]);
 
+    // Cleanup on unmount
+    useEffect(() => {
         return () => {
-            if (container) {
-                const canvas = container.querySelector('canvas');
-                if (canvas) {
-                    container.removeChild(canvas);
-                }
+            if (engineRef.current) {
+                engineRef.current.destroy();
+                engineRef.current = null;
             }
         };
-    }, [width, height]); // Re-attach if dimensions change
+    }, []);
 
-    // Sync Local State (ShowSolution)
-    useEffect(() => {
-        if (engineRef.current) {
-            engineRef.current.setShowSolution(showSolution);
-        }
-    }, [showSolution]);
+    // Ensure we handle the "initial" 0 height elegantly in styling if needed,
+    // though Playwright is catching it at 0.
+    // The flex-grow should enforce size.
 
     return (
-        <div ref={ref} className="relative flex justify-center items-center w-full h-full bg-black">
-            {width > 0 && height > 0 && (
-                <div className="relative w-full h-full">
-                    {/* The Engine View Container */}
-                    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-[#001100]" />
+        <div className="w-full h-full relative border-t-2 border-gray-800 bg-black min-h-0 flex flex-col">
+            {/* Main Container for Resize Observer */}
+            {/* Added flex-grow to this container too to ensure it pushes out */}
+            <div ref={containerRef} className="flex-grow w-full h-full relative overflow-hidden bg-black select-none">
 
-                    <SonarBezel width={width} />
+                {/* Layer 0: The WebGL Waterfall */}
+                <div ref={webglContainerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }} />
 
-                    {/* New Independent Overlay Layer */}
-                    <SonarOverlay width={width} height={height} />
-                </div>
-            )}
+                {/* Layer 1: The 2D Overlay */}
+                <canvas
+                    ref={overlayRef}
+                    width={width}
+                    height={height}
+                    style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
+                />
 
-            {/* UI Overlay */}
-            <div className="absolute top-2 right-2 flex gap-2 z-30">
-                <button
-                    className={`px-2 py-1 text-xs font-mono border rounded ${showSolution ? 'bg-green-900/50 text-green-400 border-green-600' : 'bg-gray-900/50 text-gray-500 border-gray-700'}`}
-                    onClick={() => setShowSolution(!showSolution)}
-                >
-                    SOL
-                </button>
+                {/* Interaction Layer (Click Handling) - Z-Index needs to be above overlays */}
+                <SonarOverlay width={width} height={height} />
+
+                {/* UI Bezel (Compass, Indicators) - Topmost Visual */}
+                <SonarBezel width={width} height={height} />
             </div>
         </div>
     );
 };
-
-// Task 94.1: Strict Memo
-export const SonarDisplay = React.memo(SonarComponent, (prev, next) => {
-    // Only re-render if props change (which there are none currently) or if internal state changes.
-    // React.memo only compares props. Since SonarComponent has no props, this comparison function
-    // effectively makes it never re-render due to parent updates.
-    // BUT the component uses hooks (useResize, useState). Those will still trigger re-renders.
-    // The requirement says: "ONLY re-render if the physical pixel size changes".
-    // Since useResize is inside the component, it triggers the re-render.
-    // However, React.memo wraps the component export. The props are empty.
-    // So if the parent re-renders, this component won't re-render unless we return false.
-    // Since there are no props, we can return true always? No, if we return true, it skips re-render.
-    // The requirement implies we should ignore parent renders.
-    return true;
-});
 
 export default SonarDisplay;

@@ -1,11 +1,11 @@
 import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../store/useSubmarineStore';
-import { calculateTargetPosition, normalizeAngle, getShortestAngle } from '../lib/tma';
+import { normalizeAngle } from '../lib/tma';
 
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
 
-// Signature Profiles (Task 93.1)
+// Signature Profiles
 const SIGNATURES = {
     MERCHANT: { width: 3, stability: 1.0, hash: 0.8, gain: 1.2 },
     BIOLOGICAL: { width: 1, stability: 0.4, hash: 0.2, gain: 0.8 },
@@ -25,14 +25,6 @@ const PROFILE_MAP: Record<string, keyof typeof SIGNATURES> = {
 // Constants
 const RATE_MED = 1000;
 const RATE_SLOW = 6000;
-const CHUNK_SIZE = 100;
-
-interface OverlayContext {
-    container: PIXI.Container;
-    currentChunk: PIXI.Graphics | null;
-    pixelCount: number;
-    lastPoints: Map<string, number>;
-}
 
 export class SonarEngine {
     // PIXI Core
@@ -40,6 +32,9 @@ export class SonarEngine {
     private view: HTMLCanvasElement | null = null;
     private width: number = 0;
     private height: number = 0;
+
+    // 2D Overlay Core
+    private overlayCtx: CanvasRenderingContext2D | null = null;
 
     // Persistent History (Buffers)
     private history: { fast: Uint8Array; med: Uint8Array; slow: Uint8Array } | null = null;
@@ -65,18 +60,13 @@ export class SonarEngine {
     private stage: PIXI.Container | null = null;
     private sonarContainer: PIXI.Container | null = null;
     private sonarSprite: PIXI.TilingSprite | null = null;
-    private solutionOverlay: PIXI.Container | null = null;
-
-    // Overlay Contexts
-    private overlayContexts: { fast: OverlayContext; med: OverlayContext; slow: OverlayContext } | null = null;
 
     // State
     private currentViewScale: 'FAST' | 'MED' | 'SLOW' = 'FAST';
-    private showSolution: boolean = true;
     private initialized: boolean = false;
 
     // Initialization
-    public initialize(width: number, height: number): void {
+    public initialize(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number): void {
         if (this.initialized && this.app) {
             this.resize(width, height);
             return;
@@ -85,49 +75,43 @@ export class SonarEngine {
         this.width = width;
         this.height = height;
 
-        // Create PIXI Application
+        // Setup 2D Overlay Context
+        this.overlayCtx = overlayCanvas.getContext('2d');
+
+        // Create PIXI Application (Waterfall Layer)
         this.app = new PIXI.Application({
             width,
             height,
             background: 0x001100,
             resolution: (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1,
             autoDensity: true,
+            resizeTo: container
         });
 
         this.view = this.app.view as HTMLCanvasElement;
+        container.appendChild(this.view); // Append WebGL canvas to its container
+
         this.stage = this.app.stage;
 
         // Setup Event Mode
         this.stage.eventMode = 'static';
         this.stage.hitArea = new PIXI.Rectangle(0, 0, width, height);
 
-        // Suspect 2: Handle Context Loss
+        // Handle Context Loss
         this.view.addEventListener('webglcontextlost', (event) => {
             console.error("FATAL: WebGL Context Lost!", event);
             event.preventDefault();
         });
 
-        // Create Containers
+        // Create Container
         this.sonarContainer = new PIXI.Container();
-        this.solutionOverlay = new PIXI.Container();
         this.stage.addChild(this.sonarContainer);
-        this.stage.addChild(this.solutionOverlay);
 
         // Setup Sprite (Placeholder)
         this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height);
         this.sonarSprite.scale.y = -1;
         this.sonarSprite.y = height;
         this.sonarContainer.addChild(this.sonarSprite);
-
-        // Init Overlay Contexts
-        this.overlayContexts = {
-            fast: { container: new PIXI.Container(), currentChunk: null, pixelCount: 0, lastPoints: new Map() },
-            med: { container: new PIXI.Container(), currentChunk: null, pixelCount: 0, lastPoints: new Map() },
-            slow: { container: new PIXI.Container(), currentChunk: null, pixelCount: 0, lastPoints: new Map() }
-        };
-        this.solutionOverlay.addChild(this.overlayContexts.fast.container);
-        this.solutionOverlay.addChild(this.overlayContexts.med.container);
-        this.solutionOverlay.addChild(this.overlayContexts.slow.container);
 
         // Initialize Buffers and Textures
         this.initBuffers(width, height);
@@ -138,9 +122,9 @@ export class SonarEngine {
         this.initialized = true;
     }
 
-    public getView(): HTMLCanvasElement {
-        if (!this.view) throw new Error("SonarEngine not initialized");
-        return this.view;
+    // Constructor Adapter
+    constructor(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number) {
+        this.initialize(container, overlayCanvas, width, height);
     }
 
     public resize(width: number, height: number): void {
@@ -160,18 +144,6 @@ export class SonarEngine {
 
         // Re-initialize buffers (clears sonar history)
         this.initBuffers(width, height);
-
-        // Clear overlay history
-        if (this.overlayContexts) {
-            ['fast', 'med', 'slow'].forEach((key) => {
-                const ctx = this.overlayContexts![key as keyof typeof this.overlayContexts];
-                ctx.container.removeChildren();
-                ctx.currentChunk = null;
-                ctx.pixelCount = 0;
-                ctx.lastPoints.clear();
-                ctx.container.y = 0;
-            });
-        }
     }
 
     public setViewScale(scale: 'FAST' | 'MED' | 'SLOW'): void {
@@ -179,19 +151,12 @@ export class SonarEngine {
         this.updateVisibility();
     }
 
-    public setShowSolution(show: boolean): void {
-        this.showSolution = show;
-        this.updateVisibility();
-    }
-
     public destroy(): void {
-        // In the "Ref Persistence" model, we actually might want to destroy if the component really unmounts (e.g. changing tabs?)
-        // But for now, we follow instructions to use Ref to persist across re-renders.
-        // If the Ref is eventually cleared, we might want to destroy.
         if (this.app) {
             this.app.destroy(true, { children: true, texture: true, baseTexture: true });
             this.app = null;
         }
+        this.overlayCtx = null;
     }
 
     // --- Internal Logic ---
@@ -240,13 +205,6 @@ export class SonarEngine {
         else if (this.currentViewScale === 'MED') this.sonarSprite.texture = this.textures.med || PIXI.Texture.EMPTY;
         else this.sonarSprite.texture = this.textures.slow || PIXI.Texture.EMPTY;
 
-        // Toggle Overlay Containers
-        if (this.overlayContexts) {
-            this.overlayContexts.fast.container.visible = this.showSolution && this.currentViewScale === 'FAST';
-            this.overlayContexts.med.container.visible = this.showSolution && this.currentViewScale === 'MED';
-            this.overlayContexts.slow.container.visible = this.showSolution && this.currentViewScale === 'SLOW';
-        }
-
         // Update Sprite Tile Position
         let sl = this.scanlines.fast;
         if (this.currentViewScale === 'MED') sl = this.scanlines.med;
@@ -255,7 +213,7 @@ export class SonarEngine {
     }
 
     private tick(delta: number): void {
-        if (!this.app || !this.history || !this.textures.fast || !this.overlayContexts) return;
+        if (!this.app || !this.history || !this.textures.fast) return;
 
         // Time Management
         const deltaMS = this.app.ticker.deltaMS;
@@ -270,7 +228,7 @@ export class SonarEngine {
 
         const state = useSubmarineStore.getState();
 
-        // 0. Sync View Scale from Store (Task 94.2)
+        // 0. Sync View Scale from Store
         if (state.viewScale !== this.currentViewScale) {
             this.setViewScale(state.viewScale);
         }
@@ -283,10 +241,8 @@ export class SonarEngine {
         if (updateMed) this.writeToBuffer(this.history.med, this.textures.med, 'med', pixelBuffer);
         if (updateSlow) this.writeToBuffer(this.history.slow, this.textures.slow, 'slow', pixelBuffer);
 
-        // 3. Update Overlays
-        this.processOverlay(this.overlayContexts.fast, state);
-        if (updateMed) this.processOverlay(this.overlayContexts.med, state);
-        if (updateSlow) this.processOverlay(this.overlayContexts.slow, state);
+        // 3. Update 2D Overlays (The "Ironclad" Separation)
+        this.renderOverlays(state);
 
         // 4. Update Sprite Position
         if (this.sonarSprite) {
@@ -295,6 +251,57 @@ export class SonarEngine {
             else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
             this.sonarSprite.tilePosition.y = -sl;
         }
+    }
+
+    private renderOverlays(state: SubmarineState): void {
+        const ctx = this.overlayCtx;
+        if (!ctx) return;
+
+        const { width, height } = this;
+        const { trackers, selectedTrackerId } = state;
+
+        // Wipe the glass
+        ctx.clearRect(0, 0, width, height);
+
+        trackers.forEach(t => {
+            const x = this.mapBearingToX(t.currentBearing);
+
+            // Sub-Task 96.3: The Data Sanity Check (The "NaN" Hunter)
+            if (x === null || !isFinite(x)) return;
+
+            // Draw line using standard 2D API
+            ctx.beginPath();
+
+            // Visual Distinction for Selected/Weapon
+            if (t.kind === 'WEAPON') {
+                ctx.strokeStyle = '#FFFF00'; // Yellow for Weapons
+                ctx.lineWidth = 2;
+            } else if (t.id === selectedTrackerId) {
+                ctx.strokeStyle = '#00FF00'; // Bright Green for Selected
+                ctx.lineWidth = 2;
+            } else {
+                ctx.strokeStyle = '#005500'; // Dim Green for others
+                ctx.lineWidth = 1;
+            }
+
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        });
+    }
+
+    private mapBearingToX(relBearing: number): number | null {
+        // Baffles: 150 < rb < 210
+        if (relBearing > 150 && relBearing < 210) return null;
+
+        let viewAngle = 0;
+        if (relBearing >= 210) {
+            viewAngle = relBearing - 210; // 210..360 -> 0..150
+        } else {
+            viewAngle = relBearing + 150; // 0..150 -> 150..300
+        }
+
+        return Math.floor((viewAngle / 300) * this.width);
     }
 
     private generateSonarLine(state: SubmarineState): Uint8Array {
@@ -316,21 +323,6 @@ export class SonarEngine {
 
         const selfNoisePenalty = ownshipNoiseLevel * 0.5;
 
-        // Helper for Viewport Mapping (300 deg)
-        const getScreenX = (relBearing: number): number | null => {
-            // Baffles: 150 < rb < 210
-            if (relBearing > 150 && relBearing < 210) return null;
-
-            let viewAngle = 0;
-            if (relBearing >= 210) {
-                viewAngle = relBearing - 210; // 210..360 -> 0..150
-            } else {
-                viewAngle = relBearing + 150; // 0..150 -> 150..300
-            }
-
-            return Math.floor((viewAngle / 300) * width);
-        };
-
         // 1. Contacts
         sensorReadings.forEach((reading) => {
             const contact = contacts.find(c => c.id === reading.contactId);
@@ -340,7 +332,7 @@ export class SonarEngine {
             const profileKey = PROFILE_MAP[contact.classification || 'UNKNOWN'] || 'UNKNOWN';
             const profile = SIGNATURES[profileKey] || SIGNATURES.UNKNOWN;
 
-            // Stability Check (Task 93.2 Biologic Logic)
+            // Stability Check
             if (Math.random() > profile.stability) return;
 
             let sourceLevel = contact.sourceLevel || 1.0;
@@ -364,7 +356,7 @@ export class SonarEngine {
 
             // reading.bearing is already Relative (0-360) (noisy) from Store
             const rb = normalizeAngle(reading.bearing);
-            const cx = getScreenX(rb);
+            const cx = this.mapBearingToX(rb);
 
             if (cx !== null) {
                 // Task 93.3: Washout (Close Range / Loud)
@@ -415,7 +407,7 @@ export class SonarEngine {
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
             const relBearing = normalizeAngle(trueBearing - ownHeading);
 
-            const cx = getScreenX(relBearing);
+            const cx = this.mapBearingToX(relBearing);
 
             if (cx !== null) {
                  const renderWidth = profile.width;
@@ -443,7 +435,7 @@ export class SonarEngine {
 
             // t.bearing is True Bearing
             const relBearing = normalizeAngle(t.bearing - ownHeading);
-            const cx = getScreenX(relBearing);
+            const cx = this.mapBearingToX(relBearing);
 
             if (cx !== null) {
                  const spread = 2;
@@ -524,85 +516,5 @@ export class SonarEngine {
         }
 
         this.scanlines[speed] = (scanline + 1) % this.height;
-    }
-
-    private processOverlay(ctx: OverlayContext, state: SubmarineState) {
-        const { container } = ctx;
-        const { trackers, gameTime, x: currX, y: currY, heading: currHeading } = state;
-        const { width, height } = this;
-
-        // Suspect 1: Safety Safeguard - Limit Trackers to prevent overload
-        const safeTrackers = trackers.slice(0, 16);
-
-        // 1. Scroll
-        container.y += 1;
-        const localY = -container.y;
-
-        // 2. Manage Chunks
-        if (!ctx.currentChunk || ctx.pixelCount >= CHUNK_SIZE) {
-            const g = new PIXI.Graphics();
-            (g as any).maxLocalY = localY;
-            container.addChild(g);
-            ctx.currentChunk = g;
-            ctx.pixelCount = 0;
-        }
-
-        // Pruning
-        const oldest = container.children[0] as any;
-        if (oldest && oldest.maxLocalY !== undefined) {
-             const screenBottomLocal = -container.y + height;
-             if ((oldest.maxLocalY - CHUNK_SIZE) > screenBottomLocal + 100) {
-                 oldest.destroy();
-             }
-        }
-
-        ctx.pixelCount++;
-        const g = ctx.currentChunk!;
-
-        // 3. Draw
-        const ownShip = { x: currX, y: currY, heading: currHeading };
-        g.lineStyle(2, 0xffffff, 0.5);
-
-        safeTrackers.forEach((tracker) => {
-            if (!tracker.solution) return;
-            const targetPos = calculateTargetPosition(tracker.solution, gameTime);
-            const dx = targetPos.x - ownShip.x;
-            const dy = targetPos.y - ownShip.y;
-            let trueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-            trueBearing = normalizeAngle(trueBearing);
-
-            const relBearing = normalizeAngle(trueBearing - ownShip.heading);
-
-            // Mapping: 210..360..150
-            // Baffles: 150 < rb < 210
-            if (relBearing > 150 && relBearing < 210) {
-                 ctx.lastPoints.delete(tracker.id);
-                 return;
-            }
-
-            let viewAngle = 0;
-            if (relBearing >= 210) {
-                viewAngle = relBearing - 210;
-            } else {
-                viewAngle = relBearing + 150;
-            }
-
-            const x = (viewAngle / 300) * width;
-            const lastX = ctx.lastPoints.get(tracker.id);
-            const isNewChunk = ctx.pixelCount === 1;
-
-            if (lastX !== undefined && !isNewChunk && Math.abs(x - lastX) < 100) {
-                g.moveTo(lastX, localY + 1);
-                g.lineTo(x, localY);
-            } else if (lastX !== undefined && isNewChunk && Math.abs(x - lastX) < 100) {
-                g.moveTo(lastX, localY + 1);
-                g.lineTo(x, localY);
-            } else {
-                g.beginFill(0xffffff);
-                g.drawRect(x, localY, 1, 1);
-                g.endFill();
-            }
-            ctx.lastPoints.set(tracker.id, x);
-        });
     }
 }
