@@ -1,4 +1,5 @@
 import type { SubmarineState, Contact } from '../store/useSubmarineStore';
+import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/ScenarioUtils';
 
 // Helper to create basic contact
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => ({
@@ -55,25 +56,8 @@ export const scenarios = [
                     alongTrack = (10000 + Math.random() * 5000) * pushDir;
                 }
 
-                // C. Rotate "Lane Space" to "World Space" (Navigation Math)
-                // Convert Heading to Radians
-                const rads = (laneHeading * Math.PI) / 180;
-                
-                // Rotate the point (Standard Rotation Matrix for Nav coordinates)
-                // X = Cross * Cos(Hdg) + Along * Sin(Hdg)
-                // Y = -Cross * Sin(Hdg) + Along * Cos(Hdg)
-                // (Note: This is a simplified rotation assuming CrossTrack is X-axis relative)
-                
-                // Easier Method: Polar Conversion
-                // 1. Bearing from Center to Point
-                const bearingToPoint = (Math.atan2(crossTrack, alongTrack) * 180 / Math.PI); 
-                // 2. Rotate that bearing by the Lane Heading
-                const finalBearing = (laneHeading + bearingToPoint + 360) % 360;
-                // 3. Final Distance
-                const finalDist = Math.sqrt(crossTrack*crossTrack + alongTrack*alongTrack);
-                
-                const worldX = finalDist * Math.sin(finalBearing * Math.PI / 180);
-                const worldY = finalDist * Math.cos(finalBearing * Math.PI / 180);
+                // C. Rotate "Lane Space" to "World Space" using Utils
+                const worldPos = rotatePoint(crossTrack, alongTrack, laneHeading);
 
                 // D. Determine Course (With Traffic Flow)
                 // 50% chance to follow lane, 50% chance to be reciprocal
@@ -81,61 +65,62 @@ export const scenarios = [
                 const course = isReciprocal ? (laneHeading + 180) % 360 : laneHeading;
 
                 // E. Speed (15 +/- 5) -> Random(10, 20)
-                const speed = 10 + Math.random() * 10;
+                const speed = getRandomRange(10, 20);
 
                 contacts.push(createContact(
                     `M-${i + 1}`,
-                    worldX,
-                    worldY,
+                    worldPos.x,
+                    worldPos.y,
                     'MERCHANT',
                     'NEUTRAL',
                     speed,
                     course
                 ));
             }
+
             // 3. Define the Trawler Field (The "Obstacle")
-            // Pick a center point for the fleet that is GUARANTEED to be safe.
-            // Safety Buffer: We want the edge of the field to be > 8000yds away.
-            // So the Center must be > (8000 + FieldRadius) away.
             const fieldRadius = 4000; // The fleet covers an 8k diameter circle
             const minCenterDist = 8000 + fieldRadius; // ~12,000 yds
 
             const fieldBearing = Math.random() * 360;
-            const fieldRange = minCenterDist + (Math.random() * 10000); // 12k to 22k yards out
+            const fieldRange = getRandomRange(minCenterDist, minCenterDist + 10000);
 
-            const fieldCenterX = fieldRange * Math.sin(fieldBearing * Math.PI / 180);
-            const fieldCenterY = fieldRange * Math.cos(fieldBearing * Math.PI / 180);
+            const fieldCenter = getPolarPosition({ x: 0, y: 0 }, fieldRange, fieldBearing);
 
             // Spawn 4-5 Trawlers inside this zone
             const numTrawlers = 4;
 
             for (let i = 0; i < numTrawlers; i++) {
                 // Random point inside the Field Radius
-                const r = Math.sqrt(Math.random()) * fieldRadius; // Sqrt for uniform distribution
-                const theta = Math.random() * 2 * Math.PI;
-                
-                const offsetX = r * Math.sin(theta);
-                const offsetY = r * Math.cos(theta);
+                // Use sqrt of random for uniform distribution within circle
+                const r = Math.sqrt(Math.random()) * fieldRadius;
+                const theta = Math.random() * 360; // Degrees
 
-                const worldX = fieldCenterX + offsetX;
-                const worldY = fieldCenterY + offsetY;
+                const trawlerPos = getPolarPosition(fieldCenter, r, theta);
 
                 contacts.push(createContact(
                     `T-${i + 1}`,
-                    worldX,
-                    worldY,
+                    trawlerPos.x,
+                    trawlerPos.y,
                     'TRAWLER',
                     'NEUTRAL',
-                    Math.random() * 5, // Speed 0-5 kts
+                    getRandomRange(0, 5), // Speed 0-5 kts
                     Math.random() * 360 // Random wandering heading
                 ));
             }
-            // 4 Bios (Stationary)
+
+            // 4. Biologics (Donut Logic)
             for (let i = 0; i < 4; i++) {
+                const bioPos = getPolarPosition(
+                    { x: 0, y: 0 },
+                    getRandomRange(4000, 25000),
+                    Math.random() * 360
+                );
+
                 contacts.push(createContact(
                     `B-${i+1}`,
-                    -15000 + Math.random() * 30000,
-                    -5000 + Math.random() * 20000,
+                    bioPos.x,
+                    bioPos.y,
                     'BIOLOGIC', 
                     'NEUTRAL',
                     0,
