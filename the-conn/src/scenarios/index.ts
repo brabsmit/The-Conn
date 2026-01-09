@@ -40,7 +40,7 @@ export const scenarios = [
                 ));
             }
             // 4 Trawlers (Stationary/Slow)
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 4; i++) {
                 contacts.push(createContact(
                     `T-${i+1}`,
                     -15000 + Math.random() * 30000,
@@ -52,7 +52,7 @@ export const scenarios = [
                 ));
             }
             // 4 Bios (Stationary)
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 4; i++) {
                 contacts.push(createContact(
                     `B-${i+1}`,
                     -15000 + Math.random() * 30000,
