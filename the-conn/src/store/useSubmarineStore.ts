@@ -14,7 +14,7 @@ export interface Contact {
   heading?: number;
   speed?: number;
   type?: 'ENEMY' | 'NEUTRAL';
-  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL';
+  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL' | 'TRAWLER';
   depth?: number;
   sourceLevel?: number;
   cavitationSpeed?: number;
@@ -683,6 +683,11 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                     return currentContact;
                 }
 
+                // Trawler: Oblivious (Skip AI, allow Physics)
+                if (currentContact.classification === 'TRAWLER') {
+                    // Skip remaining AI logic
+                } else {
+
                 // 1. Detection (Ownship)
                 const dx = state.x - currentContact.x;
                 const dy = state.y - currentContact.y;
@@ -821,6 +826,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                     const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
                     currentContact.heading = normalizeAngle(bearingToOwnship + 180);
                 }
+                } // End Trawler Check
             }
         }
 
