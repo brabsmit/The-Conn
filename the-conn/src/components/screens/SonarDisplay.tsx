@@ -94,7 +94,10 @@ const SonarDisplay: React.FC = () => {
     };
 
     return (
-        <div className="w-full h-full relative border-t-2 border-gray-800 bg-black min-h-0 flex flex-col">
+        <div
+            className="w-full h-full relative border-t-2 border-gray-800 bg-black min-h-0 flex flex-col"
+            data-testid="sonar-display"
+        >
             {/* Main Container for Resize Observer */}
             <div
                 ref={containerRef}
