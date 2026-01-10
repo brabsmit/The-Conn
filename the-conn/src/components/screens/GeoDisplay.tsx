@@ -4,6 +4,7 @@ import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import type { Contact, Tracker, Torpedo } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
+import { RangeTriageDisplay } from '../panels/RangeTriageDisplay';
 
 // Colors
 const COLOR_BG = 0x001133;
@@ -57,6 +58,8 @@ const GeoDisplay: React.FC = () => {
     // Coordinate Transform: World (Yards) -> Screen (Pixels)
     // Scale: Fit 12k yards?
     const scale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
+
+    const [showRangeTriage, setShowRangeTriage] = React.useState(false);
 
     // Check if Ownship is in the Green Zone of any TRACKED target with a valid solution
     const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
@@ -165,6 +168,27 @@ const GeoDisplay: React.FC = () => {
                 <div>MODE: NORTH-UP</div>
                 <div>SCALE: 10k YDS</div>
             </div>
+
+            {/* Range Triage Toggle */}
+            <div className="absolute top-10 right-2 pointer-events-auto">
+                <button
+                    onClick={() => setShowRangeTriage(!showRangeTriage)}
+                    className={`px-2 py-1 text-xs font-bold font-mono border rounded ${
+                        showRangeTriage
+                            ? 'bg-cyan-900/80 text-cyan-200 border-cyan-500'
+                            : 'bg-black/50 text-cyan-600 border-zinc-800 hover:text-cyan-400'
+                    }`}
+                >
+                    {showRangeTriage ? 'HIDE TRIAGE' : 'SHOW TRIAGE'}
+                </button>
+            </div>
+
+            {/* Range Triage Display */}
+            {showRangeTriage && (
+                <div className="absolute top-20 right-2 pointer-events-auto z-20">
+                    <RangeTriageDisplay width={200} height={200} />
+                </div>
+            )}
 
             {/* GOD MODE WARNING */}
             {isGodMode && (
