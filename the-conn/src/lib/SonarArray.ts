@@ -12,14 +12,12 @@ export class SonarArray {
     }
 
     public clear(ambientNoiseDB: number): void {
-        // Base ambient noise power calculation removed as it was unused
-        // const basePower = Math.pow(10, ambientNoiseDB / 10);
+        const baseNoisePower = Math.pow(10, ambientNoiseDB / 10);
 
         for (let i = 0; i < this.numBeams; i++) {
-            // Add some random jitter to the ambient noise (in dB domain converted to power)
-            // Jitter +/- 2dB?
-            const jitter = (Math.random() - 0.5) * 4;
-            this.beams[i] = Math.pow(10, (ambientNoiseDB + jitter) / 10);
+            // Add +/- 1dB of random "Dither" to make it look like grain
+            const dither = 1.0 + ((Math.random() - 0.5) * 0.2);
+            this.beams[i] = baseNoisePower * dither;
         }
     }
 
