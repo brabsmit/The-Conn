@@ -64,6 +64,7 @@ export class SonarEngine {
 
     // Persistent Scratch Buffers (Reused per tick to avoid GC)
     private _tempRowBuffer: Uint8Array | null = null;
+    private _integrationBuffer: Float32Array | null = null; // Task 120.1
 
     // Physics Engine
     private sonarArray: SonarArray;
@@ -247,6 +248,7 @@ export class SonarEngine {
 
         // Allocate Scratch Buffers
         this._tempRowBuffer = new Uint8Array(w * 4);
+        this._integrationBuffer = new Float32Array(w); // Task 120.1: Init Integration Buffer
 
         // Clean up old textures
         if (this.textures.fast) this.textures.fast.destroy(true);
@@ -699,6 +701,8 @@ export class SonarEngine {
         });
 
         // 4. Render (Scanline)
+        const alpha = 0.3; // Task 120.2: Smoothing Factor
+
         for (let i = 0; i < width; i++) {
             // Map X -> Bearing
             const bearing = this.mapXToBearing(i);
@@ -734,6 +738,14 @@ export class SonarEngine {
             });
 
             val = Math.max(0, Math.min(1, val));
+
+            // Task 120.2: Temporal Smoothing (Integration)
+            if (this._integrationBuffer) {
+                const oldVal = this._integrationBuffer[i];
+                val = (val * alpha) + (oldVal * (1.0 - alpha));
+                this._integrationBuffer[i] = val;
+            }
+
             const color = this.getColor(val);
 
             pixelBuffer[i * 4 + 0] = color.r;
