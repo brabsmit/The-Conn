@@ -395,14 +395,12 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 p-2 flex justify-between items-start pointer-events-none">
                 <div className="text-xs font-mono text-green-500 bg-black/50 p-1">
-                    <div>R1-R2 SOLVER</div>
                     {hoverPos && (
                         <>
                         <div>R1: {Math.round(hoverPos.r1)} yds</div>
                         <div>R2: {Math.round(hoverPos.r2)} yds</div>
                         </>
                     )}
-                    {calculating && <div className="text-yellow-400 animate-pulse">CALCULATING...</div>}
                 </div>
 
                 {/* Close Button */}
