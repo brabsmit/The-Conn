@@ -1,11 +1,13 @@
 export class SonarArray {
     public readonly numBeams: number;
-    public readonly beamWidth: number; // Degrees
+    public readonly beamWidth: number; // Degrees (Physical Aperture)
+    public readonly beamSpacing: number; // Degrees per bin
     public readonly beams: Float32Array; // Stores Linear Power
 
-    constructor(numBeams: number = 360, beamWidth: number = 2.0) {
+    constructor(numBeams: number = 720, beamWidth: number = 2.0, beamSpacing: number = 0.5) {
         this.numBeams = numBeams;
         this.beamWidth = beamWidth;
+        this.beamSpacing = beamSpacing;
         this.beams = new Float32Array(numBeams);
     }
 
@@ -28,17 +30,27 @@ export class SonarArray {
         // Window optimization: +/- 10 degrees is enough for the main lobe and first side lobe of a narrow beam
         // For wider beams, we need a larger window.
         // 5 * width/2 seems safe for main lobe + side lobes.
-        const windowSize = Math.ceil(width * 2.5);
+        // Convert width (degrees) to indices
+        const widthIndices = width / this.beamSpacing;
+        const windowSizeIndices = Math.ceil(widthIndices * 2.5);
 
-        const start = Math.floor(bearing - windowSize);
-        const end = Math.ceil(bearing + windowSize);
+        // Convert bearing to center index
+        const centerIndex = Math.round(bearing / this.beamSpacing);
+
+        const start = centerIndex - windowSizeIndices;
+        const end = centerIndex + windowSizeIndices;
 
         for (let i = start; i <= end; i++) {
              // Handle wrapping
              let beamIndex = i % this.numBeams;
              if (beamIndex < 0) beamIndex += this.numBeams;
 
-             const diff = Math.abs(i - bearing);
+             // Calculate actual bearing of this beam index
+             const beamBearing = beamIndex * this.beamSpacing;
+
+             // Calculate difference accounting for wrap-around
+             let diff = Math.abs(beamBearing - bearing);
+             if (diff > 180) diff = 360 - diff;
 
              const response = this.arrayResponse(diff, width);
              // Energy accumulation (Linear)
@@ -52,8 +64,10 @@ export class SonarArray {
 
     public getDb(bearing: number): number {
         // Linear Interpolation
-        const idx = Math.floor(bearing);
-        const t = bearing - idx;
+        // Map bearing to float index
+        const floatIdx = bearing / this.beamSpacing;
+        const idx = Math.floor(floatIdx);
+        const t = floatIdx - idx;
 
         let i1 = idx % this.numBeams;
         if (i1 < 0) i1 += this.numBeams;
