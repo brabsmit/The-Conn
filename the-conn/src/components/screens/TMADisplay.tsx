@@ -132,6 +132,7 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                         }
                     }
                 }
+                graphics.endFill();
 
                 // 2. Draw Solution Line (First, so dots are on top)
                 if (tracker.solution) {
@@ -200,8 +201,6 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                         }
                      }
                 }
-
-                graphics.endFill();
             });
 
         } else {
