@@ -388,7 +388,7 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
     };
 
     // Overlay Styles
-    const overlayStyle = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vh] h-[60vh] z-20 bg-green-950/95 border-2 border-gray-700 shadow-2xl shadow-black";
+    const overlayStyle = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vh] h-[60vh] z-20 bg-green-950/95 border-2 border-gray-700 shadow-2xl shadow-black overflow-hidden rounded";
 
     return (
         <div className={overlayStyle} ref={resizeRef}>
