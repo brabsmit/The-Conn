@@ -375,7 +375,7 @@ export class SonarEngine {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        for (let b = 0; b < 360; b += 10) {
+        for (let b = 0; b < 360; b += 30) {
             const x = this.mapBearingToX(b);
             if (x !== null && isFinite(x)) {
                 // Tick
