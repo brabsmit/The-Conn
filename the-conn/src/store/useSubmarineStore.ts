@@ -1,226 +1,27 @@
 import { create } from 'zustand';
 import { generateNoisySolution } from '../lib/SolutionAI';
+import {
+  SubmarineState,
+  Tracker,
+  Tube,
+  Torpedo,
+  SensorReading,
+  Contact,
+  WeaponData,
+  EntityHistory,
+  TrackerHistory,
+  OwnShipHistory,
+  Station,
+  ViewScale,
+  TrackerSolution,
+  TubeStatus,
+  Transient,
+  VisualTransient,
+  ScriptedEvent,
+  GameMetrics
+} from './types';
 
-interface EntityHistory {
-  time: number;
-  x: number;
-  y: number;
-  heading?: number;
-}
-
-export interface Contact {
-  id: string;
-  x: number;
-  y: number;
-  heading?: number;
-  speed?: number;
-  type?: 'ENEMY' | 'NEUTRAL';
-  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL' | 'TRAWLER';
-  depth?: number;
-  sourceLevel?: number;
-  cavitationSpeed?: number;
-  aiMode?: 'IDLE' | 'PATROL' | 'APPROACH' | 'ATTACK' | 'EVADE';
-  aiLastUpdate?: number;
-  aiReactionTimer?: number;
-  torpedoCooldown?: number;
-  canDetectTorpedoes?: boolean;
-  sensitivity?: number;
-  aiDisabled?: boolean;
-  status?: 'ACTIVE' | 'DESTROYED';
-  history?: EntityHistory[];
-}
-
-interface SensorReading {
-  contactId: string;
-  bearing: number;
-}
-
-export interface TrackerHistory {
-  time: number;
-  bearing: number;
-}
-
-export interface OwnShipHistory {
-  time: number;
-  x: number;
-  y: number;
-  heading: number;
-}
-
-export type Station = 'TMA' | 'WCS' | 'NAV';
-
-export type ViewScale = 'FAST' | 'MED' | 'SLOW';
-
-export interface TrackerSolution {
-  speed: number;
-  range: number;
-  course: number;
-  bearing: number;
-  anchorTime: number;
-  anchorOwnShip: {
-    x: number;
-    y: number;
-    heading: number;
-  };
-  computedWorldX: number;
-  computedWorldY: number;
-}
-
-export interface Tracker {
-  id: string;
-  contactId?: string;
-  currentBearing: number;
-  bearingHistory: TrackerHistory[];
-  solution: TrackerSolution;
-  classificationStatus: 'PENDING' | 'CLASSIFIED';
-  timeToClassify: number;
-  classification?: string;
-  kind?: 'SENSOR' | 'WEAPON';
-  creationTime?: number; // Task 115.1
-  lastInteractionTime?: number; // Task 115.1
-  isAutoSolution?: boolean; // Task 115.1
-}
-
-export type TubeStatus = 'EMPTY' | 'LOADING' | 'DRY' | 'FLOODING' | 'WET' | 'EQUALIZING' | 'EQUALIZED' | 'OPENING' | 'OPEN' | 'FIRING';
-
-export interface WeaponData {
-  runDepth: number;
-  floor: number;
-  ceiling: number;
-  searchMode: 'ACTIVE' | 'PASSIVE';
-}
-
-export interface Tube {
-  id: number;
-  status: TubeStatus;
-  progress: number;
-  weaponData: WeaponData | null;
-  torpedoId?: string;
-  autoSequence?: boolean;
-}
-
-export interface Torpedo {
-  id: string;
-  position: { x: number; y: number };
-  heading: number;
-  targetHeading: number;
-  speed: number;
-  status: 'RUNNING' | 'DUD' | 'EXPLODED';
-  launchTime: number;
-  searchMode: 'ACTIVE' | 'PASSIVE';
-  // Guidance Params
-  designatedTargetId?: string; // Target assigned at launch (hint)
-  activeTargetId?: string; // Target actually locked on
-  enableRange: number; // Distance at which to start searching
-  gyroAngle: number; // Initial heading
-  distanceTraveled: number;
-  isHostile?: boolean;
-  history?: EntityHistory[];
-}
-
-interface Transient {
-  type: string;
-  startTime: number;
-  duration: number;
-  magnitude: number;
-}
-
-export interface VisualTransient {
-  bearing: number;
-  intensity: number;
-  timestamp: number;
-}
-
-interface ScriptedEvent {
-  time: number;
-  type: 'LOG' | 'DELETE_TRACKER' | 'RESET_ALERT';
-  payload: any;
-}
-
-export interface GameMetrics {
-  minRangeToContact: number;
-  counterDetectionTime: number;
-  tmaErrorAccumulator: number;
-  tmaErrorCount: number;
-}
-
-interface SubmarineState {
-  // Game State
-  appState: 'MENU' | 'GAME';
-  expertMode: boolean;
-  godMode: boolean;
-  scenarioId: string | null;
-  metrics: GameMetrics;
-
-  gameState: 'RUNNING' | 'VICTORY' | 'DEFEAT';
-
-  // OwnShip Data
-  heading: number; // 0-359
-  speed: number; // 0-30kts
-  depth: number; // 0-1200ft
-  x: number;
-  y: number;
-  ownShipHistory: OwnShipHistory[];
-  ownshipNoiseLevel: number;
-  cavitating: boolean;
-  transients: Transient[];
-  visualTransients: VisualTransient[];
-  scriptedEvents: ScriptedEvent[];
-
-  // Resources
-  fuel: number;
-  battery: number;
-
-  // Truth Data
-  contacts: Contact[];
-
-  // Sensor Data
-  sensorReadings: SensorReading[];
-  logs: { message: string; timestamp: number; type?: 'INFO' | 'ALERT' }[];
-  alertLevel: 'NORMAL' | 'COMBAT';
-  incomingTorpedoDetected: boolean;
-
-  // Tracker Data
-  trackers: Tracker[];
-  selectedTrackerId: string | null;
-  tubes: Tube[];
-  torpedoes: Torpedo[];
-  tickCount: number;
-  gameTime: number; // in seconds
-  viewScale: ViewScale;
-  activeStation: Station;
-
-  // Ordered Data (Controls)
-  orderedHeading: number;
-  orderedSpeed: number;
-  orderedDepth: number;
-
-  // Actions
-  setAppState: (state: 'MENU' | 'GAME') => void;
-  setExpertMode: (enabled: boolean) => void;
-  toggleGodMode: () => void;
-  setOrderedHeading: (heading: number) => void;
-  setOrderedSpeed: (speed: number) => void;
-  setOrderedDepth: (depth: number) => void;
-  addLog: (message: string, type?: 'INFO' | 'ALERT') => void;
-  designateTracker: (bearing: number) => void;
-  setSelectedTracker: (id: string | null) => void;
-  deleteTracker: (id: string) => void;
-  updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
-  setViewScale: (scale: ViewScale) => void;
-  setActiveStation: (station: Station) => void;
-  loadTube: (tubeId: number, weaponData: WeaponData) => void;
-  floodTube: (tubeId: number) => void;
-  equalizeTube: (tubeId: number) => void;
-  openTube: (tubeId: number) => void;
-  fireTube: (tubeId: number, designatedTargetId?: string, enableRange?: number, gyroAngle?: number) => void;
-  addContact: (contact: Contact) => void;
-  updateContact: (id: string, updates: Partial<Contact>) => void;
-  removeContact: (id: string) => void;
-  loadScenario: (state: Partial<SubmarineState>, id?: string) => void;
-  resetSimulation: () => void;
-  tick: (delta?: number) => void;
-}
+export * from './types';
 
 // Helper to normalize angle to 0-359
 const normalizeAngle = (angle: number) => {
@@ -373,7 +174,8 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       classificationStatus: 'PENDING',
       timeToClassify: 15,
       creationTime: state.gameTime, // Task 115.1
-      lastInteractionTime: state.gameTime // Task 115.1
+      lastInteractionTime: state.gameTime, // Task 115.1
+      isAutoSolution: false // Task 115.1
     };
     return {
       trackers: [...state.trackers, newTracker],
