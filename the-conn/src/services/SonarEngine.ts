@@ -651,7 +651,9 @@ export class SonarEngine {
 
             // Integrate
             // Task 116.3: Verified Sinc Addition (Linear Power Addition)
-            this.sonarArray.addSignal(relBearing, signal);
+            // Task 119.3: The Bloom Clamp (Safety Valve)
+            const bloomWidth = (distYards < 2000) ? 12 : 4;
+            this.sonarArray.addSignal(relBearing, signal, bloomWidth);
         });
 
         // 3. Torpedoes (Loud!)
@@ -672,7 +674,9 @@ export class SonarEngine {
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
             const relBearing = normalizeAngle(trueBearing - ownHeading);
 
-            this.sonarArray.addSignal(relBearing, rl);
+            // Task 119.3: Bloom Clamp for Torpedoes too
+            const bloomWidth = (distYards < 2000) ? 12 : 4;
+            this.sonarArray.addSignal(relBearing, rl, bloomWidth);
         });
 
         // 4. Render (Scanline)
@@ -689,7 +693,8 @@ export class SonarEngine {
             // Task 117.2 & 117.3: The "Speckle" Offset and Saturation Ceiling
             // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
             const renderFloor = currentNoiseFloor - 6.0; // Keep noise visible as static (20%)
-            const renderCeiling = renderFloor + 35.0; // 35dB Dynamic Range
+            // Task 119.2: Widen the Dynamic Window (45dB)
+            const renderCeiling = renderFloor + 45.0; // 45dB Dynamic Range
 
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
             

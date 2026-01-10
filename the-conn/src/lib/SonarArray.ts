@@ -21,11 +21,14 @@ export class SonarArray {
         }
     }
 
-    public addSignal(bearing: number, receivedLevelDB: number): void {
+    public addSignal(bearing: number, receivedLevelDB: number, effectiveBeamWidth?: number): void {
         const power = Math.pow(10, receivedLevelDB / 10);
+        const width = effectiveBeamWidth ?? this.beamWidth;
 
         // Window optimization: +/- 10 degrees is enough for the main lobe and first side lobe of a narrow beam
-        const windowSize = 10;
+        // For wider beams, we need a larger window.
+        // 5 * width/2 seems safe for main lobe + side lobes.
+        const windowSize = Math.ceil(width * 2.5);
 
         const start = Math.floor(bearing - windowSize);
         const end = Math.ceil(bearing + windowSize);
@@ -37,7 +40,7 @@ export class SonarArray {
 
              const diff = Math.abs(i - bearing);
 
-             const response = this.arrayResponse(diff);
+             const response = this.arrayResponse(diff, width);
              // Energy accumulation (Linear)
 
              this.beams[beamIndex] += power * response;
@@ -66,12 +69,12 @@ export class SonarArray {
     }
 
     // Normalized Sinc-like function
-    private arrayResponse(degreesDiff: number): number {
+    private arrayResponse(degreesDiff: number, width: number): number {
         if (Math.abs(degreesDiff) < 0.001) return 1.0;
 
-        // Zero crossing at beamWidth
+        // Zero crossing at beamWidth (width)
         // Sub-Task 110.1: Tighten main lobe by scaling frequency (divide by 0.5)
-        const x = (degreesDiff / (this.beamWidth * 0.5)) * Math.PI;
+        const x = (degreesDiff / (width * 0.5)) * Math.PI;
 
         let response = Math.sin(x) / x;
 

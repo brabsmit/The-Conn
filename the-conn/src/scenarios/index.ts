@@ -5,11 +5,11 @@ import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/Scenario
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {
     // Task 117.1: Realistic Source Levels
     let sourceLevel = 120; // Default
-    if (classification === 'MERCHANT') sourceLevel = 155; // Loud
-    else if (classification === 'TRAWLER') sourceLevel = 150; // Diesel chugging
+    if (classification === 'MERCHANT') sourceLevel = 148; // Loud (Task 119.1: Reduced from 155)
+    else if (classification === 'TRAWLER') sourceLevel = 142; // Diesel chugging (Task 119.1: Reduced from 150)
     else if (classification === 'ESCORT') sourceLevel = 145; // Warship machinery
     else if (classification === 'SUB') sourceLevel = 130; // Standard Sub
-    else if (classification === 'BIOLOGIC') sourceLevel = 120; // Clicks/Moans
+    else if (classification === 'BIOLOGIC') sourceLevel = 115; // Clicks/Moans (Task 119.1: Reduced from 120)
 
     return {
         id,

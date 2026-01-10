@@ -34,7 +34,7 @@ export const loadAmbushScenario = () => {
         speed: 12,
         type: 'NEUTRAL', // Assuming merchant is neutral or enemy merchant? Task says "Merchant". Usually neutral, but can be target. Store defaults "ENEMY" | "NEUTRAL".
         classification: 'MERCHANT',
-        sourceLevel: 155, // Task 117.1: Loud (Absolute dB)
+        sourceLevel: 148, // Task 119.1: Loud (Absolute dB)
         cavitationSpeed: 10, // Cavitates early
         status: 'ACTIVE'
     };
