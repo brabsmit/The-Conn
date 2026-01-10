@@ -82,24 +82,16 @@ export class SonarArray {
         return 10 * Math.log10(p);
     }
 
-    // Normalized Sinc-like function
+    // Gaussian Beam Profile (Task 135.1)
     private arrayResponse(degreesDiff: number, width: number): number {
-        if (Math.abs(degreesDiff) < 0.001) return 1.0;
+        // Gaussian Width (Sigma)
+        // 1.5 degrees roughly matches a "3 degree beam width" visually.
+        // We use width / 2 to align with physical beam width passed.
+        const sigma = width / 2.0;
 
-        // Zero crossing at beamWidth (width)
-        const x = (degreesDiff / (width * 0.5)) * Math.PI;
+        // The Formula: e^(-x² / 2σ²)
+        const response = Math.exp(-(degreesDiff * degreesDiff) / (2 * sigma * sigma));
 
-        // Sub-Task 127.1: The Window Function (Hanning)
-        const hanning = 0.5 * (1 + Math.cos(x));
-        const rawSinc = 1.0; // Unweighted
-
-        // Sub-Task 131.2: Hybrid Beamforming (70% Hanning, 30% Raw)
-        const weighting = (hanning * 0.7) + (rawSinc * 0.3);
-
-        // Sub-Task 127.2: The Combined Response
-        const sinc = Math.sin(x) / x;
-        const finalResponse = sinc * weighting;
-
-        return finalResponse;
+        return response;
     }
 }

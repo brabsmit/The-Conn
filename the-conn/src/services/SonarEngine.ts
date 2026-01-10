@@ -800,7 +800,7 @@ export class SonarEngine {
         const alpha = 0.3; // Task 120.2: Smoothing Factor
 
         // Dynamic Range Constants
-        const renderFloor = currentNoiseFloor - 12; // Task 124.2: Lower Floor (Running Start)
+        const renderFloor = currentNoiseFloor; // Task 135.3: Match Floor to Noise (Black Background)
         const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE; // Task 119.2: Widen the Dynamic Window
 
         // Task 124.1: Sanity Check (Throttled Log)
@@ -839,17 +839,8 @@ export class SonarEngine {
         }
 
         // Task 134.1: PASS 1.5: SPATIAL CONVOLUTION (Blur)
-        const kernel = ACOUSTICS.DISPLAY.SPATIAL_KERNEL;
-        for (let i = 0; i < numBeams; i++) {
-            const leftIdx = (i - 1 + numBeams) % numBeams;
-            const rightIdx = (i + 1) % numBeams;
-
-            const left = integrationBuffer[leftIdx];
-            const center = integrationBuffer[i];
-            const right = integrationBuffer[rightIdx];
-
-            smoothedBeams[i] = (left * kernel[0]) + (center * kernel[1]) + (right * kernel[2]);
-        }
+        // Task 135.2: Disabled Blur for Gaussian Logic
+        smoothedBeams.set(integrationBuffer);
 
         // PASS 2a: RASTERIZATION (Interpolation)
         // Map Screen Pixels -> Beam Indices -> Interpolated Value
