@@ -20,7 +20,11 @@ export const RangeTriageDisplay: React.FC<RangeTriageDisplayProps> = ({ width = 
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Store Access
-    const ownShip = useSubmarineStore(state => ({ x: state.x, y: state.y, heading: state.heading }));
+    const x = useSubmarineStore(state => state.x);
+    const y = useSubmarineStore(state => state.y);
+    const heading = useSubmarineStore(state => state.heading);
+    const ownShip = useMemo(() => ({ x, y, heading }), [x, y, heading]);
+
     const trackers = useSubmarineStore(state => state.trackers);
     const orderedHeading = useSubmarineStore(state => state.orderedHeading);
     const orderedSpeed = useSubmarineStore(state => state.orderedSpeed);
