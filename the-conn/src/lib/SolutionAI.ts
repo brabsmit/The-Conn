@@ -51,6 +51,14 @@ export const generateNoisySolution = (
     const computedY = ownShip.y + noisyDistFt * Math.cos(bearingRad);
 
     return {
+        legs: [{
+            startTime: currentTime,
+            startRange: noisyRange,
+            startBearing: navBearing,
+            course: noisyCourse,
+            speed: noisySpeed,
+            startOwnShip: { ...ownShip }
+        }],
         speed: noisySpeed,
         range: noisyRange,
         course: noisyCourse,
