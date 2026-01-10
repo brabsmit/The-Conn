@@ -175,7 +175,7 @@ export class SonarEngine {
 
     // Constructor Adapter
     constructor(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number) {
-        this.sonarArray = new SonarArray(360, ACOUSTICS.ARRAY.BEAM_WIDTH);
+        this.sonarArray = new SonarArray(ACOUSTICS.ARRAY.NUM_BEAMS, ACOUSTICS.ARRAY.BEAM_WIDTH, ACOUSTICS.ARRAY.BEAM_SPACING);
         this.initialize(container, overlayCanvas, width, height);
     }
 
