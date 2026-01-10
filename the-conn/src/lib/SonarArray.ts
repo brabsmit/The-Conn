@@ -90,7 +90,11 @@ export class SonarArray {
         const x = (degreesDiff / (width * 0.5)) * Math.PI;
 
         // Sub-Task 127.1: The Window Function (Hanning)
-        const weighting = 0.5 * (1 + Math.cos(x));
+        const hanning = 0.5 * (1 + Math.cos(x));
+        const rawSinc = 1.0; // Unweighted
+
+        // Sub-Task 131.2: Hybrid Beamforming (70% Hanning, 30% Raw)
+        const weighting = (hanning * 0.7) + (rawSinc * 0.3);
 
         // Sub-Task 127.2: The Combined Response
         const sinc = Math.sin(x) / x;
