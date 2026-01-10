@@ -686,11 +686,10 @@ export class SonarEngine {
             // Map dB to Color (Dynamic Range 50dB .. 90dB)
             // Normalize 0..1
 
-            // Task 116.1 & 116.2: Dynamic Gain Recalibration (The "Exposure" Fix)
-            // Shift the Dynamic Window and Implement "Gain Knob" (Auto-Gain Control)
+            // Task 117.2 & 117.3: The "Speckle" Offset and Saturation Ceiling
             // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
-            const renderFloor = currentNoiseFloor - 2.0; // Keep noise barely visible
-            const renderCeiling = renderFloor + 30.0; // 30dB Dynamic Range
+            const renderFloor = currentNoiseFloor - 6.0; // Keep noise visible as static (20%)
+            const renderCeiling = renderFloor + 35.0; // 35dB Dynamic Range
 
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
             
