@@ -144,8 +144,11 @@ export class SonarEngine {
         // Task 112.1: The Header Reservation
         // The waterfall lives in (0, HEADER_HEIGHT, width, height - HEADER_HEIGHT)
         this.sonarSprite = new PIXI.TilingSprite(PIXI.Texture.EMPTY, width, height - HEADER_HEIGHT);
-        this.sonarSprite.scale.y = -1;
-        this.sonarSprite.y = height;
+        // Task 121.1: Downward Waterfall (Newest at Top Y=40)
+        // Remove scale.y = -1 (Default is 1)
+        this.sonarSprite.y = HEADER_HEIGHT;
+        // Task 121.2: Flip Texture Content to bring Buffer[0] to Top
+        this.sonarSprite.tileScale.y = -1;
 
         // Task 99.2: Apply Shader
         this.washoutFilter = new PIXI.Filter(undefined, WASHOUT_FRAG, {
@@ -196,7 +199,7 @@ export class SonarEngine {
         if (this.sonarSprite) {
             this.sonarSprite.width = width;
             this.sonarSprite.height = height - HEADER_HEIGHT;
-            this.sonarSprite.y = height;
+            this.sonarSprite.y = HEADER_HEIGHT; // Task 121.1
         }
 
         // Re-initialize buffers (clears sonar history on resize)
@@ -276,7 +279,10 @@ export class SonarEngine {
         let sl = this.scanlines.fast;
         if (this.currentViewScale === 'MED') sl = this.scanlines.med;
         else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
-        this.sonarSprite.tilePosition.y = -sl;
+        // Task 121.2: Fix Scroll Direction
+        // Previous (-sl) caused inverted history (Oldest at Top).
+        // Positive (sl) aligns Newest to Top for Downward flow.
+        this.sonarSprite.tilePosition.y = sl;
     }
 
     private tick(_delta: number): void {
@@ -343,7 +349,7 @@ export class SonarEngine {
             let sl = this.scanlines.fast;
             if (this.currentViewScale === 'MED') sl = this.scanlines.med;
             else if (this.currentViewScale === 'SLOW') sl = this.scanlines.slow;
-            this.sonarSprite.tilePosition.y = -sl;
+            this.sonarSprite.tilePosition.y = sl; // Task 121.2
         }
     }
 
@@ -407,7 +413,7 @@ export class SonarEngine {
         ctx.strokeStyle = '#ffff00'; // Yellow
         ctx.lineWidth = 2;
         ctx.moveTo(width / 2, HEADER_HEIGHT - 10);
-        ctx.lineTo(width / 2, HEADER_HEIGHT);
+        ctx.lineTo(width / 2, HEADER_HEIGHT + 5); // Task 121.3: Stitch to waterfall
         ctx.stroke();
 
         // Render Trackers
@@ -477,8 +483,9 @@ export class SonarEngine {
             let firstPoint = true;
             let hIdx = history.length - 1; // Optimization: Search backwards
 
-            for (let y = 0; y < height; y += 10) { // Step 10px for performance
-                 const timeAtRow = currentTime - (y * msPerPixel / 1000); // seconds
+            // Task 121: Align Solution Overlay with Waterfall (Start at HEADER_HEIGHT)
+            for (let y = HEADER_HEIGHT; y < height; y += 10) { // Step 10px for performance
+                 const timeAtRow = currentTime - ((y - HEADER_HEIGHT) * msPerPixel / 1000); // seconds
 
                  // Find OwnShip at timeAtRow (Searching backwards from hIdx)
                  while(hIdx > 0 && history[hIdx].time > timeAtRow) {
