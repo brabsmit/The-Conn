@@ -2,24 +2,34 @@ import type { SubmarineState, Contact } from '../store/useSubmarineStore';
 import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/ScenarioUtils';
 
 // Helper to create basic contact
-const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => ({
-    id,
-    x,
-    y,
-    classification,
-    type,
-    speed,
-    heading,
-    depth: 50,
-    sourceLevel: 1.0,
-    cavitationSpeed: 10,
-    status: 'ACTIVE',
-    history: [],
-    aiMode: type === 'ENEMY' ? 'PATROL' : undefined,
-    aiDisabled: false,
-    aiReactionTimer: undefined,
-    canDetectTorpedoes: type === 'ENEMY'
-});
+const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {
+    // Task 117.1: Realistic Source Levels
+    let sourceLevel = 120; // Default
+    if (classification === 'MERCHANT') sourceLevel = 155; // Loud
+    else if (classification === 'TRAWLER') sourceLevel = 150; // Diesel chugging
+    else if (classification === 'ESCORT') sourceLevel = 145; // Warship machinery
+    else if (classification === 'SUB') sourceLevel = 130; // Standard Sub
+    else if (classification === 'BIOLOGIC') sourceLevel = 120; // Clicks/Moans
+
+    return {
+        id,
+        x,
+        y,
+        classification,
+        type,
+        speed,
+        heading,
+        depth: 50,
+        sourceLevel,
+        cavitationSpeed: 10,
+        status: 'ACTIVE',
+        history: [],
+        aiMode: type === 'ENEMY' ? 'PATROL' : undefined,
+        aiDisabled: false,
+        aiReactionTimer: undefined,
+        canDetectTorpedoes: type === 'ENEMY'
+    };
+};
 
 export const scenarios = [
     {
