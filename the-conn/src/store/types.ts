@@ -12,7 +12,7 @@ export interface Contact {
   heading?: number;
   speed?: number;
   type?: 'ENEMY' | 'NEUTRAL';
-  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL' | 'TRAWLER';
+  classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGIC' | 'TRAWLER';
   depth?: number;
   sourceLevel?: number;
   baseSourceLevel?: number;
@@ -28,6 +28,7 @@ export interface Contact {
   canDetectTorpedoes?: boolean;
   sensitivity?: number;
   aiDisabled?: boolean;
+  hasZigged?: boolean;
   status?: 'ACTIVE' | 'DESTROYED';
   history?: EntityHistory[];
 }
@@ -164,6 +165,7 @@ export interface SubmarineState {
   cavitating: boolean;
   transients: Transient[];
   visualTransients: VisualTransient[];
+  lastScenarioTick?: number;
   scriptedEvents: ScriptedEvent[];
 
   fuel: number;

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { generateNoisySolution } from '../lib/SolutionAI';
+import { getDirectorUpdates } from '../lib/ScenarioDirector';
 import type {
   SubmarineState,
   Tracker,
@@ -441,17 +442,8 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       const transientNoise = activeTransients.reduce((sum, t) => sum + t.magnitude, 0);
       const totalNoise = baseNoise + flowNoise + cavitationNoise + transientNoise;
 
-      // --- Scenario Event Logic Pre-check ---
-      // Crazy Ivan Trigger (Scenario 1)
-      const isCrazyIvanTime = state.scenarioId === 'sc1' && (state.tickCount + 1) % 18000 === 0;
-      let crazyIvanTargetId: string | null = null;
-      if (isCrazyIvanTime) {
-           const merchants = state.contacts.filter(c => c.classification === 'MERCHANT');
-           if (merchants.length > 0) {
-               const idx = Math.floor(Math.random() * merchants.length);
-               crazyIvanTargetId = merchants[idx].id;
-           }
-      }
+      // --- Scenario Event Logic (Director) ---
+      const directorUpdates = getDirectorUpdates(state);
 
       // Update Contacts (Truth movement & AI)
       let newContacts = state.contacts.map(contact => {
@@ -500,10 +492,11 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
 
         currentContact.sourceLevel = effectiveSL;
 
-        // Scenario 1: Crazy Ivan
-        if (contact.id === crazyIvanTargetId) {
-             const turn = Math.random() > 0.5 ? 30 : -30;
-             currentContact.heading = normalizeAngle((currentContact.heading || 0) + turn);
+        // Apply Scenario Director Updates
+        if (directorUpdates.contactUpdates[contact.id]) {
+            const update = directorUpdates.contactUpdates[contact.id];
+            if (update.heading !== undefined) currentContact.heading = update.heading;
+            if (update.hasZigged !== undefined) currentContact.hasZigged = update.hasZigged;
         }
 
         // Scenario 3: Sprint & Drift (Escorts)
