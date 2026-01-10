@@ -715,7 +715,7 @@ export class SonarEngine {
 
             // Task 117.2 & 117.3: The "Speckle" Offset and Saturation Ceiling
             // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
-            const renderFloor = currentNoiseFloor - 6.0; // Keep noise visible as static (20%)
+            const renderFloor = currentNoiseFloor; // Task 122.2: Hard floor at Noise Level
             // Task 119.2: Widen the Dynamic Window (45dB)
             const renderCeiling = renderFloor + 45.0; // 45dB Dynamic Range
 
@@ -738,6 +738,10 @@ export class SonarEngine {
             });
 
             val = Math.max(0, Math.min(1, val));
+
+            // Task 122.1: Gamma Correction (Contrast Stretching)
+            const GAMMA = 2.8;
+            val = Math.pow(val, GAMMA);
 
             // Task 120.2: Temporal Smoothing (Integration)
             if (this._integrationBuffer) {
