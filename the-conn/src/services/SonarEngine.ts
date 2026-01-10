@@ -686,9 +686,10 @@ export class SonarEngine {
 
             // Integrate
             // Task 116.3: Verified Sinc Addition (Linear Power Addition)
-            // Task 119.3: The Bloom Clamp (Safety Valve)
-            const bloomWidth = (distYards < ACOUSTICS.DISPLAY.BLOOM_THRESHOLD) ? ACOUSTICS.DISPLAY.MAX_SIGNAL_WIDTH : ACOUSTICS.DISPLAY.MIN_SIGNAL_WIDTH;
-            this.sonarArray.addSignal(relBearing, signal, bloomWidth);
+            // Task 129.1: Revert "Range Step" Logic
+            // Let the physics engine determine the raw width (Sinc function width).
+            // We pass the physical beam width.
+            this.sonarArray.addSignal(relBearing, signal, ACOUSTICS.ARRAY.BEAM_WIDTH);
         });
 
         // 3. Torpedoes (Loud!)
@@ -709,14 +710,14 @@ export class SonarEngine {
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
             const relBearing = normalizeAngle(trueBearing - ownHeading);
 
-            // Task 119.3: Bloom Clamp for Torpedoes too
-            const bloomWidth = (distYards < ACOUSTICS.DISPLAY.BLOOM_THRESHOLD) ? ACOUSTICS.DISPLAY.MAX_SIGNAL_WIDTH : ACOUSTICS.DISPLAY.MIN_SIGNAL_WIDTH;
-            this.sonarArray.addSignal(relBearing, rl, bloomWidth);
+            // Task 129.1: Revert "Range Step" for Torpedoes
+            this.sonarArray.addSignal(relBearing, rl, ACOUSTICS.ARRAY.BEAM_WIDTH);
         });
 
         // 4. Render (Scanline)
         const alpha = 0.3; // Task 120.2: Smoothing Factor
 
+        // PASS 1: Integration & Gamma (Compute State)
         for (let i = 0; i < width; i++) {
             // Map X -> Bearing
             const bearing = this.mapXToBearing(i);
@@ -734,18 +735,11 @@ export class SonarEngine {
             const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE;
 
             // Task 124.1: Sanity Check (Throttled Log)
-            // We do this check inside the loop only to get access to 'db' but logging 360 times is bad.
-            // Instead, we log ONCE per frame outside the loop, or pick one pixel here.
-            // Better: Log ONCE at the top of the function or here if we want maxDB.
-            // Let's do it right: find maxDb first efficiently if needed, or just log params.
-            if (i === 0) { // Only checking once per line generation
+            if (i === 0) {
                 const now = Date.now();
                 if (now - this.lastLogTime > 1000) {
                     this.lastLogTime = now;
-                    // Find a max signal for demonstration
                     let maxDb = -Infinity;
-                    // Optimization: We are inside a loop, so don't loop again.
-                    // But we have access to sonarArray.
                     for (let b = 0; b < 360; b++) {
                         const sdb = this.sonarArray.getDb(b);
                         if (sdb > maxDb) maxDb = sdb;
@@ -757,8 +751,6 @@ export class SonarEngine {
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
             
             // Visual Transients (Override)
-            // These are strictly visual overlay effects, not acoustic physics
-            // We can just add them to intensity for now
             visualTransients.forEach(t => {
                 const age = gameTime - t.timestamp;
                 if (age > 5) return;
@@ -772,7 +764,8 @@ export class SonarEngine {
                 }
             });
 
-            val = Math.max(0, Math.min(1, val));
+            // Task 129.3: Soft Clipping - Step 1: Remove Hard Clip
+            val = Math.max(0, val); // Removed Math.min(1, val)
 
             // Task 122.1: Gamma Correction (Contrast Stretching)
             val = Math.pow(val, ACOUSTICS.DISPLAY.GAMMA);
@@ -783,13 +776,36 @@ export class SonarEngine {
                 val = (val * alpha) + (oldVal * (1.0 - alpha));
                 this._integrationBuffer[i] = val;
             }
+        }
 
-            const color = this.getColor(val);
+        // PASS 2: Post-Process & Render (Phosphor Bleed)
+        if (this._integrationBuffer) {
+            for (let i = 0; i < width; i++) {
+                const curr = this._integrationBuffer[i];
 
-            pixelBuffer[i * 4 + 0] = color.r;
-            pixelBuffer[i * 4 + 1] = color.g;
-            pixelBuffer[i * 4 + 2] = color.b;
-            pixelBuffer[i * 4 + 3] = 255;
+                // Task 129.2: The Phosphor Bleed (Post-Process)
+                // Algorithm: (Buffer[i-1] * 0.25) + (Buffer[i] * 0.5) + (Buffer[i+1] * 0.25)
+                const prev = this._integrationBuffer[Math.max(0, i - 1)];
+                const next = this._integrationBuffer[Math.min(width - 1, i + 1)];
+
+                const blurred = (prev * 0.25) + (curr * 0.5) + (next * 0.25);
+
+                // Condition: Apply strongly to high-intensity pixels (> 0.8 brightness? Using dynamic mix)
+                // We mix based on intensity to preserve sharp noise but glowy signals
+                const mix = Math.max(0, Math.min(1, (curr - 0.5) / 0.4)); // 0.5->0, 0.9->1
+                let val = (curr * (1 - mix)) + (blurred * mix);
+
+                // Task 129.3: Soft Clipping (Tone Mapping)
+                // "New: value / (value + 0.2)"
+                val = val / (val + 0.2);
+
+                const color = this.getColor(val);
+
+                pixelBuffer[i * 4 + 0] = color.r;
+                pixelBuffer[i * 4 + 1] = color.g;
+                pixelBuffer[i * 4 + 2] = color.b;
+                pixelBuffer[i * 4 + 3] = 255;
+            }
         }
 
         return pixelBuffer;
