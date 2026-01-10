@@ -1,6 +1,7 @@
 import type { SubmarineState, Contact } from '../store/useSubmarineStore';
 import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/ScenarioUtils';
-import { CONTACT_TYPES, ContactTypeKey } from '../config/ContactDatabase';
+import { CONTACT_TYPES } from '../config/ContactDatabase';
+import type { ContactTypeKey } from '../config/ContactDatabase';
 
 // Helper to create basic contact
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {

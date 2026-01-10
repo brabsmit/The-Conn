@@ -2,9 +2,9 @@ export const CONTACT_TYPES = {
     MERCHANT: {
         name: "Standard Merchant",
         acoustics: {
-            baseSL: 148,       // Steady droning
+            baseSL: 165,       // Steady droning
             profile: "CLEAN",  // Consistent noise output
-            transientRate: 0.05 // Rare random noise spikes
+            transientRate: 0.00 // Rare random noise spikes
         },
         performance: {
             speedMin: 8,
@@ -15,9 +15,9 @@ export const CONTACT_TYPES = {
     TRAWLER: {
         name: "Fishing Trawler",
         acoustics: {
-            baseSL: 142,
+            baseSL: 160,
             profile: "DIRTY",  // Mechanical rattling
-            transientRate: 0.3 // Frequent "clanks" (nets/chains)
+            transientRate: 0.03 // Frequent "clanks" (nets/chains)
         },
         performance: {
             speedMin: 3,
@@ -30,7 +30,7 @@ export const CONTACT_TYPES = {
         acoustics: {
             baseSL: 145,
             profile: "CLEAN",
-            transientRate: 0.1
+            transientRate: 0.0
         },
         performance: {
             speedMin: 15,
@@ -43,7 +43,7 @@ export const CONTACT_TYPES = {
         acoustics: {
             baseSL: 130,
             profile: "CLEAN",
-            transientRate: 0.01 // Very disciplined
+            transientRate: 0.00 // Very disciplined
         },
         performance: {
             speedMin: 5,
