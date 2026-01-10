@@ -73,6 +73,7 @@ export interface Tracker {
   id: string;
   contactId?: string;
   currentBearing: number;
+  displayBearing: number;
   bearingHistory: TrackerHistory[];
   solution: TrackerSolution;
   classificationStatus: 'PENDING' | 'CLASSIFIED';

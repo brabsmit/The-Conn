@@ -161,6 +161,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       id,
       contactId: bestContactId,
       currentBearing: bearing,
+      displayBearing: bearing,
       bearingHistory: [],
       solution: {
         speed: 10,
@@ -1062,6 +1063,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                           id: trackerId,
                           kind: 'WEAPON',
                           currentBearing: relBearing, // Keep it relative for display
+                          displayBearing: relBearing,
                           bearingHistory: [],
                           solution: {
                               speed: torp.speed,
@@ -1081,9 +1083,16 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                       };
                   } else {
                        // Update existing weapon tracker
+                       // Task 137.2: Apply Smoothing to Weapons too
+                       let diff = relBearing - (tracker.displayBearing !== undefined ? tracker.displayBearing : relBearing);
+                       while (diff < -180) diff += 360;
+                       while (diff > 180) diff -= 360;
+                       const smoothed = (tracker.displayBearing !== undefined ? tracker.displayBearing : relBearing) + (diff * 0.1);
+
                        tracker = {
                            ...tracker,
                            currentBearing: relBearing,
+                           displayBearing: normalizeAngle(smoothed),
                            solution: {
                                ...tracker.solution,
                                speed: torp.speed,
@@ -1167,6 +1176,19 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
              updatedTracker.currentBearing = reading.bearing;
           }
         }
+
+        // Task 137.2: The "Needle Mass" (Smoothing)
+        // Lerp displayBearing to currentBearing
+        const target = updatedTracker.currentBearing;
+        let diff = target - (updatedTracker.displayBearing !== undefined ? updatedTracker.displayBearing : target);
+
+        // Wrap Logic
+        while (diff < -180) diff += 360;
+        while (diff > 180) diff -= 360;
+
+        // Apply Lerp (0.1)
+        const smoothed = (updatedTracker.displayBearing !== undefined ? updatedTracker.displayBearing : target) + (diff * 0.1);
+        updatedTracker.displayBearing = normalizeAngle(smoothed);
 
         // Classification Logic
         if (updatedTracker.classificationStatus === 'PENDING') {
