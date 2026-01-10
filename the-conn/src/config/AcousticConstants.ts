@@ -35,6 +35,7 @@ export const ACOUSTICS = {
         MIN_SIGNAL_WIDTH: 1,   // Pixels
         MAX_SIGNAL_WIDTH: 4,   // Pixels (Clamp)
         BLOOM_THRESHOLD: 2000, // Yards (Ranges closer than this bloom)
-        SPATIAL_KERNEL: [0.2, 0.6, 0.2] // Task 134.2: Tune the Spread
+        SPATIAL_KERNEL: [0.2, 0.6, 0.2], // Task 134.2: Tune the Spread
+        NOISE_FLOOR_OFFSET: 12 // Task 136.3: Lower floor to visualize noise
     }
 };

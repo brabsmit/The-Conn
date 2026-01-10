@@ -800,7 +800,7 @@ export class SonarEngine {
         const alpha = 0.3; // Task 120.2: Smoothing Factor
 
         // Dynamic Range Constants
-        const renderFloor = currentNoiseFloor; // Task 135.3: Match Floor to Noise (Black Background)
+        const renderFloor = currentNoiseFloor - ACOUSTICS.DISPLAY.NOISE_FLOOR_OFFSET; // Task 136.3: Lower floor to visualize noise
         const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE; // Task 119.2: Widen the Dynamic Window
 
         // Task 124.1: Sanity Check (Throttled Log)
