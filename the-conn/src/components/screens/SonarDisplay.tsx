@@ -118,9 +118,6 @@ const SonarDisplay: React.FC = () => {
                 {/* Interaction Layer (Click Handling) - Z-Index needs to be above overlays */}
                 <SonarOverlay width={width} height={height} />
 
-                {/* UI Bezel (Compass, Indicators) - Topmost Visual */}
-                <SonarBezel width={width} height={height} />
-
                 {/* Task 101.2: [SOL] Toggle Button */}
                 <div className="absolute top-4 right-4 z-50 pointer-events-auto">
                     <button
