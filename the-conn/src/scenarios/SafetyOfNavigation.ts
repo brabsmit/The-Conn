@@ -82,30 +82,20 @@ export const SafetyOfNavigation = {
         // 12k range at 045 is roughly consistent with being upstream on this lane.
 
         const merchants = [
-            { id: 'M-1', dist: -15000, speed: 12 }, // Closing
-            { id: 'M-2', dist: -8000, speed: 15 },  // Closing
-            { id: 'M-3', dist: 5000, speed: 10 },   // Opening (past CPA)
-            { id: 'M-4', dist: 12000, speed: 14 }   // Opening
+            { id: 'M-1', dist: -23000, speed: 12 }, // Closing (Range ~25k)
+            { id: 'M-2', dist: -15000, speed: 15 }, // Closing (Range ~18k)
+            { id: 'M-3', dist: 2000, speed: 10 },   // Opening (past CPA)
+            { id: 'M-4', dist: 10000, speed: 14 }   // Opening
         ];
 
         merchants.forEach(m => {
             const posX = cpaPoint.x + (m.dist * laneDirX);
             const posY = cpaPoint.y + (m.dist * laneDirY);
 
-            // Add some lateral random jitter (+/- 500 yds) to make it not a perfect line
-            const jitter = (Math.random() - 0.5) * 1000;
-
-            // Perpendicular vector (-y, x) of direction
-            const perpX = -laneDirY;
-            const perpY = laneDirX;
-
-            const finalX = posX + (jitter * perpX);
-            const finalY = posY + (jitter * perpY);
-
             contacts.push(createContact(
                 m.id,
-                finalX,
-                finalY,
+                posX,
+                posY,
                 'MERCHANT',
                 'NEUTRAL',
                 m.speed,
