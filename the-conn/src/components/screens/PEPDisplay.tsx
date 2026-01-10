@@ -110,7 +110,7 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
         const worker = new Worker(new URL('../../workers/TMASolver.worker.ts', import.meta.url), { type: 'module' });
 
         worker.onmessage = async (e) => {
-            const { grid, speedGrid } = e.data;
+            const { grid, speedGrid, width: gridW, height: gridH } = e.data;
 
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = GRID_SIZE;
@@ -121,28 +121,39 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
                 const imgData = tempCtx.createImageData(GRID_SIZE, GRID_SIZE);
                 const data = imgData.data;
 
-                for (let i = 0; i < grid.length; i++) {
-                    const val = grid[i];
-                    const idx = i * 4;
-
-                    if (val === -1) {
-                        data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 0;
-                    } else {
-                        let r=0, g=0, b=0;
-                        if (val < 1.0) {
-                             const t = val;
-                             if (t < 0.5) {
-                                 b = 255; g = Math.floor(255 * (t * 2));
-                             } else {
-                                 g = 255; b = Math.floor(255 * (2 - (t * 2)));
-                             }
-                        } else if (val < 5.0) {
-                            const t = (val - 1.0) / 4.0;
-                            r = Math.floor(255 * t); g = Math.floor(255 * (1 - t)); b = 0;
-                        } else {
-                            r = 255; g = 0; b = 0;
+                // Loop using the SOURCE dimensions (gridW/gridH)
+                for (let y = 0; y < gridH; y++) {
+                    for (let x = 0; x < gridW; x++) {
+                        // CRITICAL CHECK: Prevent Row Wrap / Out of Bounds
+                        if (x >= GRID_SIZE || y >= GRID_SIZE) {
+                            continue;
                         }
-                        data[idx] = r; data[idx+1] = g; data[idx+2] = b; data[idx+3] = 255;
+
+                        const srcIdx = y * gridW + x;
+                        const val = grid[srcIdx];
+
+                        // Target index in the 80x80 buffer
+                        const dstIdx = (y * GRID_SIZE + x) * 4;
+
+                        if (val === -1) {
+                            data[dstIdx] = 0; data[dstIdx+1] = 0; data[dstIdx+2] = 0; data[dstIdx+3] = 0;
+                        } else {
+                            let r=0, g=0, b=0;
+                            if (val < 1.0) {
+                                const t = val;
+                                if (t < 0.5) {
+                                    b = 255; g = Math.floor(255 * (t * 2));
+                                } else {
+                                    g = 255; b = Math.floor(255 * (2 - (t * 2)));
+                                }
+                            } else if (val < 5.0) {
+                                const t = (val - 1.0) / 4.0;
+                                r = Math.floor(255 * t); g = Math.floor(255 * (1 - t)); b = 0;
+                            } else {
+                                r = 255; g = 0; b = 0;
+                            }
+                            data[dstIdx] = r; data[dstIdx+1] = g; data[dstIdx+2] = b; data[dstIdx+3] = 255;
+                        }
                     }
                 }
 
@@ -160,9 +171,15 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
                         // Vertical Scan
                         for (let y = 0; y < GRID_SIZE; y++) {
                             for (let x = 0; x < GRID_SIZE - 1; x++) {
-                                const idx = y * GRID_SIZE + x;
-                                const val1 = speedGrid[idx];
-                                const val2 = speedGrid[idx + 1];
+                                // Source indices MUST use gridW (81) to avoid wrap
+                                const idx1 = y * gridW + x;
+                                const idx2 = y * gridW + (x + 1);
+
+                                // Check if neighbor is valid in source (bounds check)
+                                if (idx2 >= speedGrid.length) continue;
+
+                                const val1 = speedGrid[idx1];
+                                const val2 = speedGrid[idx2];
                                 if ((val1 < threshold && val2 >= threshold) || (val1 >= threshold && val2 < threshold)) {
                                     const t = (threshold - val1) / (val2 - val1);
                                     const cx = x + t;
@@ -174,10 +191,14 @@ const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
                         // Horizontal Scan
                         for (let x = 0; x < GRID_SIZE; x++) {
                             for (let y = 0; y < GRID_SIZE - 1; y++) {
-                                const idx = y * GRID_SIZE + x;
-                                const nextIdx = (y + 1) * GRID_SIZE + x;
-                                const val1 = speedGrid[idx];
-                                const val2 = speedGrid[nextIdx];
+                                // Source indices MUST use gridW
+                                const idx1 = y * gridW + x;
+                                const idx2 = (y + 1) * gridW + x;
+
+                                if (idx2 >= speedGrid.length) continue;
+
+                                const val1 = speedGrid[idx1];
+                                const val2 = speedGrid[idx2];
                                 if ((val1 < threshold && val2 >= threshold) || (val1 >= threshold && val2 < threshold)) {
                                     const t = (threshold - val1) / (val2 - val1);
                                     const cy = y + t;
