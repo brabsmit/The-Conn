@@ -1,3 +1,5 @@
+import { ACOUSTICS } from '../config/AcousticConstants';
+
 // The Acoustic Physics Engine
 // Implements the Passive Sonar Equation: SE = SL - TL - NL + DI
 
@@ -13,14 +15,13 @@ export class AcousticsEngine {
      */
     static calculateNoiseLevel(speedKts: number, seaState: number = 3): number {
         // Ambient Noise (AN)
-        // Sea State 1: 60dB, Sea State 6: 80dB. Linear interpolation for simplicity
-        const an = 60 + (Math.min(6, Math.max(0, seaState)) / 6) * 20;
+        const safeSeaState = Math.min(6, Math.max(0, Math.floor(seaState)));
+        const an = ACOUSTICS.ENVIRONMENT.SEA_STATE_NOISE[safeSeaState];
 
         // Self Noise (SN)
-        // Base Quiet: 55dB
-        // Flow Noise: Speed * Speed * FlowFactor (e.g. 0.1)
-        const baseSN = 55;
-        const flowFactor = 0.1;
+        // Base Quiet + Flow Noise
+        const baseSN = ACOUSTICS.ARRAY.SELF_NOISE_BASE;
+        const flowFactor = ACOUSTICS.ARRAY.FLOW_NOISE_FACTOR;
         let sn = baseSN + (speedKts * speedKts * flowFactor);
 
         // Cavitation Penalty
@@ -50,17 +51,16 @@ export class AcousticsEngine {
         const spreading = 20 * Math.log10(r);
 
         // Absorption (High Frequency approximation)
-        const alpha = 0.002;
+        const alpha = ACOUSTICS.ENVIRONMENT.ABSORPTION_COEFF;
         const absorption = alpha * r;
 
         let tl = spreading + absorption;
 
         // Convergence Zones (CZ)
         // Only in deep water
-        // First CZ window: 30,000 +/- 2,000 yards (28k to 32k)
         if (deepWater) {
-            if (r >= 28000 && r <= 32000) {
-                tl -= 15; // Signal Boost
+            if (r >= ACOUSTICS.ENVIRONMENT.CZ_RANGE_MIN && r <= ACOUSTICS.ENVIRONMENT.CZ_RANGE_MAX) {
+                tl -= ACOUSTICS.ENVIRONMENT.CZ_BONUS; // Signal Boost
             }
         }
 

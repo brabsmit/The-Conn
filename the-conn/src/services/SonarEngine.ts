@@ -3,6 +3,7 @@ import { useSubmarineStore } from '../store/useSubmarineStore';
 import { normalizeAngle, calculateTargetPosition } from '../lib/tma';
 import { SonarArray } from '../lib/SonarArray';
 import { AcousticsEngine } from '../lib/AcousticsEngine';
+import { ACOUSTICS } from '../config/AcousticConstants';
 
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
@@ -171,7 +172,7 @@ export class SonarEngine {
 
     // Constructor Adapter
     constructor(container: HTMLElement, overlayCanvas: HTMLCanvasElement, width: number, height: number) {
-        this.sonarArray = new SonarArray(360, 2.0);
+        this.sonarArray = new SonarArray(360, ACOUSTICS.ARRAY.BEAM_WIDTH);
         this.initialize(container, overlayCanvas, width, height);
     }
 
@@ -643,16 +644,19 @@ export class SonarEngine {
             if (contact.status === 'DESTROYED') return;
 
             // Physics Stats
-            const baseSL = 120; // 120dB reference for "Standard Contact"
-            let slModifier = (contact.sourceLevel || 1.0) * 10; // +10dB for loud
+            let sourceLevel = contact.sourceLevel || 120;
+
+            // Legacy Support (If value is small < 50, treat as modifier)
+            // This handles older scenarios that might still use relative values
+            if (sourceLevel < 50) {
+                 sourceLevel = 120 + (sourceLevel * 10);
+            }
 
             // Cavitation
             const cavitationSpeed = contact.cavitationSpeed || 100;
             if (contact.speed !== undefined && contact.speed > cavitationSpeed) {
-                slModifier += 15; // +15dB for cavitation
+                sourceLevel += 15; // +15dB for cavitation
             }
-
-            const sourceLevel = baseSL + slModifier;
 
             // Transmission Loss
             const dx = contact.x - ownX;
@@ -680,7 +684,7 @@ export class SonarEngine {
             // Integrate
             // Task 116.3: Verified Sinc Addition (Linear Power Addition)
             // Task 119.3: The Bloom Clamp (Safety Valve)
-            const bloomWidth = (distYards < 2000) ? 12 : 4;
+            const bloomWidth = (distYards < ACOUSTICS.DISPLAY.BLOOM_THRESHOLD) ? ACOUSTICS.DISPLAY.MAX_SIGNAL_WIDTH : ACOUSTICS.DISPLAY.MIN_SIGNAL_WIDTH;
             this.sonarArray.addSignal(relBearing, signal, bloomWidth);
         });
 
@@ -688,7 +692,7 @@ export class SonarEngine {
         torpedoes.forEach((torp) => {
             if (torp.status !== 'RUNNING') return;
 
-            const sourceLevel = 140; // Very loud
+            const sourceLevel = ACOUSTICS.SOURCE_LEVELS.TORPEDO;
 
             const dx = torp.position.x - ownX;
             const dy = torp.position.y - ownY;
@@ -703,7 +707,7 @@ export class SonarEngine {
             const relBearing = normalizeAngle(trueBearing - ownHeading);
 
             // Task 119.3: Bloom Clamp for Torpedoes too
-            const bloomWidth = (distYards < 2000) ? 12 : 4;
+            const bloomWidth = (distYards < ACOUSTICS.DISPLAY.BLOOM_THRESHOLD) ? ACOUSTICS.DISPLAY.MAX_SIGNAL_WIDTH : ACOUSTICS.DISPLAY.MIN_SIGNAL_WIDTH;
             this.sonarArray.addSignal(relBearing, rl, bloomWidth);
         });
 
@@ -724,7 +728,7 @@ export class SonarEngine {
             // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
             const renderFloor = currentNoiseFloor; // Task 122.2: Hard floor at Noise Level
             // Task 119.2: Widen the Dynamic Window (45dB)
-            const renderCeiling = renderFloor + 45.0; // 45dB Dynamic Range
+            const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE;
 
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
             
@@ -747,8 +751,7 @@ export class SonarEngine {
             val = Math.max(0, Math.min(1, val));
 
             // Task 122.1: Gamma Correction (Contrast Stretching)
-            const GAMMA = 2.8;
-            val = Math.pow(val, GAMMA);
+            val = Math.pow(val, ACOUSTICS.DISPLAY.GAMMA);
 
             // Task 120.2: Temporal Smoothing (Integration)
             if (this._integrationBuffer) {

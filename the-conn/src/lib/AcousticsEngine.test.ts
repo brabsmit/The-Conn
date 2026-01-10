@@ -5,12 +5,15 @@ describe('AcousticsEngine', () => {
     describe('calculateNoiseLevel', () => {
         it('should calculate base noise level for low speed', () => {
             const nl = AcousticsEngine.calculateNoiseLevel(5, 3);
-            // AN for Sea State 3: 60 + (3/6)*20 = 70dB -> Power 10^7
-            // SN for 5kts: 55 + 2.5 = 57.5dB -> Power ~5.6e5
-            // Total Power ~ 1.05e7
-            // dB ~ 70.2
-            expect(nl).toBeGreaterThan(69);
-            expect(nl).toBeLessThan(71);
+            // New Config:
+            // AN for Sea State 3 (index 3): 68dB
+            // SN for 5kts: Base 50 + 5^2*0.05 = 50 + 1.25 = 51.25dB
+            // AN Power = 10^(6.8) = 6.3e6
+            // SN Power = 10^(5.125) = 1.3e5
+            // Total Power = 6.43e6
+            // dB = 10*log10(6.43e6) = 68.08
+            expect(nl).toBeGreaterThan(67);
+            expect(nl).toBeLessThan(69);
         });
 
         it('should increase noise level significantly with speed', () => {

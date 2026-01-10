@@ -1,15 +1,16 @@
 import type { SubmarineState, Contact } from '../store/useSubmarineStore';
 import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/ScenarioUtils';
+import { ACOUSTICS } from '../config/AcousticConstants';
 
 // Helper to create basic contact
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {
-    // Task 117.1: Realistic Source Levels
+    // Task 123.2: Refactor ContactAI & Generators
     let sourceLevel = 120; // Default
-    if (classification === 'MERCHANT') sourceLevel = 148; // Loud (Task 119.1: Reduced from 155)
-    else if (classification === 'TRAWLER') sourceLevel = 142; // Diesel chugging (Task 119.1: Reduced from 150)
-    else if (classification === 'ESCORT') sourceLevel = 145; // Warship machinery
-    else if (classification === 'SUB') sourceLevel = 130; // Standard Sub
-    else if (classification === 'BIOLOGIC') sourceLevel = 115; // Clicks/Moans (Task 119.1: Reduced from 120)
+    if (classification === 'MERCHANT') sourceLevel = ACOUSTICS.SOURCE_LEVELS.MERCHANT;
+    else if (classification === 'TRAWLER') sourceLevel = ACOUSTICS.SOURCE_LEVELS.TRAWLER;
+    else if (classification === 'ESCORT') sourceLevel = ACOUSTICS.SOURCE_LEVELS.ESCORT;
+    else if (classification === 'SUB') sourceLevel = ACOUSTICS.SOURCE_LEVELS.SUB;
+    else if (classification === 'BIOLOGIC') sourceLevel = ACOUSTICS.SOURCE_LEVELS.BIOLOGIC;
 
     return {
         id,
