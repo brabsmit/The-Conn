@@ -460,6 +460,46 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
 
         let currentContact = { ...contact };
 
+        // Task 125.3: Signature Dynamics Implementation
+        // 1. Base Logic
+        const baseSL = currentContact.baseSourceLevel || 120;
+        let effectiveSL = baseSL;
+
+        // 2. Dirty Profile (Wobble)
+        if (currentContact.acousticProfile === 'DIRTY') {
+             // Random Walk: +/- 0.5dB per tick/step? No, per second.
+             // Delta is roughly 1.0 = 1/60s.
+             // We want +/- 2dB variance range.
+             const wobbleStep = (Math.random() - 0.5) * 0.1 * delta; // Small drift
+             currentContact.wobbleState = (currentContact.wobbleState || 0) + wobbleStep;
+
+             // Clamp
+             const maxWobble = 2.0;
+             currentContact.wobbleState = Math.max(-maxWobble, Math.min(maxWobble, currentContact.wobbleState));
+
+             effectiveSL += currentContact.wobbleState;
+        }
+
+        // 3. Transient Logic
+        // Decay existing
+        if (currentContact.transientTimer && currentContact.transientTimer > 0) {
+             effectiveSL += 10; // 10dB Spike
+             currentContact.transientTimer -= (1/60) * delta;
+        } else {
+             // Chance to trigger new
+             if (currentContact.transientRate) {
+                 // Rate is prob per second? Prompt says "0.05".
+                 // if rate is 0.05/sec, then prob per tick is 0.05 / 60.
+                 const prob = (currentContact.transientRate / 60) * delta;
+                 if (Math.random() < prob) {
+                     currentContact.transientTimer = 2.0; // 2 second spike
+                     effectiveSL += 10; // Immediate spike
+                 }
+             }
+        }
+
+        currentContact.sourceLevel = effectiveSL;
+
         // Scenario 1: Crazy Ivan
         if (contact.id === crazyIvanTargetId) {
              const turn = Math.random() > 0.5 ? 30 : -30;
