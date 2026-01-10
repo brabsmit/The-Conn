@@ -369,27 +369,46 @@ export class SonarEngine {
         ctx.stroke();
 
         // Task 112.2: The Compass Scale (Header Context)
-        ctx.fillStyle = '#008888'; // Dark Cyan
-        ctx.strokeStyle = '#005500';
-        ctx.lineWidth = 1;
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        const heading = state.heading || 0;
 
         for (let b = 0; b < 360; b += 30) {
-            const x = this.mapBearingToX(b);
-            if (x !== null && isFinite(x)) {
+            // 1. Calculate Relative Bearing (Where is this tick relative to my nose?)
+            let rel = b - heading;
+
+            // 2. Normalize to -180...+180 (Shortest distance wrapping)
+            while (rel <= -180) rel += 360;
+            while (rel > 180) rel -= 360;
+
+            // 3. Map the Relative Bearing to Screen X
+            const x = this.mapBearingToX(rel);
+
+            // 4. Draw if visible
+            if (x !== null && isFinite(x) && x >= 0 && x <= width) {
                 // Tick
                 ctx.beginPath();
-                ctx.moveTo(x, HEADER_HEIGHT - 5);
+                ctx.strokeStyle = '#00aaaa'; // Cyan/Teal for Compass
+                ctx.lineWidth = 1;
+                ctx.moveTo(x, HEADER_HEIGHT - 5); // Short tick at bottom of header
                 ctx.lineTo(x, HEADER_HEIGHT);
                 ctx.stroke();
 
-                // Number
+                // Label (e.g., "030")
+                ctx.fillStyle = '#00aaaa';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle'; // Added for consistent vertical alignment
                 const label = b.toString().padStart(3, '0');
-                ctx.fillText(label, x, 15);
+                ctx.fillText(label, x, 25); // Positioned nicely in the middle of header
             }
         }
+
+        // Optional: Draw the "Lubber Line" (Center Marker)
+        ctx.beginPath();
+        ctx.strokeStyle = '#ffff00'; // Yellow
+        ctx.lineWidth = 2;
+        ctx.moveTo(width / 2, HEADER_HEIGHT - 10);
+        ctx.lineTo(width / 2, HEADER_HEIGHT);
+        ctx.stroke();
 
         // Render Trackers
         trackers.forEach(t => {
