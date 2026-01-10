@@ -20,6 +20,7 @@ varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
 uniform float uContactBearings[16];
 uniform float uContactCount;
+uniform vec2 uResolution; // Task 131.3: For Scanlines
 
 void main(void) {
     vec4 color = texture2D(uSampler, vTextureCoord);
@@ -45,8 +46,31 @@ void main(void) {
     //     }
     // }
 
-    // Apply bloom to all channels for a white-out effect
-    gl_FragColor = color + vec4(bloom, bloom, bloom, 0.0);
+    // Apply bloom first (logic flow)
+    vec4 bloomedColor = color + vec4(bloom, bloom, bloom, 0.0);
+
+    // Task 131.3: CRT Grain Overlay
+    // 1. Static Noise (Screen Space - Deterministic Hash)
+    // Generate noise 0.0 - 1.0
+    float noise = (fract(sin(dot(vTextureCoord, vec2(12.9898, 78.233))) * 43758.5453));
+    // Add 5% Noise
+    vec3 noisyColor = bloomedColor.rgb + (noise * 0.05);
+
+    // 2. Scanlines
+    // Darken every 2nd row by 10%
+    // Use uResolution to map to screen pixels
+    float pixelY = vTextureCoord.y * uResolution.y;
+    float scanline = step(0.5, mod(pixelY, 2.0)); // 0.0 or 1.0
+    // If scanline is 0 (even row), we darken. If 1 (odd row), keep as is.
+    // Logic: darken if scanline < 0.5 (mod result 0..1 < 0.5 is unlikely with floor, but mod returns float)
+    // Actually mod(pixelY, 2.0) returns 0.0..1.999
+    // step(1.0, mod) -> 0 if < 1.0, 1 if >= 1.0
+
+    float isScanline = step(1.0, mod(pixelY, 2.0)); // 1 for Odd, 0 for Even
+    // If isScanline is 0, we are on an "Even" line -> Darken
+    float scanlineFactor = 1.0 - ((1.0 - isScanline) * 0.1);
+
+    gl_FragColor = vec4(noisyColor * scanlineFactor, bloomedColor.a);
 }
 `;
 
@@ -158,7 +182,8 @@ export class SonarEngine {
         // Task 99.2: Apply Shader
         this.washoutFilter = new PIXI.Filter(undefined, WASHOUT_FRAG, {
             uContactBearings: new Float32Array(16).fill(-999.0),
-            uContactCount: 0.0
+            uContactCount: 0.0,
+            uResolution: [width, height] // Task 131.3
         });
         this.sonarSprite.filters = [this.washoutFilter];
 
@@ -205,6 +230,11 @@ export class SonarEngine {
             this.sonarSprite.width = width;
             this.sonarSprite.height = height - HEADER_HEIGHT;
             this.sonarSprite.y = HEADER_HEIGHT; // Task 121.1
+        }
+
+        // Task 131.3: Update Shader Uniforms
+        if (this.washoutFilter) {
+            this.washoutFilter.uniforms.uResolution = [width, height];
         }
 
         // Re-initialize buffers (clears sonar history on resize)
@@ -797,7 +827,9 @@ export class SonarEngine {
 
                 // Task 129.3: Soft Clipping (Tone Mapping)
                 // "New: value / (value + 0.2)"
-                val = val / (val + 0.2);
+                // Task 131.1: Cinematic Tone Mapping (Reinhard Modified)
+                // "value / (value + 0.15)"
+                val = val / (val + 0.15);
 
                 const color = this.getColor(val);
 
