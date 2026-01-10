@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { calculateProjectedSolution, type TMASolution } from './tma';
+import { calculateProjectedSolution, calculateSolutionCPA, type TMASolution } from './tma';
 
 test('Static Target, Static Ownship', () => {
     const anchorTime = 100;
@@ -91,4 +91,52 @@ test('AOB Calculation', () => {
 
     const proj2 = calculateProjectedSolution(sol2, { x: 0, y: -3000, heading: 0 }, 0);
     expect(proj2.calcAOB).toBeCloseTo(90);
+});
+
+test('calculateSolutionCPA - Head On', () => {
+    // Ownship at (0, 0) Heading North (0), Speed 10kts
+    const ownShip = { x: 0, y: 0, heading: 0, speed: 10 };
+
+    // Target at (0, 6000) (2000 yds North), Heading South (180), Speed 10kts
+    const solution: TMASolution = {
+        legs: [],
+        anchorTime: 0,
+        anchorOwnShip: { x: 0, y: 0, heading: 0 }, // dummy
+        bearing: 0,
+        range: 2000, // 2000 yds
+        speed: 10,
+        course: 180
+    };
+
+    // Use current time 0. Target is at (0, 6000).
+    // Relative Speed = 20 kts (closing). 20 * 1.68 = 33.6 ft/s.
+    // Distance = 6000 ft.
+    // Time = 6000 / 33.6 = 178.57s.
+
+    const cpa = calculateSolutionCPA(solution, ownShip, 0);
+
+    expect(cpa.range).toBeCloseTo(0, 0);
+    expect(cpa.time).toBeCloseTo(178.6, 1);
+});
+
+test('calculateSolutionCPA - Parallel', () => {
+    // Ownship at (0, 0) Heading North (0), Speed 10kts
+    const ownShip = { x: 0, y: 0, heading: 0, speed: 10 };
+
+    // Target at (3000, 0) (1000 yds East), Heading North (0), Speed 10kts
+    const solution: TMASolution = {
+        legs: [],
+        anchorTime: 0,
+        anchorOwnShip: { x: 0, y: 0, heading: 0 },
+        bearing: 90,
+        range: 1000,
+        speed: 10,
+        course: 0
+    };
+
+    // Relative Velocity is 0. CPA is current range.
+    const cpa = calculateSolutionCPA(solution, ownShip, 0);
+
+    expect(cpa.range).toBeCloseTo(1000, 0);
+    expect(cpa.time).toBe(0); // V_dot_V is 0
 });
