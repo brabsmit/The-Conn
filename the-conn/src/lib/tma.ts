@@ -239,3 +239,79 @@ export const calculateProjectedSolution = (
     calcAOB: aobRaw
   };
 };
+
+export const calculateSolutionCPA = (
+  solution: TMASolution,
+  ownShip: { x: number; y: number; heading: number; speed: number },
+  currentTime: number
+) => {
+  // 1. Get Target Position at Current Time
+  const targetPos = calculateTargetPosition(solution, currentTime);
+
+  // 2. Get Target Velocity Vector
+  let targetSpeed = solution.speed;
+  let targetCourse = solution.course;
+
+  if (solution.legs && solution.legs.length > 0) {
+      let activeLeg = solution.legs[0];
+      for (let i = 0; i < solution.legs.length; i++) {
+           if (solution.legs[i].startTime <= currentTime) {
+               activeLeg = solution.legs[i];
+           } else {
+               break;
+           }
+      }
+      targetSpeed = activeLeg.speed;
+      targetCourse = activeLeg.course;
+  }
+
+  const tSpeedFt = targetSpeed * FEET_PER_KNOT_SEC;
+  const tCourseRad = (targetCourse * Math.PI) / 180;
+  const Vtx = tSpeedFt * Math.sin(tCourseRad);
+  const Vty = tSpeedFt * Math.cos(tCourseRad);
+
+  // 3. OwnShip Velocity
+  const oSpeedFt = ownShip.speed * FEET_PER_KNOT_SEC;
+  const oHeadingRad = (ownShip.heading * Math.PI) / 180;
+  const Vox = oSpeedFt * Math.sin(oHeadingRad);
+  const Voy = oSpeedFt * Math.cos(oHeadingRad);
+
+  // 4. Relative Position (Target - Own)
+  const Rx = targetPos.x - ownShip.x;
+  const Ry = targetPos.y - ownShip.y;
+
+  // 5. Relative Velocity (Target - Own)
+  const Vx = Vtx - Vox;
+  const Vy = Vty - Voy;
+
+  // 6. Calculate Time to CPA
+  // t_cpa = -(R . V) / |V|^2
+  const V_dot_V = Vx * Vx + Vy * Vy;
+  const R_dot_V = Rx * Vx + Ry * Vy;
+
+  let t_cpa = 0;
+  if (V_dot_V > 0.0001) {
+      t_cpa = -R_dot_V / V_dot_V;
+  }
+
+  // Clamp to future
+  const t_clamp = Math.max(0, t_cpa);
+
+  // 7. Calculate Position at CPA
+  const CpaX = Rx + Vx * t_clamp;
+  const CpaY = Ry + Vy * t_clamp; // Relative position at CPA
+
+  const rangeSq = CpaX * CpaX + CpaY * CpaY;
+  const cpaRange = Math.sqrt(rangeSq) / 3; // Yards
+
+  // CPA Bearing (from OwnShip)
+  // Relative CPA position is (T_cpa - O_cpa).
+  // Bearing is atan2(x, y).
+  const cpaBearing = normalizeAngle(Math.atan2(CpaX, CpaY) * (180 / Math.PI));
+
+  return {
+      range: cpaRange,
+      time: t_clamp,
+      bearing: cpaBearing
+  };
+};

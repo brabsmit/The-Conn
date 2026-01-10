@@ -1,5 +1,5 @@
 import { useSubmarineStore } from '../../store/useSubmarineStore';
-import { calculateProjectedSolution } from '../../lib/tma';
+import { calculateProjectedSolution, calculateSolutionCPA } from '../../lib/tma';
 import { RotaryKnob } from '../RotaryKnob';
 import { useEffect, useState } from 'react';
 
@@ -14,7 +14,9 @@ export const TMAControls = () => {
   const x = useSubmarineStore((state) => state.x);
   const y = useSubmarineStore((state) => state.y);
   const heading = useSubmarineStore((state) => state.heading);
+  const speed = useSubmarineStore((state) => state.speed);
   const ownShip = { x, y, heading };
+  const ownShipFull = { x, y, heading, speed };
 
   const selectedTracker = trackers.find((t) => t.id === selectedTrackerId);
 
@@ -94,6 +96,13 @@ export const TMAControls = () => {
     gameTime
   );
 
+  // Calculate CPA based on Solution (Not Truth)
+  const cpa = calculateSolutionCPA(
+      selectedTracker.solution as any,
+      ownShipFull,
+      gameTime
+  );
+
   const getTrackerLabel = () => {
      if (selectedTracker.classificationStatus === 'PENDING') return `${selectedTrackerId} (PENDING)`;
      if (selectedTracker.classification) {
@@ -147,6 +156,28 @@ export const TMAControls = () => {
                         {activeLeg.speed.toFixed(1)}
                     </span>
                  </div>
+            </div>
+
+            {/* SAFETY STRIP */}
+            <div className="flex justify-between items-center mt-2 px-1 pt-2 border-t border-white/5">
+                <div className="flex flex-col items-center">
+                    <span className="text-[8px] text-cyan-700/80 mb-0.5">CPA RNG</span>
+                    <span className={`text-sm font-bold tabular-nums tracking-tighter ${cpa.range < 1000 ? 'text-red-500 animate-pulse' : 'text-cyan-400'}`}>
+                        {cpa.range.toFixed(0)} yds
+                    </span>
+                </div>
+                <div className="flex flex-col items-center">
+                    <span className="text-[8px] text-cyan-700/80 mb-0.5">TIME TO CPA</span>
+                    <span className="text-sm text-cyan-400 font-bold tabular-nums tracking-tighter">
+                        {formatTime(cpa.time)}
+                    </span>
+                </div>
+                <div className="flex flex-col items-center">
+                    <span className="text-[8px] text-cyan-700/80 mb-0.5">CPA BRG</span>
+                    <span className="text-sm text-cyan-400 font-bold tabular-nums tracking-tighter">
+                        {cpa.bearing.toFixed(0).padStart(3, '0')}
+                    </span>
+                </div>
             </div>
         </div>
 
