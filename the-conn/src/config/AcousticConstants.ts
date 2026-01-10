@@ -22,7 +22,7 @@ export const ACOUSTICS = {
     ARRAY: {
         NUM_BEAMS: 720,        // High-Density
         BEAM_SPACING: 0.5,     // Degrees per bin
-        BEAM_WIDTH: 4.0,       // Degrees (Physical Aperture)
+        BEAM_WIDTH: 2.0,       // Degrees (Physical Aperture)
         SENSITIVITY: 1.0,      // Efficiency
         SELF_NOISE_BASE: 50,   // dB (Stationary)
         FLOW_NOISE_FACTOR: 0.05 // Noise += Speed^2 * Factor

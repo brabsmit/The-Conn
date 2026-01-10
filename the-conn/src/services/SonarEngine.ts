@@ -87,9 +87,6 @@ export class SonarEngine {
     // Persistent History (Buffers)
     private history: { fast: Uint8Array; med: Uint8Array; slow: Uint8Array } | null = null;
 
-    // Task 133.3: Internal High-Res Width
-    private readonly INTERNAL_WIDTH = 2048;
-
     // Persistent Scratch Buffers (Reused per tick to avoid GC)
     private _tempRowBuffer: Uint8Array | null = null;
 
@@ -229,7 +226,6 @@ export class SonarEngine {
         // Safe-guard against redundant resizes
         if (!this.app || (this.width === width && this.height === height)) return;
 
-        const oldHeight = this.height;
         this.width = width;
         this.height = height;
         this.app.renderer.resize(width, height);
@@ -239,8 +235,6 @@ export class SonarEngine {
             this.sonarSprite.width = width;
             this.sonarSprite.height = height - HEADER_HEIGHT;
             this.sonarSprite.y = HEADER_HEIGHT; // Task 121.1
-            // Task 133.3: Scale High-Res Texture to Screen
-            this.sonarSprite.tileScale.x = width / this.INTERNAL_WIDTH;
         }
 
         // Task 131.3: Update Shader Uniforms
@@ -248,10 +242,8 @@ export class SonarEngine {
             this.washoutFilter.uniforms.uResolution = [width, height];
         }
 
-        // Re-initialize buffers only if height changed (Vertical resolution affects buffer size)
-        if (oldHeight !== height) {
-            this.initBuffers(width, height, false);
-        }
+        // Re-initialize buffers (clears sonar history on resize)
+        this.initBuffers(width, height, false);
     }
 
     public setViewScale(scale: 'FAST' | 'MED' | 'SLOW'): void {
@@ -273,9 +265,8 @@ export class SonarEngine {
 
     // --- Internal Logic ---
 
-    private initBuffers(_w: number, h: number, preserveHistory: boolean = false): void {
-        const bufW = this.INTERNAL_WIDTH;
-        const size = bufW * h * 4;
+    private initBuffers(w: number, h: number, preserveHistory: boolean = false): void {
+        const size = w * h * 4;
         if (size <= 0) return;
 
         // Reset Scanlines if not preserving
@@ -298,7 +289,7 @@ export class SonarEngine {
         // We simply create new textures pointing to the EXISTING buffers.
 
         // Allocate Scratch Buffers
-        this._tempRowBuffer = new Uint8Array(bufW * 4);
+        this._tempRowBuffer = new Uint8Array(w * 4);
 
         // Task 132: Buffer Strategy
         // _integrationBuffer is now BEAM-BASED (Physics Domain)
@@ -310,7 +301,7 @@ export class SonarEngine {
 
         // _tempPixelValues is SCREEN-BASED (Raster Domain)
         // It needs to be resized to width.
-        this._tempPixelValues = new Float32Array(bufW);
+        this._tempPixelValues = new Float32Array(w);
 
         // Clean up old textures
         if (this.textures.fast) this.textures.fast.destroy(true);
@@ -319,11 +310,11 @@ export class SonarEngine {
 
         // Create new textures
         // Task 132.3: Use LINEAR scaling for sub-beam smoothness
-        const opts = { width: bufW, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT, scaleMode: PIXI.SCALE_MODES.LINEAR };
+        const opts = { width: w, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT, scaleMode: PIXI.SCALE_MODES.LINEAR };
         this.textures = {
-            fast: PIXI.Texture.fromBuffer(this.history.fast, bufW, h, opts),
-            med: PIXI.Texture.fromBuffer(this.history.med, bufW, h, opts),
-            slow: PIXI.Texture.fromBuffer(this.history.slow, bufW, h, opts)
+            fast: PIXI.Texture.fromBuffer(this.history.fast, w, h, opts),
+            med: PIXI.Texture.fromBuffer(this.history.med, w, h, opts),
+            slow: PIXI.Texture.fromBuffer(this.history.slow, w, h, opts)
         };
 
         this.updateVisibility();
@@ -662,10 +653,10 @@ export class SonarEngine {
         return Math.floor((viewAngle / 300) * this.width);
     }
 
-    private mapXToBearing(x: number, totalWidth: number = this.width): number {
+    private mapXToBearing(x: number): number {
         // Inverse of mapBearingToX
         // viewAngle = (x / width) * 300
-        const viewAngle = (x / totalWidth) * 300;
+        const viewAngle = (x / this.width) * 300;
 
         if (viewAngle < 150) {
             // Left Side (210 -> 360)
@@ -701,12 +692,12 @@ export class SonarEngine {
     }
 
     private generateSonarLine(state: SubmarineState): Uint8Array {
-        const width = this.INTERNAL_WIDTH;
+        const { width } = this;
         const numBeams = this.sonarArray.numBeams;
 
         // Use Pre-allocated Buffers
         if (!this._tempRowBuffer || !this._tempPixelValues || !this._integrationBuffer) {
-             this.initBuffers(this.width, this.height);
+             this.initBuffers(width, this.height);
         }
 
         const pixelBuffer = this._tempRowBuffer!;
@@ -842,15 +833,11 @@ export class SonarEngine {
         // PASS 2a: RASTERIZATION (Interpolation)
         // Map Screen Pixels -> Beam Indices -> Interpolated Value
         for (let i = 0; i < width; i++) {
-            const bearing = this.mapXToBearing(i, width);
+            const bearing = this.mapXToBearing(i);
             const beamIndex = bearing / this.sonarArray.beamSpacing;
             
-            // Task 133.2: Max-Hold "Filler" Logic
-            const c = this.getInterpolatedBeam(beamIndex);
-            const l = this.getInterpolatedBeam(beamIndex - 1.0);
-            const r = this.getInterpolatedBeam(beamIndex + 1.0);
-
-            tempPixelValues[i] = Math.max(c, l * 0.9, r * 0.9);
+            // Task 132.2: Sub-Beam Interpolation
+            tempPixelValues[i] = this.getInterpolatedBeam(beamIndex);
         }
 
         // PASS 2b: POST-PROCESS & COLOR (Screen Space Effects)
@@ -902,7 +889,7 @@ export class SonarEngine {
         if (!tex || !tex.baseTexture || tex.baseTexture.destroyed || !tex.valid) return;
 
         const scanline = this.scanlines[speed];
-        const offset = scanline * this.INTERNAL_WIDTH * 4;
+        const offset = scanline * this.width * 4;
 
         if (offset + pixelBuffer.length <= buffer.length) {
             buffer.set(pixelBuffer, offset);
