@@ -87,7 +87,53 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             sortedTrackers.forEach(tracker => {
                 const isSelected = tracker.id === selectedTrackerId;
 
-                // 1. Draw Solution Line (First, so dots are on top)
+                // 1. Draw Sensor History (Dots)
+                // Set style based on selection
+                if (isSelected) {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
+                } else {
+                    graphics.lineStyle(0);
+                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
+                }
+
+                // Reverse Iteration
+                let osIndex = ownShipHistory.length - 1;
+                let lastDrawX = -999;
+                let lastDrawY = -999;
+
+                for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
+                    const history = tracker.bearingHistory[i];
+                    const age = gameTime - history.time;
+                    const y = age * PIXELS_PER_SECOND;
+
+                    if (y > height + 100) break;
+
+                    // Synchronized lookup
+                    while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
+                        osIndex--;
+                    }
+                    if (osIndex < 0) break;
+
+                    if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                        const ownShipState = ownShipHistory[osIndex];
+                        const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
+                        const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
+
+                        if (angleDiff >= -180 && angleDiff <= 180) {
+                             const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
+
+                             // OPTIMIZATION: Visual Delta Check
+                             if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
+                                graphics.drawCircle(x, y, 2.5);
+                                lastDrawX = x;
+                                lastDrawY = y;
+                             }
+                        }
+                    }
+                }
+
+                // 2. Draw Solution Line (First, so dots are on top)
                 if (tracker.solution) {
                      const solution = tracker.solution;
 
@@ -96,7 +142,7 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                          graphics.lineStyle(3, 0xFFA500, 1.0);
                      } else {
                          // Unselected: Thin White
-                         graphics.lineStyle(1, 0xffffff, 0.4);
+                         graphics.lineStyle(3, 0xffffff, 0.4);
                      }
 
                      // 1. Current Point
@@ -155,51 +201,6 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
                      }
                 }
 
-                // 2. Draw Sensor History (Dots)
-                // Set style based on selection
-                if (isSelected) {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
-                } else {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
-                }
-
-                // Reverse Iteration
-                let osIndex = ownShipHistory.length - 1;
-                let lastDrawX = -999;
-                let lastDrawY = -999;
-
-                for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
-                    const history = tracker.bearingHistory[i];
-                    const age = gameTime - history.time;
-                    const y = age * PIXELS_PER_SECOND;
-
-                    if (y > height + 100) break;
-
-                    // Synchronized lookup
-                    while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
-                        osIndex--;
-                    }
-                    if (osIndex < 0) break;
-
-                    if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
-                        const ownShipState = ownShipHistory[osIndex];
-                        const trueBearingAtTime = normalizeAngle(history.bearing + ownShipState.heading);
-                        const angleDiff = getShortestAngle(trueBearingAtTime, currentHeading);
-
-                        if (angleDiff >= -180 && angleDiff <= 180) {
-                             const x = SCREEN_CENTER + (angleDiff * PIXELS_PER_DEGREE);
-
-                             // OPTIMIZATION: Visual Delta Check
-                             if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
-                                graphics.drawCircle(x, y, 2.5);
-                                lastDrawX = x;
-                                lastDrawY = y;
-                             }
-                        }
-                    }
-                }
                 graphics.endFill();
             });
 
