@@ -80,6 +80,7 @@ onmessage = (e: MessageEvent<WorkerInput>) => {
     const width = Math.floor((config.r1End - config.r1Start) / config.r1Step) + 1;
     const height = Math.floor((config.r2End - config.r2Start) / config.r2Step) + 1;
     const grid = new Float32Array(width * height);
+    const speedGrid = new Float32Array(width * height);
 
     // 3. Pre-calculate Anchor Points (OwnShip at T1 and T2)
     const os1 = interpolateOwnShip(sortedOS, t1);
@@ -115,6 +116,8 @@ onmessage = (e: MessageEvent<WorkerInput>) => {
             const vy = (p2y - p1y) / dt;
             const speedKts = Math.sqrt(vx * vx + vy * vy) / FEET_PER_KNOT_SEC;
 
+            speedGrid[y * width + x] = speedKts;
+
             if (speedKts > MAX_SPEED) {
                 grid[y * width + x] = -1;
                 continue;
@@ -148,5 +151,5 @@ onmessage = (e: MessageEvent<WorkerInput>) => {
         }
     }
 
-    postMessage({ grid, width, height });
+    postMessage({ grid, speedGrid, width, height });
 };
