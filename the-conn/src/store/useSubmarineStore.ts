@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { generateNoisySolution } from '../lib/SolutionAI';
 
 interface EntityHistory {
   time: number;
@@ -75,6 +76,9 @@ export interface Tracker {
   timeToClassify: number;
   classification?: string;
   kind?: 'SENSOR' | 'WEAPON';
+  creationTime?: number; // Task 115.1
+  lastInteractionTime?: number; // Task 115.1
+  isAutoSolution?: boolean; // Task 115.1
 }
 
 export type TubeStatus = 'EMPTY' | 'LOADING' | 'DRY' | 'FLOODING' | 'WET' | 'EQUALIZING' | 'EQUALIZED' | 'OPENING' | 'OPEN' | 'FIRING';
@@ -367,7 +371,9 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         computedWorldY: state.y + 30000 * Math.cos(normalizeAngle(bearing + state.heading) * Math.PI / 180)
       },
       classificationStatus: 'PENDING',
-      timeToClassify: 15
+      timeToClassify: 15,
+      creationTime: state.gameTime, // Task 115.1
+      lastInteractionTime: state.gameTime // Task 115.1
     };
     return {
       trackers: [...state.trackers, newTracker],
@@ -403,7 +409,9 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
           anchorOwnShip: { x: state.x, y: state.y, heading: state.heading },
           computedWorldX: state.x + relX,
           computedWorldY: state.y + relY
-        }
+        },
+        lastInteractionTime: state.gameTime, // Task 115.1
+        isAutoSolution: false // Task 115.1
       };
     })
   })),
@@ -1232,7 +1240,9 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                           },
                           classificationStatus: 'CLASSIFIED',
                           timeToClassify: 0,
-                          classification: 'TORPEDO'
+                          classification: 'TORPEDO',
+                          creationTime: newGameTime, // Task 115.1
+                          lastInteractionTime: newGameTime // Task 115.1
                       };
                   } else {
                        // Update existing weapon tracker
@@ -1342,6 +1352,30 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                     type: isHostile ? 'ALERT' : 'INFO'
                 }].slice(-50);
             }
+        }
+
+        // Task 115.3: Automated FTOW (Safety Net)
+        if (
+            updatedTracker.kind !== 'WEAPON' &&
+            updatedTracker.contactId &&
+            !updatedTracker.isAutoSolution &&
+            (updatedTracker.creationTime !== undefined) &&
+            (newGameTime - updatedTracker.creationTime > 30) &&
+            (updatedTracker.lastInteractionTime === updatedTracker.creationTime) // User hasn't touched it
+        ) {
+             const contact = newContacts.find(c => c.id === updatedTracker.contactId);
+             if (contact) {
+                 const noisySol = generateNoisySolution(contact, newGameTime, { x: newX, y: newY, heading: newHeading });
+                 updatedTracker.solution = noisySol;
+                 updatedTracker.isAutoSolution = true;
+
+                 // Log
+                 newLogs = [...newLogs, {
+                     message: `FTOW: MLE APPLIED on ${updatedTracker.id}`,
+                     type: 'INFO',
+                     timestamp: newGameTime
+                 }].slice(-50);
+             }
         }
 
         return updatedTracker;
