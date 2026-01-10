@@ -89,7 +89,12 @@ export class SonarEngine {
 
     // Persistent Scratch Buffers (Reused per tick to avoid GC)
     private _tempRowBuffer: Uint8Array | null = null;
-    private _integrationBuffer: Float32Array | null = null; // Task 120.1
+
+    // Task 132: Sub-Beam Interpolation Buffers
+    // _integrationBuffer now stores BEAM data (Physics), not Pixel data.
+    private _integrationBuffer: Float32Array | null = null;
+    // _tempPixelValues stores interpolated RAW values for the current line (Pixels)
+    private _tempPixelValues: Float32Array | null = null;
 
     // Physics Engine
     private sonarArray: SonarArray;
@@ -285,7 +290,18 @@ export class SonarEngine {
 
         // Allocate Scratch Buffers
         this._tempRowBuffer = new Uint8Array(w * 4);
-        this._integrationBuffer = new Float32Array(w); // Task 120.1: Init Integration Buffer
+
+        // Task 132: Buffer Strategy
+        // _integrationBuffer is now BEAM-BASED (Physics Domain)
+        // It persists across frames for temporal smoothing.
+        // It should NOT be resized when screen width changes, as beams are constant.
+        if (!this._integrationBuffer) {
+             this._integrationBuffer = new Float32Array(this.sonarArray.numBeams);
+        }
+
+        // _tempPixelValues is SCREEN-BASED (Raster Domain)
+        // It needs to be resized to width.
+        this._tempPixelValues = new Float32Array(w);
 
         // Clean up old textures
         if (this.textures.fast) this.textures.fast.destroy(true);
@@ -293,7 +309,8 @@ export class SonarEngine {
         if (this.textures.slow) this.textures.slow.destroy(true);
 
         // Create new textures
-        const opts = { width: w, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT };
+        // Task 132.3: Use LINEAR scaling for sub-beam smoothness
+        const opts = { width: w, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT, scaleMode: PIXI.SCALE_MODES.LINEAR };
         this.textures = {
             fast: PIXI.Texture.fromBuffer(this.history.fast, w, h, opts),
             med: PIXI.Texture.fromBuffer(this.history.med, w, h, opts),
@@ -650,15 +667,42 @@ export class SonarEngine {
         }
     }
 
+    // Task 132.1: The Lerp Helper
+    private getInterpolatedBeam(index: number): number {
+        if (!this._integrationBuffer) return 0;
+
+        // Wrap Logic
+        const numBeams = this.sonarArray.numBeams;
+
+        let iLow = Math.floor(index);
+        let iHigh = Math.ceil(index);
+        const ratio = index - iLow;
+
+        // Safe Wrap
+        iLow = iLow % numBeams;
+        if (iLow < 0) iLow += numBeams;
+
+        iHigh = iHigh % numBeams;
+        if (iHigh < 0) iHigh += numBeams;
+
+        const valLow = this._integrationBuffer[iLow];
+        const valHigh = this._integrationBuffer[iHigh];
+
+        return (valLow * (1 - ratio)) + (valHigh * ratio);
+    }
+
     private generateSonarLine(state: SubmarineState): Uint8Array {
         const { width } = this;
+        const numBeams = this.sonarArray.numBeams;
 
         // Use Pre-allocated Buffers
-        if (!this._tempRowBuffer) {
+        if (!this._tempRowBuffer || !this._tempPixelValues || !this._integrationBuffer) {
              this.initBuffers(width, this.height);
         }
 
         const pixelBuffer = this._tempRowBuffer!;
+        const integrationBuffer = this._integrationBuffer!;
+        const tempPixelValues = this._tempPixelValues!;
 
         const { contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, speed: ownSpeed, gameTime } = state;
 
@@ -744,43 +788,76 @@ export class SonarEngine {
             this.sonarArray.addSignal(relBearing, rl, ACOUSTICS.ARRAY.BEAM_WIDTH);
         });
 
-        // 4. Render (Scanline)
+        // 4. Render Pipeline
         const alpha = 0.3; // Task 120.2: Smoothing Factor
 
-        // PASS 1: Integration & Gamma (Compute State)
-        for (let i = 0; i < width; i++) {
-            // Map X -> Bearing
-            const bearing = this.mapXToBearing(i);
-            
-            // Sample Array (Interpolated dB)
-            let db = this.sonarArray.getDb(bearing);
-            
-            // Map dB to Color (Dynamic Range 50dB .. 90dB)
-            // Normalize 0..1
+        // Dynamic Range Constants
+        const renderFloor = currentNoiseFloor - 12; // Task 124.2: Lower Floor (Running Start)
+        const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE; // Task 119.2: Widen the Dynamic Window
 
-            // Task 117.2 & 117.3: The "Speckle" Offset and Saturation Ceiling
-            // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
-            const renderFloor = currentNoiseFloor - 12; // Task 124.2: Lower Floor (Running Start)
-            // Task 119.2: Widen the Dynamic Window (45dB)
-            const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE;
-
-            // Task 124.1: Sanity Check (Throttled Log)
-            if (i === 0) {
-                const now = Date.now();
-                if (now - this.lastLogTime > 1000) {
-                    this.lastLogTime = now;
-                    let maxDb = -Infinity;
-                    for (let b = 0; b < 360; b++) {
-                        const sdb = this.sonarArray.getDb(b);
-                        if (sdb > maxDb) maxDb = sdb;
-                    }
-                    console.log(`[SonarDebug] Noise:${currentNoiseFloor.toFixed(1)} Floor:${renderFloor.toFixed(1)} Ceiling:${renderCeiling.toFixed(1)} MaxSig:${maxDb.toFixed(1)}`);
-                }
+        // Task 124.1: Sanity Check (Throttled Log)
+        const now = Date.now();
+        if (now - this.lastLogTime > 1000) {
+            this.lastLogTime = now;
+            let maxDb = -Infinity;
+            for (let b = 0; b < 360; b++) {
+                const sdb = this.sonarArray.getDb(b);
+                if (sdb > maxDb) maxDb = sdb;
             }
+            console.log(`[SonarDebug] Noise:${currentNoiseFloor.toFixed(1)} Floor:${renderFloor.toFixed(1)} Ceiling:${renderCeiling.toFixed(1)} MaxSig:${maxDb.toFixed(1)}`);
+        }
 
+        // PASS 1: BEAM INTEGRATION (Physics & Temporal Smoothing)
+        // We update the _integrationBuffer which stores the "Current State" of all beams
+        for (let i = 0; i < numBeams; i++) {
+            // Get raw physics dB (at beam center)
+            const beamBearing = i * this.sonarArray.beamSpacing;
+            const db = this.sonarArray.getDb(beamBearing);
+
+            // Normalize
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
+
+            // Task 129.3: Soft Clipping - Step 1: Remove Hard Clip (Allow > 1)
+            val = Math.max(0, val);
+
+            // Task 122.1: Gamma Correction
+            val = Math.pow(val, ACOUSTICS.DISPLAY.GAMMA);
+
+            // Task 120.2: Temporal Smoothing (Integration)
+            // Persist into _integrationBuffer
+            const oldVal = integrationBuffer[i];
+            val = (val * alpha) + (oldVal * (1.0 - alpha));
+            integrationBuffer[i] = val;
+        }
+
+        // PASS 2a: RASTERIZATION (Interpolation)
+        // Map Screen Pixels -> Beam Indices -> Interpolated Value
+        for (let i = 0; i < width; i++) {
+            const bearing = this.mapXToBearing(i);
+            const beamIndex = bearing / this.sonarArray.beamSpacing;
             
-            // Visual Transients (Override)
+            // Task 132.2: Sub-Beam Interpolation
+            tempPixelValues[i] = this.getInterpolatedBeam(beamIndex);
+        }
+
+        // PASS 2b: POST-PROCESS & COLOR (Screen Space Effects)
+        for (let i = 0; i < width; i++) {
+            const curr = tempPixelValues[i];
+
+            // Task 129.2: The Phosphor Bleed (Post-Process)
+            // Algorithm: (Buffer[i-1] * 0.25) + (Buffer[i] * 0.5) + (Buffer[i+1] * 0.25)
+            // We use tempPixelValues neighbors
+            const prev = tempPixelValues[Math.max(0, i - 1)];
+            const next = tempPixelValues[Math.min(width - 1, i + 1)];
+
+            const blurred = (prev * 0.25) + (curr * 0.5) + (next * 0.25);
+
+            // Condition: Apply strongly to high-intensity pixels
+            const mix = Math.max(0, Math.min(1, (curr - 0.5) / 0.4));
+            let val = (curr * (1 - mix)) + (blurred * mix);
+            
+            // Visual Transients (Override) - Applied in Screen Space
+            const bearing = this.mapXToBearing(i);
             visualTransients.forEach(t => {
                 const age = gameTime - t.timestamp;
                 if (age > 5) return;
@@ -794,50 +871,15 @@ export class SonarEngine {
                 }
             });
 
-            // Task 129.3: Soft Clipping - Step 1: Remove Hard Clip
-            val = Math.max(0, val); // Removed Math.min(1, val)
+            // Task 131.1: Cinematic Tone Mapping
+            val = val / (val + 0.15);
 
-            // Task 122.1: Gamma Correction (Contrast Stretching)
-            val = Math.pow(val, ACOUSTICS.DISPLAY.GAMMA);
+            const color = this.getColor(val);
 
-            // Task 120.2: Temporal Smoothing (Integration)
-            if (this._integrationBuffer) {
-                const oldVal = this._integrationBuffer[i];
-                val = (val * alpha) + (oldVal * (1.0 - alpha));
-                this._integrationBuffer[i] = val;
-            }
-        }
-
-        // PASS 2: Post-Process & Render (Phosphor Bleed)
-        if (this._integrationBuffer) {
-            for (let i = 0; i < width; i++) {
-                const curr = this._integrationBuffer[i];
-
-                // Task 129.2: The Phosphor Bleed (Post-Process)
-                // Algorithm: (Buffer[i-1] * 0.25) + (Buffer[i] * 0.5) + (Buffer[i+1] * 0.25)
-                const prev = this._integrationBuffer[Math.max(0, i - 1)];
-                const next = this._integrationBuffer[Math.min(width - 1, i + 1)];
-
-                const blurred = (prev * 0.25) + (curr * 0.5) + (next * 0.25);
-
-                // Condition: Apply strongly to high-intensity pixels (> 0.8 brightness? Using dynamic mix)
-                // We mix based on intensity to preserve sharp noise but glowy signals
-                const mix = Math.max(0, Math.min(1, (curr - 0.5) / 0.4)); // 0.5->0, 0.9->1
-                let val = (curr * (1 - mix)) + (blurred * mix);
-
-                // Task 129.3: Soft Clipping (Tone Mapping)
-                // "New: value / (value + 0.2)"
-                // Task 131.1: Cinematic Tone Mapping (Reinhard Modified)
-                // "value / (value + 0.15)"
-                val = val / (val + 0.15);
-
-                const color = this.getColor(val);
-
-                pixelBuffer[i * 4 + 0] = color.r;
-                pixelBuffer[i * 4 + 1] = color.g;
-                pixelBuffer[i * 4 + 2] = color.b;
-                pixelBuffer[i * 4 + 3] = 255;
-            }
+            pixelBuffer[i * 4 + 0] = color.r;
+            pixelBuffer[i * 4 + 1] = color.g;
+            pixelBuffer[i * 4 + 2] = color.b;
+            pixelBuffer[i * 4 + 3] = 255;
         }
 
         return pixelBuffer;
