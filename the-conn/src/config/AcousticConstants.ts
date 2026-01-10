@@ -28,7 +28,7 @@ export const ACOUSTICS = {
 
     // 4. The Screen (Display Processing)
     DISPLAY: {
-        GAMMA: 2.8,            // Contrast crunch
+        GAMMA: 2.0,            // Contrast crunch
         DYNAMIC_RANGE: 45,     // dB (Min to Max window)
         MIN_SIGNAL_WIDTH: 1,   // Pixels
         MAX_SIGNAL_WIDTH: 4,   // Pixels (Clamp)

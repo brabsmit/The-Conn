@@ -89,6 +89,9 @@ export class SonarEngine {
     // Task 99.2: Shader Filter
     private washoutFilter: PIXI.Filter | null = null;
 
+    // Task 124.1: Debug Logging
+    private lastLogTime: number = 0;
+
     // State
     private currentViewScale: 'FAST' | 'MED' | 'SLOW' = 'FAST';
     private initialized: boolean = false;
@@ -726,9 +729,30 @@ export class SonarEngine {
 
             // Task 117.2 & 117.3: The "Speckle" Offset and Saturation Ceiling
             // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
-            const renderFloor = currentNoiseFloor; // Task 122.2: Hard floor at Noise Level
+            const renderFloor = currentNoiseFloor - 12; // Task 124.2: Lower Floor (Running Start)
             // Task 119.2: Widen the Dynamic Window (45dB)
             const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE;
+
+            // Task 124.1: Sanity Check (Throttled Log)
+            // We do this check inside the loop only to get access to 'db' but logging 360 times is bad.
+            // Instead, we log ONCE per frame outside the loop, or pick one pixel here.
+            // Better: Log ONCE at the top of the function or here if we want maxDB.
+            // Let's do it right: find maxDb first efficiently if needed, or just log params.
+            if (i === 0) { // Only checking once per line generation
+                const now = Date.now();
+                if (now - this.lastLogTime > 1000) {
+                    this.lastLogTime = now;
+                    // Find a max signal for demonstration
+                    let maxDb = -Infinity;
+                    // Optimization: We are inside a loop, so don't loop again.
+                    // But we have access to sonarArray.
+                    for (let b = 0; b < 360; b++) {
+                        const sdb = this.sonarArray.getDb(b);
+                        if (sdb > maxDb) maxDb = sdb;
+                    }
+                    console.log(`[SonarDebug] Noise:${currentNoiseFloor.toFixed(1)} Floor:${renderFloor.toFixed(1)} Ceiling:${renderCeiling.toFixed(1)} MaxSig:${maxDb.toFixed(1)}`);
+                }
+            }
 
             let val = (db - renderFloor) / (renderCeiling - renderFloor);
             
