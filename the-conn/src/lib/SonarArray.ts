@@ -87,17 +87,15 @@ export class SonarArray {
         if (Math.abs(degreesDiff) < 0.001) return 1.0;
 
         // Zero crossing at beamWidth (width)
-        // Sub-Task 110.1: Tighten main lobe by scaling frequency (divide by 0.5)
         const x = (degreesDiff / (width * 0.5)) * Math.PI;
 
-        let response = Math.sin(x) / x;
+        // Sub-Task 127.1: The Window Function (Hanning)
+        const weighting = 0.5 * (1 + Math.cos(x));
 
-        // Sub-Task 110.2: Side Lobe Suppression
-        // If outside main lobe (x > PI), suppress by 50%
-        if (Math.abs(x) > Math.PI) {
-            response *= 0.5;
-        }
+        // Sub-Task 127.2: The Combined Response
+        const sinc = Math.sin(x) / x;
+        const finalResponse = sinc * weighting;
 
-        return response;
+        return finalResponse;
     }
 }
