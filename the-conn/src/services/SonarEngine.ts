@@ -93,6 +93,8 @@ export class SonarEngine {
     // Task 132: Sub-Beam Interpolation Buffers
     // _integrationBuffer now stores BEAM data (Physics), not Pixel data.
     private _integrationBuffer: Float32Array | null = null;
+    // Task 134.1: Spatial Convolution Buffer
+    private _smoothedBeams: Float32Array | null = null;
     // _tempPixelValues stores interpolated RAW values for the current line (Pixels)
     private _tempPixelValues: Float32Array | null = null;
 
@@ -297,6 +299,11 @@ export class SonarEngine {
         // It should NOT be resized when screen width changes, as beams are constant.
         if (!this._integrationBuffer) {
              this._integrationBuffer = new Float32Array(this.sonarArray.numBeams);
+        }
+
+        // Task 134.1: Allocate Smoothed Beams Buffer
+        if (!this._smoothedBeams) {
+             this._smoothedBeams = new Float32Array(this.sonarArray.numBeams);
         }
 
         // _tempPixelValues is SCREEN-BASED (Raster Domain)
@@ -668,8 +675,8 @@ export class SonarEngine {
     }
 
     // Task 132.1: The Lerp Helper
-    private getInterpolatedBeam(index: number): number {
-        if (!this._integrationBuffer) return 0;
+    private getInterpolatedBeam(index: number, buffer: Float32Array): number {
+        if (!buffer) return 0;
 
         // Wrap Logic
         const numBeams = this.sonarArray.numBeams;
@@ -685,8 +692,8 @@ export class SonarEngine {
         iHigh = iHigh % numBeams;
         if (iHigh < 0) iHigh += numBeams;
 
-        const valLow = this._integrationBuffer[iLow];
-        const valHigh = this._integrationBuffer[iHigh];
+        const valLow = buffer[iLow];
+        const valHigh = buffer[iHigh];
 
         return (valLow * (1 - ratio)) + (valHigh * ratio);
     }
@@ -696,12 +703,13 @@ export class SonarEngine {
         const numBeams = this.sonarArray.numBeams;
 
         // Use Pre-allocated Buffers
-        if (!this._tempRowBuffer || !this._tempPixelValues || !this._integrationBuffer) {
+        if (!this._tempRowBuffer || !this._tempPixelValues || !this._integrationBuffer || !this._smoothedBeams) {
              this.initBuffers(width, this.height);
         }
 
         const pixelBuffer = this._tempRowBuffer!;
         const integrationBuffer = this._integrationBuffer!;
+        const smoothedBeams = this._smoothedBeams!;
         const tempPixelValues = this._tempPixelValues!;
 
         const { contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, speed: ownSpeed, gameTime } = state;
@@ -830,6 +838,19 @@ export class SonarEngine {
             integrationBuffer[i] = val;
         }
 
+        // Task 134.1: PASS 1.5: SPATIAL CONVOLUTION (Blur)
+        const kernel = ACOUSTICS.DISPLAY.SPATIAL_KERNEL;
+        for (let i = 0; i < numBeams; i++) {
+            const leftIdx = (i - 1 + numBeams) % numBeams;
+            const rightIdx = (i + 1) % numBeams;
+
+            const left = integrationBuffer[leftIdx];
+            const center = integrationBuffer[i];
+            const right = integrationBuffer[rightIdx];
+
+            smoothedBeams[i] = (left * kernel[0]) + (center * kernel[1]) + (right * kernel[2]);
+        }
+
         // PASS 2a: RASTERIZATION (Interpolation)
         // Map Screen Pixels -> Beam Indices -> Interpolated Value
         for (let i = 0; i < width; i++) {
@@ -837,7 +858,7 @@ export class SonarEngine {
             const beamIndex = bearing / this.sonarArray.beamSpacing;
             
             // Task 132.2: Sub-Beam Interpolation
-            tempPixelValues[i] = this.getInterpolatedBeam(beamIndex);
+            tempPixelValues[i] = this.getInterpolatedBeam(beamIndex, smoothedBeams);
         }
 
         // PASS 2b: POST-PROCESS & COLOR (Screen Space Effects)
