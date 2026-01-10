@@ -606,8 +606,9 @@ export class SonarEngine {
         const seaState = 3;
         const deepWater = true;
 
-        const nl = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
-        this.sonarArray.clear(nl);
+        // Task 116.2: Logic - use AcousticsEngine to get the global noise floor
+        const currentNoiseFloor = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
+        this.sonarArray.clear(currentNoiseFloor);
 
         // 2. Process Contacts (Physics Integration)
         contacts.forEach((contact) => {
@@ -649,6 +650,7 @@ export class SonarEngine {
             }
 
             // Integrate
+            // Task 116.3: Verified Sinc Addition (Linear Power Addition)
             this.sonarArray.addSignal(relBearing, signal);
         });
 
@@ -683,10 +685,14 @@ export class SonarEngine {
             
             // Map dB to Color (Dynamic Range 50dB .. 90dB)
             // Normalize 0..1
-            // Floor 50dB (Black), Ceiling 90dB (White)
-            const floor = 50;
-            const ceiling = 90;
-            let val = (db - floor) / (ceiling - floor);
+
+            // Task 116.1 & 116.2: Dynamic Gain Recalibration (The "Exposure" Fix)
+            // Shift the Dynamic Window and Implement "Gain Knob" (Auto-Gain Control)
+            // Use the calculated Noise Level (currentNoiseFloor) as the baseline for the floor.
+            const renderFloor = currentNoiseFloor - 2.0; // Keep noise barely visible
+            const renderCeiling = renderFloor + 30.0; // 30dB Dynamic Range
+
+            let val = (db - renderFloor) / (renderCeiling - renderFloor);
             
             // Visual Transients (Override)
             // These are strictly visual overlay effects, not acoustic physics
