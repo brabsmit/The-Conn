@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Container, Graphics, Text, useTick } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { CRTFilter } from 'pixi-filters';
@@ -13,6 +13,15 @@ interface DisplayProps {
     height: number;
     viewMode: ViewMode;
 }
+
+const getPixelsPerSecond = (viewScale: string) => {
+    // FAST: 1s/pixel -> 1.0 px/s
+    // MED:  5s/pixel -> 0.2 px/s
+    // SLOW: 20s/pixel -> 0.05 px/s
+    if (viewScale === 'MED') return 0.2;
+    if (viewScale === 'SLOW') return 0.05;
+    return 1.0;
+};
 
 const DotStack = ({ width, height, viewMode }: DisplayProps) => {
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
@@ -29,14 +38,7 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             return !c || c.status !== 'DESTROYED';
         });
 
-        // Calculate Pixels Per Second based on viewScale
-        // Sonar Update Rates:
-        // FAST: 1s/pixel -> 1.0 px/s
-        // MED:  5s/pixel -> 0.2 px/s
-        // SLOW: 20s/pixel -> 0.05 px/s
-        let PIXELS_PER_SECOND = 1.0;
-        if (viewScale === 'MED') PIXELS_PER_SECOND = 0.2;
-        if (viewScale === 'SLOW') PIXELS_PER_SECOND = 0.05;
+        const PIXELS_PER_SECOND = getPixelsPerSecond(viewScale);
 
         const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
 
@@ -203,6 +205,7 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
 
         } else {
             // DOTS Mode (Residuals)
+            // FOCUS MODE: Only render the selected tracker
             const RANGE_DEGREES = 20; // +/- 10
             const PIXELS_PER_DEGREE = width / RANGE_DEGREES;
             const SCREEN_CENTER = width / 2;
@@ -212,75 +215,246 @@ const DotStack = ({ width, height, viewMode }: DisplayProps) => {
             graphics.moveTo(SCREEN_CENTER, 0);
             graphics.lineTo(SCREEN_CENTER, height);
 
-            // Iterate over all sorted trackers
-            sortedTrackers.forEach(tracker => {
-                const isSelected = tracker.id === selectedTrackerId;
+            if (selectedTracker && selectedTracker.solution) {
+                 graphics.lineStyle(0);
+                 graphics.beginFill(0x33ff33, 1.0); // Bright Green
 
-                // Set style based on selection
-                if (isSelected) {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 1.0); // Bright Green
-                } else {
-                    graphics.lineStyle(0);
-                    graphics.beginFill(0x33ff33, 0.3); // Dim Green
-                }
+                 // Reverse Iteration
+                 let osIndex = ownShipHistory.length - 1;
+                 let lastDrawX = -999;
+                 let lastDrawY = -999;
 
-                // In DOTS mode, we compare ALL tracks against the SELECTED tracker's solution.
-                if (selectedTracker && selectedTracker.solution) {
-                     // Reverse Iteration
-                     let osIndex = ownShipHistory.length - 1;
-                     let lastDrawX = -999;
-                     let lastDrawY = -999;
+                 for (let i = selectedTracker.bearingHistory.length - 1; i >= 0; i--) {
+                    const history = selectedTracker.bearingHistory[i];
+                    const age = gameTime - history.time;
+                    const y = age * PIXELS_PER_SECOND;
 
-                     for (let i = tracker.bearingHistory.length - 1; i >= 0; i--) {
-                        const history = tracker.bearingHistory[i];
-                        const age = gameTime - history.time;
-                        const y = age * PIXELS_PER_SECOND;
+                    if (y > height + 100) break;
 
-                        if (y > height + 100) break;
+                    // Synchronized lookup
+                    while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
+                        osIndex--;
+                    }
+                    if (osIndex < 0) break;
 
-                        // Synchronized lookup
-                        while (osIndex >= 0 && ownShipHistory[osIndex].time > history.time + 0.1) {
-                            osIndex--;
-                        }
-                        if (osIndex < 0) break;
+                    if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
+                        const ownShipState = ownShipHistory[osIndex];
 
-                        if (Math.abs(ownShipHistory[osIndex].time - history.time) < 0.1) {
-                            const ownShipState = ownShipHistory[osIndex];
+                         // Sensor True Bearing (of THIS tracker)
+                        const sensorTrueBearing = normalizeAngle(history.bearing + ownShipState.heading);
 
-                             // Sensor True Bearing (of THIS tracker)
-                            const sensorTrueBearing = normalizeAngle(history.bearing + ownShipState.heading);
+                        // Solution True Bearing (of SELECTED solution)
+                        const targetPos = calculateTargetPosition(selectedTracker.solution!, history.time);
+                        const dx = targetPos.x - ownShipState.x;
+                        const dy = targetPos.y - ownShipState.y;
+                        let solutionTrueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
+                        solutionTrueBearing = normalizeAngle(solutionTrueBearing);
 
-                            // Solution True Bearing (of SELECTED solution)
-                            const targetPos = calculateTargetPosition(selectedTracker.solution!, history.time);
-                            const dx = targetPos.x - ownShipState.x;
-                            const dy = targetPos.y - ownShipState.y;
-                            let solutionTrueBearing = Math.atan2(dx, dy) * (180 / Math.PI);
-                            solutionTrueBearing = normalizeAngle(solutionTrueBearing);
+                        // Residual
+                        const residual = getShortestAngle(sensorTrueBearing, solutionTrueBearing);
 
-                            // Residual
-                            const residual = getShortestAngle(sensorTrueBearing, solutionTrueBearing);
+                         const x = SCREEN_CENTER + (residual * PIXELS_PER_DEGREE);
 
-                             const x = SCREEN_CENTER + (residual * PIXELS_PER_DEGREE);
-
-                             // Clip to screen width to avoid drawing outside if error is huge
-                             if (x >= 0 && x <= width) {
-                                 // OPTIMIZATION: Visual Delta Check
-                                 if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
-                                     graphics.drawCircle(x, y, 2.5);
-                                     lastDrawX = x;
-                                     lastDrawY = y;
-                                 }
+                         // Clip to screen width to avoid drawing outside if error is huge
+                         if (x >= 0 && x <= width) {
+                             // OPTIMIZATION: Visual Delta Check
+                             if (Math.abs(x - lastDrawX) + Math.abs(y - lastDrawY) > 2) {
+                                 graphics.drawCircle(x, y, 2.5);
+                                 lastDrawX = x;
+                                 lastDrawY = y;
                              }
-                        }
-                     }
-                }
-                graphics.endFill();
-            });
+                         }
+                    }
+                 }
+                 graphics.endFill();
+            }
         }
     });
 
     return <Graphics ref={graphicsRef} />;
+};
+
+interface KnuckleControlProps {
+    width: number;
+    height: number;
+    viewMode: ViewMode;
+    containerRef: React.RefObject<HTMLDivElement>;
+}
+
+const KnuckleControl = ({ width, height, viewMode, containerRef }: KnuckleControlProps) => {
+    const graphicsRef = useRef<PIXI.Graphics | null>(null);
+    const textRef = useRef<PIXI.Text | null>(null);
+    const draggingRef = useRef(false);
+
+    // Store reference to latest state to use in event callbacks without re-binding
+    const stateRef = useRef({
+        selectedTrackerId: null as string | null,
+        activeLegIndex: -1,
+        prevLegStartTime: 0,
+        gameTime: 0,
+        pps: 1.0
+    });
+
+    useTick(() => {
+        const g = graphicsRef.current;
+        const text = textRef.current;
+        if (!g || !text) return;
+
+        const store = useSubmarineStore.getState();
+        const { gameTime, viewScale, selectedTrackerId, trackers } = store;
+
+        // Update ref for event handlers
+        const pps = getPixelsPerSecond(viewScale);
+        stateRef.current.gameTime = gameTime;
+        stateRef.current.pps = pps;
+        stateRef.current.selectedTrackerId = selectedTrackerId;
+
+        if (viewMode !== 'DOTS' || !selectedTrackerId) {
+             g.clear();
+             text.visible = false;
+             g.visible = false;
+             return;
+        }
+
+        const tracker = trackers.find(t => t.id === selectedTrackerId);
+        if (!tracker || !tracker.solution.legs || tracker.solution.legs.length < 2) {
+             g.clear();
+             text.visible = false;
+             g.visible = false;
+             return;
+        }
+
+        g.visible = true;
+
+        // Get Active Leg (Last one)
+        const legs = tracker.solution.legs;
+        const activeLegIndex = legs.length - 1;
+        const activeLeg = legs[activeLegIndex];
+        const prevLeg = legs[activeLegIndex - 1];
+
+        stateRef.current.activeLegIndex = activeLegIndex;
+        stateRef.current.prevLegStartTime = prevLeg.startTime;
+
+        const age = gameTime - activeLeg.startTime;
+        const y = age * pps;
+
+        // Draw
+        g.clear();
+
+        // Hit Area (Transparent but interactive)
+        g.beginFill(0xffffff, 0.001); // Almost invisible
+        g.drawRect(0, y - 15, width, 30);
+        g.endFill();
+
+        // Visible Line
+        g.lineStyle(2, 0xffffff, 1.0);
+        // Dashed line
+        const dashLen = 10;
+        const gapLen = 10;
+        for (let x = 0; x < width; x += (dashLen + gapLen)) {
+            g.moveTo(x, y);
+            g.lineTo(Math.min(x + dashLen, width), y);
+        }
+
+        // Update Text
+        text.x = width - 10;
+        text.y = y - 20;
+        text.text = `LEG ${activeLegIndex + 1} START`; // Leg 2 is index 1
+        text.visible = true;
+    });
+
+    const handlePointerDown = () => {
+        draggingRef.current = true;
+        // Global listeners
+        window.addEventListener('mousemove', handleWindowMove);
+        window.addEventListener('mouseup', handleWindowUp);
+        // Set cursor on body
+        document.body.style.cursor = 'row-resize';
+    };
+
+    const handleWindowMove = useCallback((e: MouseEvent) => {
+        if (!draggingRef.current || !containerRef.current) return;
+
+        const rect = containerRef.current.getBoundingClientRect();
+        // Mouse Y relative to Canvas Top
+        const mouseY = e.clientY - rect.top;
+
+        // Calculate Time
+        // y = (gameTime - startTime) * pps
+        // y / pps = gameTime - startTime
+        // startTime = gameTime - (y / pps)
+
+        const { gameTime, pps, selectedTrackerId, prevLegStartTime, activeLegIndex } = stateRef.current;
+
+        if (!selectedTrackerId) return;
+
+        let newStartTime = gameTime - (mouseY / pps);
+
+        // Clamp
+        // Max: gameTime (cannot start in future)
+        if (newStartTime > gameTime) newStartTime = gameTime;
+        // Min: prevLegStartTime + 1 (cannot start before previous leg)
+        if (newStartTime <= prevLegStartTime) newStartTime = prevLegStartTime + 0.1;
+
+        // Dispatch Update
+        const store = useSubmarineStore.getState();
+        const tracker = store.trackers.find(t => t.id === selectedTrackerId);
+        if (tracker && tracker.solution.legs) {
+             const newLegs = [...tracker.solution.legs];
+             if (activeLegIndex >= 0 && activeLegIndex < newLegs.length) {
+                 newLegs[activeLegIndex] = {
+                     ...newLegs[activeLegIndex],
+                     startTime: newStartTime
+                 };
+                 store.updateTrackerSolution(selectedTrackerId, { legs: newLegs });
+             }
+        }
+
+    }, []);
+
+    const handleWindowUp = useCallback(() => {
+        draggingRef.current = false;
+        window.removeEventListener('mousemove', handleWindowMove);
+        window.removeEventListener('mouseup', handleWindowUp);
+        document.body.style.cursor = 'default';
+    }, [handleWindowMove]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMove);
+            window.removeEventListener('mouseup', handleWindowUp);
+            document.body.style.cursor = 'default';
+        };
+    }, [handleWindowMove, handleWindowUp]);
+
+
+    return (
+        <Container>
+            <Graphics
+                ref={graphicsRef}
+                interactive={true}
+                pointerdown={handlePointerDown}
+                cursor="row-resize"
+            />
+            <Text
+                ref={textRef}
+                text=""
+                anchor={[1, 0.5]}
+                style={
+                    new PIXI.TextStyle({
+                        fill: 'white',
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: 'bold',
+                        dropShadow: true,
+                        dropShadowColor: '#000000',
+                        dropShadowDistance: 1,
+                    })
+                }
+            />
+        </Container>
+    );
 };
 
 const Grid = ({ width, height, viewMode }: DisplayProps) => {
@@ -463,6 +637,7 @@ const TMADisplay = () => {
                     <Container filters={crtFilter ? [crtFilter] : []}>
                         <Grid width={width} height={height} viewMode={viewMode} />
                         <DotStack width={width} height={height} viewMode={viewMode} />
+                        <KnuckleControl width={width} height={height} viewMode={viewMode} containerRef={ref} />
                     </Container>
                 </Stage>
             )}
