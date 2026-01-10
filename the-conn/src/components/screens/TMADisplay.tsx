@@ -134,6 +134,12 @@ const DotStack = ({ width, height, viewMode, ghostSolution }: DotStackProps) => 
 
         // GEO Mode (or PEP Right Pane which is effectively GEO)
         if (viewMode === 'GEO' || viewMode === 'PEP') {
+            // LOOP ISOLATION: Check if we strictly need to render dots in PEP mode.
+            // Current split-screen design allows dots on the right pane.
+            // If strictly enforced isolation is needed, we could return here for viewMode === 'PEP'.
+            // However, for valid functionality (Geo Reference), we keep it running.
+            // We ensure robustness by relying on PEPDisplay's separate native canvas for the heatmap.
+
             const PIXELS_PER_DEGREE = width / 360;
             const SCREEN_CENTER = width / 2;
 
