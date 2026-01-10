@@ -478,7 +478,8 @@ export class SonarEngine {
 
         // Render Trackers
         trackers.forEach(t => {
-            const x = this.mapBearingToX(t.currentBearing);
+            // Task 137.3: Render the Smooth Bearing
+            const x = this.mapBearingToX(t.displayBearing !== undefined ? t.displayBearing : t.currentBearing);
 
             // Sub-Task 96.3: The Data Sanity Check (The "NaN" Hunter)
             if (x === null || !isFinite(x)) return;
@@ -504,14 +505,17 @@ export class SonarEngine {
             ctx.lineWidth = lineWidth;
 
             // Short tick pointing into waterfall
-            ctx.moveTo(x, 38);
+            ctx.moveTo(x, 28);
             ctx.lineTo(x, 50);
             ctx.stroke();
 
             // Label
+            // Task 137.1: Reclaim Space (Center in Header)
             ctx.fillStyle = textColor;
             ctx.font = 'bold 12px monospace';
-            ctx.fillText(t.id, x, 35);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(t.id, x, 20);
         });
 
         // Task 101.3: Render Solution Curves
