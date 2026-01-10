@@ -1,4 +1,5 @@
 export const FEET_PER_KNOT_SEC = 1.68;
+export const YARDS_TO_FEET = 3.0;
 
 export interface Position {
   x: number;
