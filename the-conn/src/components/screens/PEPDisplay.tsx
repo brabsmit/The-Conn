@@ -25,6 +25,7 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
 
     // Interaction State
     const [hoverPos, setHoverPos] = useState<{ r1: number, r2: number } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     // Solving Context (to avoid stale closures in event handlers)
     const contextRef = useRef<{
@@ -56,23 +57,75 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
             ctx.restore();
         }
 
-        // We can draw specific overlays here if needed (e.g. crosshairs)
-        // Since 'hoverPos' is state, this draw is called on render?
-        // No, 'draw' is manual. We should trigger it on mount/resize too.
+        // Draw Solution Box (Current Tracker State)
+        if (selectedTrackerId && contextRef.current) {
+             const tracker = trackers.find(t => t.id === selectedTrackerId);
+             if (tracker && tracker.solution.legs.length) {
+                 const leg = tracker.solution.legs[tracker.solution.legs.length - 1];
+                 const t2 = gameTime;
+
+                 // R1 is Start Range
+                 const r1 = leg.startRange;
+
+                 // R2 is projected range at T2
+                 // Can reuse calculation logic or tma lib?
+                 // Let's do simple projection based on current sol parameters
+                 // But wait, if we are dragging, the store updates, so this should reflect live dragging!
+
+                 // Project:
+                 const dt = t2 - leg.startTime;
+                 // Get Target World Pos at T2
+                 const spdFt = leg.speed * FEET_PER_KNOT_SEC;
+                 const crsRad = leg.course * Math.PI / 180;
+
+                 // Anchor
+                 const brgRad = leg.startBearing * Math.PI / 180;
+                 const rngFt = leg.startRange * YARDS_TO_FEET;
+                 const ax = leg.startOwnShip.x + rngFt * Math.sin(brgRad);
+                 const ay = leg.startOwnShip.y + rngFt * Math.cos(brgRad);
+
+                 const tx = ax + Math.sin(crsRad) * spdFt * dt;
+                 const ty = ay + Math.cos(crsRad) * spdFt * dt;
+
+                 // OS2
+                 const os2 = contextRef.current.os1; // Fallback? No, we need OS2
+                 // We can grab it from store or history
+                 const store = useSubmarineStore.getState();
+                 const actualOS2 = store.ownShipHistory.find(os => Math.abs(os.time - t2) < 1.0) || store.ownShipHistory[store.ownShipHistory.length - 1] || leg.startOwnShip;
+
+                 const dx = tx - actualOS2.x;
+                 const dy = ty - actualOS2.y;
+                 const r2 = Math.sqrt(dx*dx + dy*dy) / YARDS_TO_FEET;
+
+                 // Map to Screen
+                 // x = (r1 / MAX_RANGE) * width
+                 // y = height - (r2 / MAX_RANGE) * height
+                 const sx = (r1 / MAX_RANGE) * width;
+                 const sy = height - (r2 / MAX_RANGE) * height;
+
+                 ctx.strokeStyle = 'black';
+                 ctx.fillStyle = 'white';
+                 ctx.lineWidth = 2;
+                 ctx.beginPath();
+                 ctx.rect(sx - 6, sy - 6, 12, 12);
+                 ctx.fill();
+                 ctx.stroke();
+             }
+        }
     };
 
     // Re-draw on resize or when calculating state changes (for spinner via React, or canvas overlay?)
     // The spinner is implemented as HTML overlay below, so we don't need to draw it on canvas.
     useEffect(() => {
         draw();
-    }, [width, height]); // Redraw when dimensions change
+    }, [width, height, trackers, selectedTrackerId, gameTime]); // Added dependencies to redraw box
 
     useEffect(() => {
         // Init Worker
         const worker = new Worker(new URL('../../workers/TMASolver.worker.ts', import.meta.url), { type: 'module' });
 
         worker.onmessage = async (e) => {
-            const { grid } = e.data;
+            const { grid, speedGrid } = e.data;
 
             // Double Buffering Logic:
             // 1. Create a temporary offscreen canvas (or simple detached canvas)
@@ -138,6 +191,68 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
                 }
 
                 tempCtx.putImageData(imgData, 0, 0);
+
+                // Draw Speed Contours
+                if (speedGrid) {
+                    tempCtx.lineWidth = 0.5; // Will scale up with image
+                    tempCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    tempCtx.setLineDash([1, 1]);
+
+                    const thresholds = [5, 10, 15, 20, 25];
+
+                    thresholds.forEach(threshold => {
+                        tempCtx.beginPath();
+
+                        // Vertical Scan
+                        for (let y = 0; y < GRID_SIZE; y++) {
+                            for (let x = 0; x < GRID_SIZE - 1; x++) {
+                                const idx = y * GRID_SIZE + x;
+                                const val1 = speedGrid[idx];
+                                const val2 = speedGrid[idx + 1];
+
+                                if ((val1 < threshold && val2 >= threshold) || (val1 >= threshold && val2 < threshold)) {
+                                    // Linear interpolation for exact crossing
+                                    const t = (threshold - val1) / (val2 - val1);
+                                    const cx = x + t;
+
+                                    // Draw a small segment?
+                                    // Better: Connect points. But marching squares is complex.
+                                    // Simple approach: Draw a dot or tiny vertical line at the crossing.
+                                    // Since we scan dense grid (80x80), drawing small ticks creates a line effect.
+                                    // Let's try drawing a line to the vertical neighbor's crossing if it exists?
+                                    // Actually, simple "draw point" might be too faint.
+                                    // Let's just draw a tiny horizontal segment centered on the crossing.
+                                    tempCtx.moveTo(cx, y);
+                                    tempCtx.lineTo(cx, y + 1);
+                                }
+                            }
+                        }
+
+                        // Horizontal Scan
+                        for (let x = 0; x < GRID_SIZE; x++) {
+                            for (let y = 0; y < GRID_SIZE - 1; y++) {
+                                const idx = y * GRID_SIZE + x;
+                                const nextIdx = (y + 1) * GRID_SIZE + x;
+                                const val1 = speedGrid[idx];
+                                const val2 = speedGrid[nextIdx];
+
+                                if ((val1 < threshold && val2 >= threshold) || (val1 >= threshold && val2 < threshold)) {
+                                    const t = (threshold - val1) / (val2 - val1);
+                                    const cy = y + t;
+
+                                    tempCtx.moveTo(x, cy);
+                                    tempCtx.lineTo(x + 1, cy);
+                                }
+                            }
+                        }
+
+                        tempCtx.stroke();
+
+                        // Label (Draw text on first valid point found to avoid clutter?)
+                        // Skipping labels for now to keep it unobtrusive as requested "unobtrusively".
+                        // White dashed lines are enough context.
+                    });
+                }
 
                 try {
                     const bmp = await createImageBitmap(tempCanvas);
@@ -215,6 +330,67 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
     }, [selectedTrackerId, trackers, gameTime, ownShipHistory]); // Note: In real app, might want to debounce 'trackers' updates
 
     // Handle Input
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+         if (!selectedTrackerId) return;
+         // Hit test? For now, anywhere starts drag if close?
+         // Or strictly on box? "Hit Test: If click is within the White Box"
+         // Let's do simple radius check around current solution
+         const tracker = trackers.find(t => t.id === selectedTrackerId);
+         if (!tracker) return;
+
+         // Reuse calculation to find box pos...
+         // Ideally should memoize or ref the box pos
+         // But for now let's just assume if they click, they want to drag.
+         // Actually, R1-R2 implies clicking ANYWHERE in the grid is a candidate solution.
+         // Standard UI: Click-drag anywhere snaps solution to that point.
+         // The prompt says "If click is within the White Box, initiate drag".
+         // This implies we only drag if we grab the handle.
+
+         // Let's implement strict hit test.
+         // We need current box screen coords.
+         const canvas = canvasRef.current;
+         if (!canvas) return;
+
+         const rect = e.currentTarget.getBoundingClientRect();
+         const x = e.clientX - rect.left;
+         const y = e.clientY - rect.top;
+
+         // Calculate box center
+         // ... (Duplicate logic from draw - should refactor but inline is safer for "one shot" change)
+         const leg = tracker.solution.legs[tracker.solution.legs.length - 1];
+         // ...
+         const r1 = leg.startRange;
+
+         // Project R2 logic again...
+         // To simplify: We know R1. We need R2.
+         // R2 is just distance from OS2 to Target at T2.
+         const store = useSubmarineStore.getState();
+         const t1 = leg.startTime;
+         const t2 = gameTime;
+         const dt = t2 - t1;
+         const spdFt = leg.speed * FEET_PER_KNOT_SEC;
+         const crsRad = leg.course * Math.PI / 180;
+         const brgRad = leg.startBearing * Math.PI / 180;
+         const rngFt = leg.startRange * YARDS_TO_FEET;
+         const ax = leg.startOwnShip.x + rngFt * Math.sin(brgRad);
+         const ay = leg.startOwnShip.y + rngFt * Math.cos(brgRad);
+         const tx = ax + Math.sin(crsRad) * spdFt * dt;
+         const ty = ay + Math.cos(crsRad) * spdFt * dt;
+         const actualOS2 = store.ownShipHistory.find(os => Math.abs(os.time - t2) < 1.0) || store.ownShipHistory[store.ownShipHistory.length - 1] || leg.startOwnShip;
+         const dx = tx - actualOS2.x;
+         const dy = ty - actualOS2.y;
+         const calcR2 = Math.sqrt(dx*dx + dy*dy) / YARDS_TO_FEET;
+
+         const boxX = (r1 / MAX_RANGE) * width;
+         const boxY = height - (calcR2 / MAX_RANGE) * height;
+
+         const dist = Math.sqrt((x - boxX)**2 + (y - boxY)**2);
+         if (dist < 20) { // Generous hit area (20px radius)
+             setIsDragging(true);
+             e.currentTarget.setPointerCapture(e.pointerId);
+         }
+    };
+
     const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
         if (!contextRef.current) return;
         const rect = e.currentTarget.getBoundingClientRect();
@@ -230,7 +406,7 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
 
         setHoverPos({ r1, r2 });
 
-        // Ghost Solution Calc
+        // Common Calc
         const { t1, t2, b1, b2, os1 } = contextRef.current;
         const dt = t2 - t1;
         if (dt <= 0) return;
@@ -253,38 +429,61 @@ const PEPDisplay = ({ width, height, onGhostSolution }: PEPDisplayProps) => {
         const speedKts = Math.sqrt(vx*vx + vy*vy) / FEET_PER_KNOT_SEC;
         const course = normalizeAngle(Math.atan2(vx, vy) * 180 / Math.PI);
 
-        const ghostLeg: SolutionLeg = {
-            startTime: t1,
-            startRange: r1,
-            startBearing: b1,
-            course,
-            speed: speedKts,
-            startOwnShip: os1
-        };
+        if (isDragging && selectedTrackerId) {
+             // Update Live
+             store.updateTrackerSolution(selectedTrackerId, {
+                 range: r1, // R1 is start range
+                 bearing: b1, // Fixed B1
+                 course: course,
+                 speed: speedKts,
+                 anchorTime: t1,
+                 anchorOwnShip: os1
+                 // Note: updateTrackerSolution handles syncing this to legs
+             });
+        } else {
+             // Ghost Mode
+            const ghostLeg: SolutionLeg = {
+                startTime: t1,
+                startRange: r1,
+                startBearing: b1,
+                course,
+                speed: speedKts,
+                startOwnShip: os1
+            };
 
-        const ghostSolution: TrackerSolution = {
-            legs: [ghostLeg],
-            speed: speedKts,
-            range: r1,
-            course,
-            bearing: b1,
-            anchorTime: t1,
-            anchorOwnShip: os1,
-            computedWorldX: p1x,
-            computedWorldY: p1y
-        };
+            const ghostSolution: TrackerSolution = {
+                legs: [ghostLeg],
+                speed: speedKts,
+                range: r1,
+                course,
+                bearing: b1,
+                anchorTime: t1,
+                anchorOwnShip: os1,
+                computedWorldX: p1x,
+                computedWorldY: p1y
+            };
 
-        onGhostSolution(ghostSolution);
+            onGhostSolution(ghostSolution);
+        }
+    };
+
+    const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+        setIsDragging(false);
+        e.currentTarget.releasePointerCapture(e.pointerId);
     };
 
     const handlePointerLeave = () => {
-        setHoverPos(null);
-        onGhostSolution(null);
+        if (!isDragging) {
+            setHoverPos(null);
+            onGhostSolution(null);
+        }
     };
 
     return (
         <div className="relative w-full h-full bg-gray-900 border-r border-gray-700 select-none"
+             onPointerDown={handlePointerDown}
              onPointerMove={handlePointerMove}
+             onPointerUp={handlePointerUp}
              onPointerLeave={handlePointerLeave}
         >
             {/* Header / Info */}
