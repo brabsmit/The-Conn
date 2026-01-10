@@ -8,7 +8,7 @@ import { useResize } from '../../hooks/useResize';
 import PEPDisplay from './PEPDisplay';
 import type { TrackerSolution } from '../../store/types';
 
-type ViewMode = 'GEO' | 'DOTS' | 'PEP';
+type ViewMode = 'GEO' | 'DOTS';
 
 interface DisplayProps {
     width: number;
@@ -132,13 +132,8 @@ const DotStack = ({ width, height, viewMode, ghostSolution }: DotStackProps) => 
             return 0;
         });
 
-        // GEO Mode (or PEP Right Pane which is effectively GEO)
-        if (viewMode === 'GEO' || viewMode === 'PEP') {
-            // LOOP ISOLATION: Check if we strictly need to render dots in PEP mode.
-            // Current split-screen design allows dots on the right pane.
-            // If strictly enforced isolation is needed, we could return here for viewMode === 'PEP'.
-            // However, for valid functionality (Geo Reference), we keep it running.
-            // We ensure robustness by relying on PEPDisplay's separate native canvas for the heatmap.
+        // GEO Mode (and PEP Ghost Overlay which lives on GEO)
+        if (viewMode === 'GEO') {
 
             const PIXELS_PER_DEGREE = width / 360;
             const SCREEN_CENTER = width / 2;
@@ -216,7 +211,7 @@ const DotStack = ({ width, height, viewMode, ghostSolution }: DotStackProps) => 
             });
 
             // Draw Ghost Solution
-            if (ghostSolution && viewMode === 'PEP') {
+            if (ghostSolution) {
                 drawSolution(ghostSolution, 0xFFFFFF, 0.8, 2); // White
             }
 
@@ -282,10 +277,6 @@ interface KnuckleControlProps {
 
 const KnuckleControl = ({ width, height, viewMode, containerRef }: KnuckleControlProps) => {
     // ... (Keep existing KnuckleControl implementation) ...
-    // To save space, I will copy it from the previous file content since I'm overwriting.
-    // Wait, I should ensure I don't lose it.
-    // I will include the previous implementation here.
-
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
     const textRef = useRef<PIXI.Text | null>(null);
     const draggingRef = useRef(false);
@@ -427,7 +418,7 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         const PIXELS_PER_DEGREE = width / 360;
         const SCREEN_CENTER = width / 2;
 
-        if (viewMode === 'GEO' || viewMode === 'PEP') {
+        if (viewMode === 'GEO') {
             for (let b = 0; b < 360; b += 30) {
                  const diff = getShortestAngle(b, currentHeading);
                  if (diff >= -180 && diff <= 180) {
@@ -448,7 +439,7 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
         }
 
         const container = labelsContainerRef.current;
-        if (container && (viewMode === 'GEO' || viewMode === 'PEP')) {
+        if (container && (viewMode === 'GEO')) {
             const children = container.children as PIXI.Text[];
             labels.forEach((angle, index) => {
                 const textObj = children[index];
@@ -501,6 +492,7 @@ const TMADisplay = () => {
     const height = Math.floor(rawHeight);
     const [viewMode, setViewMode] = useState<ViewMode>('GEO');
     const [ghostSolution, setGhostSolution] = useState<TrackerSolution | null>(null);
+    const [showPep, setShowPep] = useState(false);
 
     // When switching modes, reset ghost solution
     useEffect(() => { setGhostSolution(null); }, [viewMode]);
@@ -516,37 +508,33 @@ const TMADisplay = () => {
         }
     }, []);
 
-    // Layout
-    const isPep = viewMode === 'PEP';
-    // If PEP, we split: Left = PEP (50%), Right = Geo (50%)
-    const displayWidth = isPep ? Math.floor(width / 2) : width;
-
     return (
         <div ref={ref} className="relative flex w-full h-full bg-black overflow-hidden">
             {width > 0 && height > 0 && (
                 <>
-                    {/* PEP DISPLAY PANE (Left) */}
-                    {isPep && (
-                        <div style={{ width: displayWidth, height: height, borderRight: '1px solid #333' }}>
-                             <PEPDisplay width={displayWidth} height={height} onGhostSolution={setGhostSolution} />
-                        </div>
+                    {/* PEP OVERLAY */}
+                    {showPep && (
+                        <PEPDisplay
+                            onGhostSolution={setGhostSolution}
+                            onClose={() => setShowPep(false)}
+                        />
                     )}
 
                     {/* MAIN STAGE (Geo/Dots) */}
-                    <div style={{ width: displayWidth, height: height }}>
-                        <Stage width={displayWidth} height={height} options={{ background: 0x001100 }}>
+                    <div style={{ width: width, height: height }}>
+                        <Stage width={width} height={height} options={{ background: 0x001100 }}>
                             <Container filters={crtFilter ? [crtFilter] : []}>
-                                <Grid width={displayWidth} height={height} viewMode={viewMode} />
-                                <DotStack width={displayWidth} height={height} viewMode={viewMode} ghostSolution={ghostSolution} />
-                                <KnuckleControl width={displayWidth} height={height} viewMode={viewMode} containerRef={ref} />
+                                <Grid width={width} height={height} viewMode={viewMode} />
+                                <DotStack width={width} height={height} viewMode={viewMode} ghostSolution={ghostSolution} />
+                                <KnuckleControl width={width} height={height} viewMode={viewMode} containerRef={ref} />
                             </Container>
                         </Stage>
                     </div>
                 </>
             )}
 
-            <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
-                <div className="flex gap-2">
+            <div className="absolute top-4 right-4 flex flex-col items-end gap-2 pointer-events-none">
+                <div className="flex gap-2 pointer-events-auto">
                      <button
                         className={`px-3 py-1 rounded cursor-pointer font-mono text-sm border ${viewMode === 'GEO' ? 'bg-green-900 text-white border-green-500' : 'bg-gray-800 text-gray-400 border-gray-700'}`}
                         onClick={() => setViewMode('GEO')}
@@ -560,8 +548,8 @@ const TMADisplay = () => {
                         DOTS
                     </button>
                     <button
-                        className={`px-3 py-1 rounded cursor-pointer font-mono text-sm border ${viewMode === 'PEP' ? 'bg-green-900 text-white border-green-500' : 'bg-gray-800 text-gray-400 border-gray-700'}`}
-                        onClick={() => setViewMode('PEP')}
+                        className={`px-3 py-1 rounded cursor-pointer font-mono text-sm border ${showPep ? 'bg-green-900 text-white border-green-500' : 'bg-gray-800 text-gray-400 border-gray-700'}`}
+                        onClick={() => setShowPep(!showPep)}
                     >
                         PEP
                     </button>
