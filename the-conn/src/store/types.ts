@@ -15,6 +15,11 @@ export interface Contact {
   classification?: 'MERCHANT' | 'ESCORT' | 'SUB' | 'BIOLOGICAL' | 'TRAWLER';
   depth?: number;
   sourceLevel?: number;
+  baseSourceLevel?: number;
+  acousticProfile?: 'CLEAN' | 'DIRTY';
+  transientRate?: number;
+  wobbleState?: number;
+  transientTimer?: number;
   cavitationSpeed?: number;
   aiMode?: 'IDLE' | 'PATROL' | 'APPROACH' | 'ATTACK' | 'EVADE';
   aiLastUpdate?: number;

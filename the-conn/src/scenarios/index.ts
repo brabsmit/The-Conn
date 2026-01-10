@@ -1,16 +1,11 @@
 import type { SubmarineState, Contact } from '../store/useSubmarineStore';
 import { getPolarPosition, getRandomRange, rotatePoint } from '../utils/ScenarioUtils';
-import { ACOUSTICS } from '../config/AcousticConstants';
+import { CONTACT_TYPES, ContactTypeKey } from '../config/ContactDatabase';
 
 // Helper to create basic contact
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {
-    // Task 123.2: Refactor ContactAI & Generators
-    let sourceLevel = 120; // Default
-    if (classification === 'MERCHANT') sourceLevel = ACOUSTICS.SOURCE_LEVELS.MERCHANT;
-    else if (classification === 'TRAWLER') sourceLevel = ACOUSTICS.SOURCE_LEVELS.TRAWLER;
-    else if (classification === 'ESCORT') sourceLevel = ACOUSTICS.SOURCE_LEVELS.ESCORT;
-    else if (classification === 'SUB') sourceLevel = ACOUSTICS.SOURCE_LEVELS.SUB;
-    else if (classification === 'BIOLOGIC') sourceLevel = ACOUSTICS.SOURCE_LEVELS.BIOLOGIC;
+    // Task 125.2: Factory Refactor - Use Central Database
+    const spec = CONTACT_TYPES[classification as ContactTypeKey] || CONTACT_TYPES.MERCHANT;
 
     return {
         id,
@@ -21,7 +16,12 @@ const createContact = (id: string, x: number, y: number, classification: any, ty
         speed,
         heading,
         depth: 50,
-        sourceLevel,
+        sourceLevel: spec.acoustics.baseSL,
+        baseSourceLevel: spec.acoustics.baseSL,
+        acousticProfile: spec.acoustics.profile,
+        transientRate: spec.acoustics.transientRate,
+        wobbleState: 0,
+        transientTimer: 0,
         cavitationSpeed: 10,
         status: 'ACTIVE',
         history: [],
