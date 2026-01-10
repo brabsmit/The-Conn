@@ -4,6 +4,7 @@ import { calculateProjectedSolution, type TMASolution } from './tma';
 test('Static Target, Static Ownship', () => {
     const anchorTime = 100;
     const solution: TMASolution = {
+        legs: [],
         anchorTime: anchorTime,
         anchorOwnShip: { x: 0, y: 0, heading: 0 },
         bearing: 90, // East
@@ -26,6 +27,7 @@ test('Static Target, Static Ownship', () => {
 test('Moving Target (North)', () => {
     const anchorTime = 0;
     const solution: TMASolution = {
+        legs: [],
         anchorTime: anchorTime,
         anchorOwnShip: { x: 0, y: 0, heading: 0 },
         bearing: 90, // Starts East 1000y from Ownship(0,0) -> Target at (1000y, 0)
@@ -58,6 +60,7 @@ test('Moving Target (North)', () => {
 
 test('AOB Calculation', () => {
     const solution: TMASolution = {
+        legs: [],
         anchorTime: 0,
         anchorOwnShip: { x: 0, y: -3000, heading: 0 }, // Ownship at -1000y
         bearing: 0, // Target is North of Ownship

@@ -1,18 +1,31 @@
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { calculateProjectedSolution } from '../../lib/tma';
+import { RotaryKnob } from '../RotaryKnob';
+import { useEffect, useState } from 'react';
 
 export const TMAControls = () => {
   const selectedTrackerId = useSubmarineStore((state) => state.selectedTrackerId);
   const trackers = useSubmarineStore((state) => state.trackers);
   const updateTrackerSolution = useSubmarineStore((state) => state.updateTrackerSolution);
+  const addSolutionLeg = useSubmarineStore((state) => state.addSolutionLeg);
   const gameTime = useSubmarineStore((state) => state.gameTime);
-  // Get current ownship state (atomically to avoid object reference loop)
+
+  // Ownship State
   const x = useSubmarineStore((state) => state.x);
   const y = useSubmarineStore((state) => state.y);
   const heading = useSubmarineStore((state) => state.heading);
   const ownShip = { x, y, heading };
 
   const selectedTracker = trackers.find((t) => t.id === selectedTrackerId);
+
+  // Local state for selected leg
+  const [selectedLegIndex, setSelectedLegIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (selectedTracker && selectedTracker.solution.legs) {
+        setSelectedLegIndex(selectedTracker.solution.legs.length - 1);
+    }
+  }, [selectedTracker?.id, selectedTracker?.solution.legs?.length]);
 
   if (!selectedTracker) {
     return (
@@ -22,24 +35,74 @@ export const TMAControls = () => {
     );
   }
 
-  const { speed, range, course, bearing, anchorTime } = selectedTracker.solution;
+  // Ensure legs exist (fallback for old data if any)
+  const legs = selectedTracker.solution.legs || [];
+  if (legs.length === 0) {
+      // Should not happen with new initializers, but handle gracefully
+      return <div>Loading Solution...</div>;
+  }
 
-  // Calculate Projection
-  // We cast selectedTracker.solution to any or check type because store types might be lagging in IDE but runtime is fine
+  const activeLeg = legs[selectedLegIndex] || legs[legs.length - 1];
+
+  // Handlers
+  const handleUpdateLeg = (updates: Partial<typeof activeLeg>) => {
+     const newLegs = [...legs];
+     newLegs[selectedLegIndex] = { ...activeLeg, ...updates };
+
+     // Send full legs update. The store will auto-sync flat fields if it's the last leg.
+     updateTrackerSolution(selectedTracker.id, { legs: newLegs });
+  };
+
+  const handleMark = () => {
+     // Create a new leg
+     addSolutionLeg(selectedTracker.id);
+     // Auto-select is handled by useEffect on length change
+  };
+
+  const handleReset = () => {
+      // Reset to single leg at current time? Or just reset params of current leg?
+      // "Reset" usually implies clearing history.
+      const resetLeg = {
+          startTime: gameTime,
+          startRange: 10000,
+          startBearing: selectedTracker.currentBearing + heading, // Rough guess
+          course: 0,
+          speed: 10,
+          startOwnShip: ownShip
+      };
+      updateTrackerSolution(selectedTracker.id, { legs: [resetLeg] });
+  };
+
+  const handleMerge = () => {
+      // "Merge" usually means collapse previous legs into one if they are linear?
+      // Or maybe merge 2 segments.
+      // For now, let's make it a "Delete Previous Legs" (collapse to current start)?
+      // Or just remove the leg and extend previous.
+
+      if (selectedLegIndex > 0) {
+          // Remove this leg
+          const newLegs = legs.filter((_, i) => i !== selectedLegIndex);
+          updateTrackerSolution(selectedTracker.id, { legs: newLegs });
+          setSelectedLegIndex(prev => Math.max(0, prev - 1));
+      }
+  };
+
+  // Calculate Projection for Display (Top Readout)
   const projected = calculateProjectedSolution(
     selectedTracker.solution as any,
     ownShip,
     gameTime
   );
 
-  const handleMark = () => {
-     updateTrackerSolution(selectedTracker.id, {
-         anchorTime: gameTime,
-         anchorOwnShip: ownShip,
-         range: projected.calcRange,
-         bearing: projected.calcBearing
-         // speed and course remain unchanged
-     });
+  const getTrackerLabel = () => {
+     if (selectedTracker.classificationStatus === 'PENDING') return `${selectedTrackerId} (PENDING)`;
+     if (selectedTracker.classification) {
+         const short = selectedTracker.classification === 'MERCHANT' ? '(M)' :
+                       selectedTracker.classification === 'ESCORT' ? '(E)' :
+                       selectedTracker.classification === 'SUB' ? '(S)' : '(B)';
+         return `${selectedTrackerId} ${short}`;
+     }
+     return selectedTrackerId;
   };
 
   const formatTime = (t: number) => {
@@ -49,138 +112,158 @@ export const TMAControls = () => {
       return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const sliderClass = "w-full h-4 bg-zinc-900 rounded-none appearance-none cursor-pointer border border-green-900/50 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-green-600 [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-green-400 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:bg-green-600 [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-green-400";
-
-  const getTrackerLabel = () => {
-     if (selectedTracker.classificationStatus === 'PENDING') return `${selectedTrackerId} (PENDING)`;
-     if (selectedTracker.classification) {
-         // Shorten classification
-         const short = selectedTracker.classification === 'MERCHANT' ? '(M)' :
-                       selectedTracker.classification === 'ESCORT' ? '(E)' :
-                       selectedTracker.classification === 'SUB' ? '(S)' : '(B)';
-         return `${selectedTrackerId} ${short}`;
-     }
-     return selectedTrackerId;
-  };
-
   return (
-    <div className="flex flex-col gap-4 p-4 h-full bg-white/5 border-l border-white/10 overflow-y-auto font-mono">
-        {/* Section 1: Readout */}
-        <div className="flex flex-col gap-2 p-3 bg-black/40 rounded border border-white/10 shadow-inner shadow-black/50">
-            <div className="text-[10px] text-zinc-400 font-bold tracking-widest border-b border-white/5 pb-1 mb-1">{getTrackerLabel()}</div>
-            <div className="grid grid-cols-2 gap-4">
-                 <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500">BEARING</span>
-                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+    <div className="flex flex-col h-full bg-white/5 border-l border-white/10 overflow-hidden font-mono select-none">
+
+        {/* HEADER / READOUT */}
+        <div className="flex-none p-3 bg-black/40 border-b border-white/10 shadow-inner shadow-black/50">
+            <div className="flex justify-between items-center mb-2">
+                <div className="text-[10px] text-zinc-400 font-bold tracking-widest">{getTrackerLabel()}</div>
+                <div className="text-[10px] text-zinc-600">DOT STACK: {Math.round(gameTime - activeLeg.startTime)}s</div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+                 <div className="flex flex-col items-center">
+                    <span className="text-[9px] text-zinc-500 mb-0.5">BRG</span>
+                    <span className="text-xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
                         {projected.calcBearing.toFixed(0).padStart(3, '0')}
                     </span>
                  </div>
-                 <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500">RANGE</span>
-                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {projected.calcRange.toFixed(0)}
+                 <div className="flex flex-col items-center">
+                    <span className="text-[9px] text-zinc-500 mb-0.5">RNG</span>
+                    <span className="text-xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+                        {(projected.calcRange / 1000).toFixed(1)}k
                     </span>
                  </div>
-                 <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500">COURSE</span>
-                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {course.toFixed(0).padStart(3, '0')}
+                 <div className="flex flex-col items-center">
+                    <span className="text-[9px] text-zinc-500 mb-0.5">CRS</span>
+                    <span className="text-xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+                        {activeLeg.course.toFixed(0).padStart(3, '0')}
                     </span>
                  </div>
-                 <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500">SPEED</span>
-                    <span className="font-mono text-2xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
-                        {speed.toFixed(1)}
+                 <div className="flex flex-col items-center">
+                    <span className="text-[9px] text-zinc-500 mb-0.5">SPD</span>
+                    <span className="text-xl text-green-400 font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)]">
+                        {activeLeg.speed.toFixed(1)}
                     </span>
                  </div>
             </div>
         </div>
 
-        {/* Section 2: Anchor */}
-        <div className="flex flex-col gap-2 p-3 bg-white/5 rounded border border-white/10">
-             <div className="flex justify-between items-end">
-                 <span className="text-[10px] text-zinc-400">SOLUTION TIME</span>
-                 <span className="font-mono text-green-500 text-lg">{formatTime(anchorTime)}</span>
-             </div>
-             <button
+        {/* ZONE A: TIMELINE (Scrollable) */}
+        <div className="flex-none h-12 flex items-center gap-1 overflow-x-auto px-2 border-b border-white/10 bg-black/20 no-scrollbar">
+            {legs.map((leg, idx) => (
+                <button
+                    key={idx}
+                    onClick={() => setSelectedLegIndex(idx)}
+                    className={`flex items-center justify-center h-8 px-3 min-w-[60px] skew-x-[-10deg] border border-white/10 transition-colors
+                        ${idx === selectedLegIndex
+                            ? 'bg-green-900/40 text-green-400 border-green-500/30'
+                            : 'bg-white/5 text-zinc-500 hover:bg-white/10'}`}
+                >
+                    <div className="skew-x-[10deg] text-[10px] font-bold">
+                        {idx === 0 ? 'START' : `LEG ${idx}`}
+                    </div>
+                </button>
+            ))}
+            <button
                 onClick={handleMark}
-                className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-xs font-bold text-white border border-white/20 rounded transition-colors shadow-lg"
-             >
-                MARK (RESET TO NOW)
-             </button>
+                className="flex items-center justify-center h-8 px-3 min-w-[30px] skew-x-[-10deg] border border-white/10 bg-white/5 text-zinc-400 hover:bg-green-900/30 hover:text-green-400 transition-colors"
+                title="New Leg"
+            >
+                <div className="skew-x-[10deg] font-bold text-lg leading-none">+</div>
+            </button>
         </div>
 
-        {/* Section 3: Inputs */}
-        <div className="flex flex-col gap-4 mt-2">
+        {/* MAIN CONTROLS AREA (Flex Grow) */}
+        <div className="flex-grow flex flex-col p-4 gap-6 overflow-y-auto min-h-0">
 
-            {/* Speed Slider */}
-            <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-green-500 font-mono">
-                <span>SPEED</span>
-                <span>{speed.toFixed(1)} kts</span>
-                </div>
-                <input
-                type="range"
-                min="0"
-                max="35"
-                step="0.1"
-                value={speed}
-                onChange={(e) => updateTrackerSolution(selectedTracker.id, { speed: parseFloat(e.target.value) })}
-                className={sliderClass}
+            {/* ZONE B: KINEMATICS (Large Knobs) */}
+            <div className="flex justify-around items-start">
+                <RotaryKnob
+                    label="COURSE"
+                    value={activeLeg.course}
+                    min={0}
+                    max={360}
+                    step={1}
+                    loop={true}
+                    sensitivity={0.5}
+                    onChange={(v) => handleUpdateLeg({ course: v })}
+                    format={(v) => v.toFixed(0).padStart(3, '0')}
+                    unit="DEG"
+                    size="large"
+                />
+                <RotaryKnob
+                    label="SPEED"
+                    value={activeLeg.speed}
+                    min={0}
+                    max={35}
+                    step={0.1}
+                    sensitivity={0.1}
+                    onChange={(v) => handleUpdateLeg({ speed: v })}
+                    format={(v) => v.toFixed(1)}
+                    unit="KTS"
+                    size="large"
                 />
             </div>
 
-            {/* Course Slider */}
-            <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-green-500 font-mono">
-                <span>COURSE</span>
-                <span>{course.toFixed(0).padStart(3, '0')}°</span>
+            <div className="h-px bg-white/10 w-full" />
+
+            {/* ZONE C: ANCHOR (Small Knobs) */}
+            <div className="flex flex-col gap-2">
+                <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest text-center">Anchor Settings</div>
+                <div className="flex justify-around items-start mt-2">
+                    <RotaryKnob
+                        label="BEARING"
+                        value={activeLeg.startBearing}
+                        min={0}
+                        max={360}
+                        step={0.5}
+                        loop={true}
+                        sensitivity={0.5}
+                        onChange={(v) => handleUpdateLeg({ startBearing: v })}
+                        format={(v) => v.toFixed(0).padStart(3, '0')}
+                        unit="DEG"
+                        size="small"
+                    />
+                    <RotaryKnob
+                        label="RANGE"
+                        value={activeLeg.startRange}
+                        min={100}
+                        max={40000}
+                        step={100}
+                        sensitivity={50} // 50 yds per pixel drag
+                        onChange={(v) => handleUpdateLeg({ startRange: v })}
+                        format={(v) => (v/1000).toFixed(1)}
+                        unit="KYD"
+                        size="small"
+                    />
                 </div>
-                <input
-                type="range"
-                min="0"
-                max="359"
-                step="1"
-                value={course}
-                onChange={(e) => updateTrackerSolution(selectedTracker.id, { course: parseFloat(e.target.value) })}
-                className={sliderClass}
-                />
             </div>
 
-            {/* Range Slider */}
-            <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-green-500 font-mono">
-                <span>RANGE (ANCHOR)</span>
-                <span>{range.toFixed(0)} yds</span>
-                </div>
-                <input
-                type="range"
-                min="0"
-                max="10000"
-                step="100"
-                value={range}
-                onChange={(e) => updateTrackerSolution(selectedTracker.id, { range: parseFloat(e.target.value) })}
-                className={sliderClass}
-                />
+            <div className="text-[10px] text-zinc-600 text-center">
+                Leg Start: {formatTime(activeLeg.startTime)}
             </div>
 
-            {/* Bearing Slider */}
-            <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs text-green-500 font-mono">
-                <span>BRG</span>
-                <span>{bearing.toFixed(0).padStart(3, '0')}°</span>
-                </div>
-                <input
-                type="range"
-                min="0"
-                max="359"
-                step="1"
-                value={bearing}
-                onChange={(e) => updateTrackerSolution(selectedTracker.id, { bearing: parseFloat(e.target.value) })}
-                className={sliderClass}
-                />
-            </div>
         </div>
+
+        {/* ZONE D: TOOLS (Footer) */}
+        <div className="flex-none p-3 border-t border-white/10 grid grid-cols-2 gap-2 bg-black/20">
+            <button
+                onClick={handleMerge}
+                disabled={selectedLegIndex === 0}
+                className="px-4 py-2 bg-zinc-800 text-zinc-400 text-[10px] font-bold rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+                DELETE LEG
+            </button>
+            <button
+                onClick={handleReset}
+                className="px-4 py-2 bg-red-900/20 text-red-400 text-[10px] font-bold rounded hover:bg-red-900/40 border border-red-900/30"
+            >
+                RESET SOL
+            </button>
+        </div>
+
     </div>
   );
 };
