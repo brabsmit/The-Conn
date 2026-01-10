@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import { useSubmarineStore } from '../store/useSubmarineStore';
 import { normalizeAngle, calculateTargetPosition } from '../lib/tma';
 import { SonarArray } from '../lib/SonarArray';
+import { AcousticsEngine } from '../lib/AcousticsEngine';
 
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
@@ -597,14 +598,16 @@ export class SonarEngine {
 
         const pixelBuffer = this._tempRowBuffer!;
 
-        const { contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, ownshipNoiseLevel, gameTime } = state;
+        const { contacts, torpedoes, visualTransients, x: ownX, y: ownY, heading: ownHeading, speed: ownSpeed, gameTime } = state;
 
         // 1. Reset Physics Array (Noise Floor)
-        // Convert ownship noise (linear 0..1+) to dB base
-        // Base Ambient = 50dB.
-        // Ownship = 60dB + (noise * 20)?
-        const ambient = 50 + (ownshipNoiseLevel * 10);
-        this.sonarArray.clear(ambient);
+        // Task 113.1: The Noise Manager (NL = AN + SN)
+        // We assume Sea State 3 and Deep Water for now (Standard Atlantic)
+        const seaState = 3;
+        const deepWater = true;
+
+        const nl = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
+        this.sonarArray.clear(nl);
 
         // 2. Process Contacts (Physics Integration)
         contacts.forEach((contact) => {
@@ -627,7 +630,8 @@ export class SonarEngine {
             const dy = contact.y - ownY;
             const distYards = Math.max(1, Math.sqrt(dx * dx + dy * dy) / 3);
             
-            const tl = 20 * Math.log10(distYards);
+            // Task 113.2: The Transmission Loss Model (TL)
+            const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
             const rl = sourceLevel - tl;
 
             // Geometry
@@ -657,7 +661,9 @@ export class SonarEngine {
             const dx = torp.position.x - ownX;
             const dy = torp.position.y - ownY;
             const distYards = Math.max(1, Math.sqrt(dx * dx + dy * dy) / 3);
-            const tl = 20 * Math.log10(distYards);
+
+            // Task 113.2: The Transmission Loss Model (TL)
+            const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
             const rl = sourceLevel - tl;
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
