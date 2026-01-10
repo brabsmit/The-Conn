@@ -1,4 +1,4 @@
-import { Contact, TrackerSolution } from '../store/types';
+import type { Contact, TrackerSolution } from '../store/types';
 
 /**
  * Generates a noisy solution based on ground truth data.

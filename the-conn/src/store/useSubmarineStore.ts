@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { generateNoisySolution } from '../lib/SolutionAI';
-import {
+import type {
   SubmarineState,
   Tracker,
   Tube,

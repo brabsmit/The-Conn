@@ -45,6 +45,7 @@ describe('useSubmarineStore', () => {
         y: 10000,
         heading: 90,
         speed: 10,
+        type: 'ENEMY' as const,
         status: 'ACTIVE' as const
     };
     useSubmarineStore.getState().addContact(contact);
@@ -61,14 +62,14 @@ describe('useSubmarineStore', () => {
     expect(tracker.contactId).toBe('C1');
     expect(tracker.creationTime).toBe(0);
     expect(tracker.lastInteractionTime).toBe(0);
-    expect(tracker.isAutoSolution).toBeUndefined();
+    expect(tracker.isAutoSolution).toBe(false);
 
     // 2. Advance Time < 30s (e.g. 29s)
     useSubmarineStore.setState({ gameTime: 29 });
     useSubmarineStore.getState().tick(1);
 
     tracker = useSubmarineStore.getState().trackers[0];
-    expect(tracker.isAutoSolution).toBeUndefined(); // Should not have triggered
+    expect(tracker.isAutoSolution).toBe(false); // Should not have triggered
 
     // 3. Advance Time > 30s (e.g. 31s)
     useSubmarineStore.setState({ gameTime: 31 });
@@ -87,7 +88,7 @@ describe('useSubmarineStore', () => {
 
   it('should NOT trigger FTOW if user interacted', () => {
     // 1. Setup
-    const contact = { id: 'C2', x: 20000, y: 20000, heading: 180, speed: 15, status: 'ACTIVE' as const };
+    const contact = { id: 'C2', x: 20000, y: 20000, heading: 180, speed: 15, type: 'ENEMY' as const, status: 'ACTIVE' as const };
     useSubmarineStore.getState().addContact(contact);
     useSubmarineStore.setState({ sensorReadings: [{ contactId: 'C2', bearing: 135 }] });
     useSubmarineStore.getState().designateTracker(135);
