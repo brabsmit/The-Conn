@@ -22,7 +22,7 @@ export const ACOUSTICS = {
     ARRAY: {
         NUM_BEAMS: 720,        // High-Density
         BEAM_SPACING: 0.5,     // Degrees per bin
-        BEAM_WIDTH: 2.0,       // Degrees (Physical Aperture)
+        BEAM_WIDTH: 3.0,       // Task 134.3: Revert to 3.0
         SENSITIVITY: 1.0,      // Efficiency
         SELF_NOISE_BASE: 50,   // dB (Stationary)
         FLOW_NOISE_FACTOR: 0.05 // Noise += Speed^2 * Factor
@@ -34,6 +34,7 @@ export const ACOUSTICS = {
         DYNAMIC_RANGE: 45,     // dB (Min to Max window)
         MIN_SIGNAL_WIDTH: 1,   // Pixels
         MAX_SIGNAL_WIDTH: 4,   // Pixels (Clamp)
-        BLOOM_THRESHOLD: 2000  // Yards (Ranges closer than this bloom)
+        BLOOM_THRESHOLD: 2000, // Yards (Ranges closer than this bloom)
+        SPATIAL_KERNEL: [0.2, 0.6, 0.2] // Task 134.2: Tune the Spread
     }
 };
