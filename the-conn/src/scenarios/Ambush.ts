@@ -66,14 +66,25 @@ export const loadAmbushScenario = () => {
         id: 'S1',
         contactId: 'Sierra-1',
         currentBearing: 45,
+        displayBearing: 45,
         bearingHistory: [],
         solution: {
+            legs: [{
+                startTime: 0,
+                startRange: 8000,
+                startBearing: 45,
+                course: 90,
+                speed: 10,
+                startOwnShip: { x: 0, y: 0, heading: 0 }
+            }],
             speed: 10,
             range: 8000,
             course: 90,
             bearing: 45,
             anchorTime: 0,
-            anchorOwnShip: { x: 0, y: 0, heading: 0 }
+            anchorOwnShip: { x: 0, y: 0, heading: 0 },
+            computedWorldX: s1X, // Using known truth for computed
+            computedWorldY: s1Y
         },
         classificationStatus: 'PENDING',
         timeToClassify: 2 // Fast classify for testing
@@ -83,14 +94,25 @@ export const loadAmbushScenario = () => {
         id: 'S2',
         contactId: 'Sierra-2',
         currentBearing: 50,
+        displayBearing: 50,
         bearingHistory: [],
         solution: {
+            legs: [{
+                startTime: 0,
+                startRange: 9000,
+                startBearing: 50,
+                course: 90,
+                speed: 5,
+                startOwnShip: { x: 0, y: 0, heading: 0 }
+            }],
             speed: 5,
             range: 9000,
             course: 90,
             bearing: 50,
             anchorTime: 0,
-            anchorOwnShip: { x: 0, y: 0, heading: 0 }
+            anchorOwnShip: { x: 0, y: 0, heading: 0 },
+            computedWorldX: s2X,
+            computedWorldY: s2Y
         },
         classificationStatus: 'PENDING',
         timeToClassify: 5 // Slightly slower than S1

@@ -54,7 +54,17 @@ export type Station = 'TMA' | 'WCS' | 'NAV';
 
 export type ViewScale = 'FAST' | 'MED' | 'SLOW';
 
+export interface SolutionLeg {
+  startTime: number;
+  startRange: number;
+  startBearing: number; // True Bearing
+  course: number;
+  speed: number;
+  startOwnShip: { x: number, y: number, heading: number };
+}
+
 export interface TrackerSolution {
+  legs: SolutionLeg[];
   speed: number;
   range: number;
   course: number;
@@ -203,6 +213,7 @@ export interface SubmarineState {
   setSelectedTracker: (id: string | null) => void;
   deleteTracker: (id: string) => void;
   updateTrackerSolution: (trackerId: string, solution: Partial<TrackerSolution>) => void;
+  addSolutionLeg: (trackerId: string) => void;
   setViewScale: (scale: ViewScale) => void;
   setActiveStation: (station: Station) => void;
   loadTube: (tubeId: number, weaponData: WeaponData) => void;

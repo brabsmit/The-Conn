@@ -12,6 +12,14 @@ export interface OwnShipState {
 }
 
 export interface TMASolution {
+  legs: {
+    startTime: number;
+    startRange: number;
+    startBearing: number;
+    course: number;
+    speed: number;
+    startOwnShip: { x: number, y: number, heading: number };
+  }[];
   speed: number;
   range: number;
   course: number;
@@ -36,58 +44,132 @@ export const getShortestAngle = (target: number, source: number): number => {
 };
 
 /**
- * Calculates the target's world position at a specific time based on the solution anchor.
+ * Calculates the target's world position at a specific time based on the solution legs.
  */
 export const calculateTargetPosition = (
   solution: TMASolution,
   time: number
 ): Position => {
-  const { anchorTime, anchorOwnShip, range, bearing, course, speed } = solution;
+  // If legs exist, use Multi-Leg logic. Otherwise fallback to legacy snapshot.
+  if (solution.legs && solution.legs.length > 0) {
+      // Find the leg active at 'time' or the last leg if 'time' is in the future
+      // We assume legs are sorted by startTime ascending.
 
-  // 1. Calculate Target Position at Anchor Time
-  // Convert polar (bearing, range) relative to OwnShip to Cartesian world coordinates
-  // Bearing is 0-359 (0=North/+Y, 90=East/+X)
-  // True Bearing = Relative Bearing + OwnShip Heading?
-  // Usually 'Bearing' in solution is True Bearing?
-  // In the UI, the slider usually sets True Bearing or Relative?
-  // The store uses 'currentBearing' which is Relative to Ownship in the code I read?
-  // Wait, let's check useSubmarineStore again.
-  // "const relativeBearing = normalizeAngle(trueBearing - newHeading);"
-  // "acc.push({ ... bearing: noisyBearing });" (noisy relative bearing)
-  // Tracker.currentBearing updates from reading.bearing.
-  // So Tracker.currentBearing is RELATIVE.
+      // 1. Start from Leg 0
+      let currentLeg = solution.legs[0];
 
-  // However, TMA solutions are usually in TRUE bearings (or at least the plot uses True).
-  // If the user inputs Bearing via slider, is it True or Relative?
-  // If I assume True Bearing for the solution storage, it makes dead reckoning easier.
-  // If I assume Relative, I need to know OwnShip Heading at Anchor to convert to True.
-  // Since we store anchorOwnShip, we can support either.
-  // Let's assume the Solution Bearing is TRUE Bearing for stability.
-  // But wait, if the user "Marks", we grab the current sensor bearing (which is Relative).
-  // We should convert it to True immediately upon Mark.
-  // Solution: bearing is TRUE.
+      // Calculate World Start Position for Leg 0
+      const bearingRad = (currentLeg.startBearing * Math.PI) / 180;
+      const rangeFt = currentLeg.startRange * 3;
+      const relX = rangeFt * Math.sin(bearingRad);
+      const relY = rangeFt * Math.cos(bearingRad);
 
-  const bearingRad = (bearing * Math.PI) / 180;
-  const rangeFt = range * 3; // 1 yard = 3 feet
+      let currentX = currentLeg.startOwnShip.x + relX;
+      let currentY = currentLeg.startOwnShip.y + relY;
+      let currentTime = currentLeg.startTime;
 
-  const relX = rangeFt * Math.sin(bearingRad);
-  const relY = rangeFt * Math.cos(bearingRad);
+      // 2. Walk through legs
+      for (let i = 0; i < solution.legs.length; i++) {
+          const leg = solution.legs[i];
+          const nextLeg = solution.legs[i+1];
 
-  const targetAnchorX = anchorOwnShip.x + relX;
-  const targetAnchorY = anchorOwnShip.y + relY;
+          // Determine end time of this segment
+          // If there is a next leg, end time is nextLeg.startTime
+          // If we are aiming for a time BEFORE nextLeg.startTime, we stop in this leg.
 
-  // 2. Project to 'time'
-  const dt = time - anchorTime; // seconds
-  const speedFtSec = speed * FEET_PER_KNOT_SEC;
-  const courseRad = (course * Math.PI) / 180;
+          let endTimeForSegment = time;
+          if (nextLeg && nextLeg.startTime < time) {
+              endTimeForSegment = nextLeg.startTime;
+          }
 
-  const dx = speedFtSec * dt * Math.sin(courseRad);
-  const dy = speedFtSec * dt * Math.cos(courseRad);
+          // If the requested time is BEFORE this leg started (historical query), we might need to project backwards?
+          // Or we just start from the first leg and project backwards if time < legs[0].startTime.
+          // But here we are iterating.
 
-  return {
-    x: targetAnchorX + dx,
-    y: targetAnchorY + dy
-  };
+          // Calculate movement in this segment
+          // Note: If i > 0, we need to ensure continuity.
+          // The prompt says: "User clicks New Leg... System calculates Target's position at Now. That position becomes startRange/startBearing for Leg 2."
+          // This implies Leg 2's start pos IS Leg 1's end pos.
+          // However, we store startRange/startBearing relative to anchorOwnShip for EACH leg.
+          // This creates a potential discontinuity if the user edits previous legs.
+          // "User adjusts only Course/Speed for the new leg."
+          // If user edits Leg 1 Course, Leg 2 Start Pos (which is fixed) might not align with Leg 1 End Pos anymore.
+          // The prompt says: "Allows switching between segments to refine past guesses."
+          // If I change Leg 1, Leg 2 *start* is technically a new anchor snapshot taken at Leg 2 start time.
+          // Does Leg 2 move?
+          // "Leg 2 (The Turn): User clicks 'New Leg'. System calculates the Target's position at Now. That position becomes startRange / startBearing for Leg 2."
+          // This implies Leg 2 is anchored to the *computed* position at that moment.
+          // If I go back and change Leg 1, Leg 2's anchor remains where it was set. The track will be discontinuous (jump).
+          // This is actually standard for "Dogleg" TMA tools if not strictly constrained.
+          // However, a "Multi-Leg Time-Based solution solver" usually implies a continuous track.
+          // But implementing continuous constraint solver is hard.
+          // Given the prompt "Allows switching between segments to refine past guesses", let's assume discontinuous is acceptable OR
+          // we treat each leg as independent projection from its anchor.
+          // AND we assume the code just calculates position based on the leg that covers the time.
+
+          // Let's look at coverage:
+          // Time < Leg 0 Start: Back project Leg 0.
+          // Leg N Start <= Time < Leg N+1 Start: Project Leg N.
+          // Time >= Leg Last Start: Project Leg Last.
+
+          // So we don't need to walk and integrate. We just find the active leg.
+      }
+
+      // Find active leg
+      // Active Leg is the last leg that started <= time.
+      // If time is before first leg, use first leg (back project).
+
+      let activeLeg = solution.legs[0];
+      for (let i = 0; i < solution.legs.length; i++) {
+          if (solution.legs[i].startTime <= time) {
+              activeLeg = solution.legs[i];
+          } else {
+              break; // Future legs don't apply
+          }
+      }
+
+      // Calculate Active Leg Origin
+      const legBearingRad = (activeLeg.startBearing * Math.PI) / 180;
+      const legRangeFt = activeLeg.startRange * 3;
+      const legRelX = legRangeFt * Math.sin(legBearingRad);
+      const legRelY = legRangeFt * Math.cos(legBearingRad);
+
+      const legOriginX = activeLeg.startOwnShip.x + legRelX;
+      const legOriginY = activeLeg.startOwnShip.y + legRelY;
+
+      // Project from active leg start
+      const dt = time - activeLeg.startTime;
+      const speedFtSec = activeLeg.speed * FEET_PER_KNOT_SEC;
+      const courseRad = (activeLeg.course * Math.PI) / 180;
+
+      const dx = speedFtSec * dt * Math.sin(courseRad);
+      const dy = speedFtSec * dt * Math.cos(courseRad);
+
+      return {
+          x: legOriginX + dx,
+          y: legOriginY + dy
+      };
+
+  } else {
+      // Legacy Fallback
+      const { anchorTime, anchorOwnShip, range, bearing, course, speed } = solution;
+      const bearingRad = (bearing * Math.PI) / 180;
+      const rangeFt = range * 3;
+      const relX = rangeFt * Math.sin(bearingRad);
+      const relY = rangeFt * Math.cos(bearingRad);
+      const targetAnchorX = anchorOwnShip.x + relX;
+      const targetAnchorY = anchorOwnShip.y + relY;
+      const dt = time - anchorTime;
+      const speedFtSec = speed * FEET_PER_KNOT_SEC;
+      const courseRad = (course * Math.PI) / 180;
+      const dx = speedFtSec * dt * Math.sin(courseRad);
+      const dy = speedFtSec * dt * Math.cos(courseRad);
+
+      return {
+        x: targetAnchorX + dx,
+        y: targetAnchorY + dy
+      };
+  }
 };
 
 /**

@@ -75,7 +75,7 @@ const checkCollision = (p1x: number, p1y: number, p2x: number, p2y: number, cx: 
 };
 
 // FULL DEFAULT STATE FOR RESET
-const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
+const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'addSolutionLeg' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
   appState: 'MENU',
   expertMode: false,
   godMode: false,
@@ -164,6 +164,14 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       displayBearing: bearing,
       bearingHistory: [],
       solution: {
+        legs: [{
+          startTime: state.gameTime,
+          startRange: 10000,
+          startBearing: normalizeAngle(bearing + state.heading),
+          course: 0,
+          speed: 10,
+          startOwnShip: { x: state.x, y: state.y, heading: state.heading }
+        }],
         speed: 10,
         range: 10000,
         course: 0,
@@ -196,7 +204,39 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
     trackers: state.trackers.map(t => {
       if (t.id !== trackerId) return t;
 
+      // Note: This logic assumes we are always updating the LATEST LEG (or active leg params)
+      // When we update speed/course/range/bearing, we are updating the active snapshot.
+
       const mergedSolution = { ...t.solution, ...solutionUpdates };
+
+      // Sync logic
+      let newLegs = [...(mergedSolution.legs || [])];
+
+      // Case A: Legs were provided in updates. Sync flat fields to match the last leg.
+      if (solutionUpdates.legs && newLegs.length > 0) {
+          const lastLeg = newLegs[newLegs.length - 1];
+          mergedSolution.speed = lastLeg.speed;
+          mergedSolution.course = lastLeg.course;
+          mergedSolution.range = lastLeg.startRange;
+          mergedSolution.bearing = lastLeg.startBearing;
+          mergedSolution.anchorTime = lastLeg.startTime;
+          mergedSolution.anchorOwnShip = lastLeg.startOwnShip;
+      }
+      // Case B: Flat fields were provided (Legacy/Simple UI). Sync last leg to match.
+      else if (newLegs.length > 0) {
+        const lastIndex = newLegs.length - 1;
+        const lastLeg = newLegs[lastIndex];
+
+        newLegs[lastIndex] = {
+            ...lastLeg,
+            speed: mergedSolution.speed,
+            course: mergedSolution.course,
+            startRange: mergedSolution.range,
+            startBearing: mergedSolution.bearing,
+            startTime: mergedSolution.anchorTime,
+            startOwnShip: mergedSolution.anchorOwnShip
+        };
+      }
 
       // Re-calculate anchor position based on current ownship and new solution parameters
       const bearingRad = (mergedSolution.bearing * Math.PI) / 180;
@@ -209,16 +249,75 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         ...t,
         solution: {
           ...mergedSolution,
-          anchorTime: state.gameTime,
-          anchorOwnShip: { x: state.x, y: state.y, heading: state.heading },
-          computedWorldX: state.x + relX,
-          computedWorldY: state.y + relY
+          legs: newLegs,
+          // Legacy fields synced
+          anchorTime: mergedSolution.anchorTime || state.gameTime, // Fallback if undefined
+          anchorOwnShip: mergedSolution.anchorOwnShip || { x: state.x, y: state.y, heading: state.heading },
+          computedWorldX: (mergedSolution.anchorOwnShip?.x || state.x) + relX,
+          computedWorldY: (mergedSolution.anchorOwnShip?.y || state.y) + relY
         },
         lastInteractionTime: state.gameTime, // Task 115.1
         isAutoSolution: false // Task 115.1
       };
     })
   })),
+
+  addSolutionLeg: (trackerId) => set((state) => {
+      // Logic to add a new leg to the tracker solution
+      // We do this by projecting the current solution to "now" and starting a new leg there.
+
+      const newTrackers = state.trackers.map(t => {
+          if (t.id !== trackerId) return t;
+
+          // Simplified calc (Dead Reckoning):
+          // 1. Get current world pos of target from solution
+          const solution = t.solution;
+          const dt = state.gameTime - solution.anchorTime;
+          const speedFtSec = solution.speed * 1.6878;
+          const radC = (solution.course * Math.PI) / 180;
+
+          // World Pos at Anchor
+          const radB = (solution.bearing * Math.PI) / 180;
+          const rFt = solution.range * 3;
+          const ax = solution.anchorOwnShip.x + rFt * Math.sin(radB);
+          const ay = solution.anchorOwnShip.y + rFt * Math.cos(radB);
+
+          // Current World Pos
+          const tx = ax + Math.sin(radC) * speedFtSec * dt;
+          const ty = ay + Math.cos(radC) * speedFtSec * dt;
+
+          // 2. Calculate Range/Bearing from OwnShip NOW
+          const currentOwnShip = { x: state.x, y: state.y, heading: state.heading };
+          const dx = tx - currentOwnShip.x;
+          const dy = ty - currentOwnShip.y;
+          const newRange = Math.sqrt(dx*dx + dy*dy) / 3;
+          const newBearing = normalizeAngle((Math.atan2(dx, dy) * 180 / Math.PI));
+
+          const newLeg = {
+              startTime: state.gameTime,
+              startRange: newRange,
+              startBearing: newBearing,
+              course: solution.course, // Copy previous kinematics initially
+              speed: solution.speed,
+              startOwnShip: currentOwnShip
+          };
+
+          return {
+              ...t,
+              solution: {
+                  ...t.solution,
+                  legs: [...(t.solution.legs || []), newLeg],
+                  // Update active flat fields
+                  range: newRange,
+                  bearing: newBearing,
+                  anchorTime: state.gameTime,
+                  anchorOwnShip: currentOwnShip
+              }
+          };
+      });
+
+      return { trackers: newTrackers };
+  }),
 
   setViewScale: (scale) => set({ viewScale: scale }),
   setActiveStation: (station) => set({ activeStation: station }),
@@ -1066,6 +1165,14 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                           displayBearing: relBearing,
                           bearingHistory: [],
                           solution: {
+                              legs: [{
+                                startTime: newGameTime,
+                                startRange: distYards,
+                                startBearing: trueBearing,
+                                course: torp.heading,
+                                speed: torp.speed,
+                                startOwnShip: { x: newX, y: newY, heading: newHeading }
+                              }],
                               speed: torp.speed,
                               range: distYards,
                               course: torp.heading,
@@ -1249,7 +1356,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       // Update Alert Level
       // Combat if any active tracker is SUB or Incoming Torpedo
       const combatActive = newTrackers.some(t => t.classification === 'SUB') || newIncomingTorpedoDetected;
-      let newAlertLevel = combatActive ? 'COMBAT' : 'NORMAL';
+      let newAlertLevel: 'NORMAL' | 'COMBAT' = combatActive ? 'COMBAT' : 'NORMAL';
 
       // Log All Clear
       if (state.incomingTorpedoDetected && !newIncomingTorpedoDetected) {
