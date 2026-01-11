@@ -545,8 +545,19 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       // --- Scenario Event Logic (Director) ---
       const directorUpdates = getDirectorUpdates(state);
 
+      // Handle New Contacts from Director
+      let currentContactsList = [...state.contacts];
+      if (directorUpdates.newContacts && directorUpdates.newContacts.length > 0) {
+          currentContactsList.push(...directorUpdates.newContacts);
+      }
+
+      // Filter out Director-removed contacts BEFORE mapping/processing
+      if (directorUpdates.removedContactIds && directorUpdates.removedContactIds.length > 0) {
+          currentContactsList = currentContactsList.filter(c => !directorUpdates.removedContactIds.includes(c.id));
+      }
+
       // Update Contacts (Truth movement & AI)
-      let newContacts = state.contacts.map(contact => {
+      let newContacts = currentContactsList.map(contact => {
         // Skip destroyed contacts movement logic
         if (contact.status === 'DESTROYED') return contact;
 
@@ -1351,6 +1362,11 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       // Filter deleted trackers
       if (trackersToDelete.length > 0) {
           newTrackers = newTrackers.filter(t => !trackersToDelete.includes(t.id));
+      }
+
+      // Filter trackers for Director-removed contacts
+      if (directorUpdates.removedContactIds && directorUpdates.removedContactIds.length > 0) {
+           newTrackers = newTrackers.filter(t => !t.contactId || !directorUpdates.removedContactIds.includes(t.contactId));
       }
 
       // Update Alert Level
