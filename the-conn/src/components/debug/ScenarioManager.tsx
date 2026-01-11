@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { CONTACT_TYPES, ContactTypeKey } from '../../config/ContactDatabase';
 
 interface ScenarioManagerProps {
   onClose: () => void;
