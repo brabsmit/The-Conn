@@ -268,7 +268,12 @@ export class SonarEngine {
     // --- Internal Logic ---
 
     private initBuffers(w: number, h: number, preserveHistory: boolean = false): void {
-        const size = w * h * 4;
+        // Task 153.2: Sonar Buffer Resolution
+        // We force the internal buffer height to be at least 1024 to support the new full-height UI.
+        // If the screen is larger (e.g., 4k monitor), we use the screen height.
+        // We ignore the `h` passed in for the buffer allocation, but we use `w` as-is.
+        const bufferHeight = Math.max(h, 1024);
+        const size = w * bufferHeight * 4;
         if (size <= 0) return;
 
         // Reset Scanlines if not preserving
@@ -317,11 +322,12 @@ export class SonarEngine {
 
         // Create new textures
         // Task 132.3: Use LINEAR scaling for sub-beam smoothness
-        const opts = { width: w, height: h, wrapMode: PIXI.WRAP_MODES.REPEAT, scaleMode: PIXI.SCALE_MODES.LINEAR };
+        // Task 153.2: Use bufferHeight here
+        const opts = { width: w, height: bufferHeight, wrapMode: PIXI.WRAP_MODES.REPEAT, scaleMode: PIXI.SCALE_MODES.LINEAR };
         this.textures = {
-            fast: PIXI.Texture.fromBuffer(this.history.fast, w, h, opts),
-            med: PIXI.Texture.fromBuffer(this.history.med, w, h, opts),
-            slow: PIXI.Texture.fromBuffer(this.history.slow, w, h, opts)
+            fast: PIXI.Texture.fromBuffer(this.history.fast, w, bufferHeight, opts),
+            med: PIXI.Texture.fromBuffer(this.history.med, w, bufferHeight, opts),
+            slow: PIXI.Texture.fromBuffer(this.history.slow, w, bufferHeight, opts)
         };
 
         this.updateVisibility();
@@ -916,6 +922,7 @@ export class SonarEngine {
             tex.update();
         }
 
-        this.scanlines[speed] = (scanline + 1) % this.height;
+        // Task 153.2: Wrap around the ACTUAL buffer height (tex.height), not the screen height (this.height)
+        this.scanlines[speed] = (scanline + 1) % tex.height;
     }
 }
