@@ -7,6 +7,10 @@ import type { ContactTypeKey } from '../config/ContactDatabase';
 const createContact = (id: string, x: number, y: number, classification: any, type: 'ENEMY' | 'NEUTRAL', speed: number, heading: number): Contact => {
     const spec = CONTACT_TYPES[classification as ContactTypeKey] || CONTACT_TYPES.MERCHANT;
 
+    // Task 151: Dynamic Variation (+/- 3dB)
+    const variance = (Math.random() * 6) - 3; // Range [-3, +3]
+    const sourceLevel = spec.acoustics.baseSL + variance;
+
     return {
         id,
         x,
@@ -16,7 +20,7 @@ const createContact = (id: string, x: number, y: number, classification: any, ty
         speed,
         heading,
         depth: 50,
-        sourceLevel: spec.acoustics.baseSL,
+        sourceLevel: sourceLevel,
         baseSourceLevel: spec.acoustics.baseSL,
         acousticProfile: spec.acoustics.profile,
         transientRate: spec.acoustics.transientRate,

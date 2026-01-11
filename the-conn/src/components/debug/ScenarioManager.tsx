@@ -30,7 +30,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
     heading: 90,
     speed: 10,
     type: 'ENEMY' as 'ENEMY' | 'NEUTRAL',
-    classification: 'MERCHANT' as 'MERCHANT' | 'ESCORT' | 'SUB' | 'TRAWLER' | 'BIOLOGICAL'
+    classification: 'MERCHANT' as 'MERCHANT' | 'ESCORT' | 'SUB' | 'TRAWLER' | 'BIOLOGIC'
   });
 
   const handleSelect = (id: string, type: 'CONTACT' | 'OWNSHIP') => {
@@ -70,34 +70,23 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
       const newY = ownShip.y + rangeFt * Math.cos(radBearing);
 
       // Derive acoustic properties from classification
-      let sourceLevel = 1.0;
-      let cavitationSpeed = 10;
       let type: 'ENEMY' | 'NEUTRAL' = formData.type; // Default to form
 
-      switch (formData.classification) {
-          case 'MERCHANT':
-              sourceLevel = 1.0;
-              cavitationSpeed = 10;
-              break;
-          case 'ESCORT': // MILITANT
-              sourceLevel = 0.9;
-              cavitationSpeed = 15;
-              type = 'ENEMY';
-              break;
-          case 'SUB':
-              sourceLevel = 0.3;
-              cavitationSpeed = 12;
-              type = 'ENEMY';
-              break;
-          case 'TRAWLER':
-              sourceLevel = 0.8;
-              cavitationSpeed = 10;
-              type = 'NEUTRAL';
-          case 'BIOLOGICAL':
-              sourceLevel = 0.5;
-              cavitationSpeed = 100; // No cavitation
-              type = 'NEUTRAL';
-              break;
+      // Task 151: Use CONSTANTS for Source Level
+      const spec = CONTACT_TYPES[formData.classification as ContactTypeKey] || CONTACT_TYPES.MERCHANT;
+      const sourceLevel = spec.acoustics.baseSL;
+
+      let cavitationSpeed = 10;
+      if (formData.classification === 'ESCORT') cavitationSpeed = 15;
+      else if (formData.classification === 'SUB') cavitationSpeed = 12;
+      else if (formData.classification === 'BIOLOGIC') cavitationSpeed = 100;
+      else if (formData.classification === 'TRAWLER') cavitationSpeed = 10;
+      else cavitationSpeed = 10; // Merchant
+
+      if (formData.classification === 'ESCORT' || formData.classification === 'SUB') {
+          type = 'ENEMY';
+      } else {
+          type = 'NEUTRAL';
       }
 
       updateContact(selectedEntityId, {
@@ -122,6 +111,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
       const newX = ownShip.x; // + 0 * sin(0)
       const newY = ownShip.y + rangeFt; // + range * cos(0)
 
+      const spec = CONTACT_TYPES.MERCHANT;
+
       addContact({
           id,
           x: newX,
@@ -130,7 +121,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
           speed: 5,
           type: 'ENEMY',
           classification: 'MERCHANT',
-          sourceLevel: 1.0,
+          sourceLevel: spec.acoustics.baseSL,
           cavitationSpeed: 10
       });
       handleSelect(id, 'CONTACT');
@@ -305,7 +296,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                             <option value="ESCORT">MILITANT (ESCORT)</option>
                             <option value="SUB">SUBMARINE</option>
                             <option value="TRAWLER">TRAWLER</option>
-                            <option value="BIOLOGICAL">BIOLOGICAL</option>
+                            <option value="BIOLOGIC">BIOLOGIC</option>
                         </select>
                     </div>
 

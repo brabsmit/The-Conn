@@ -1,5 +1,6 @@
 import { useSubmarineStore } from '../store/useSubmarineStore';
 import type { Contact, Tracker } from '../store/useSubmarineStore';
+import { CONTACT_TYPES } from '../config/ContactDatabase';
 
 export const loadAmbushScenario = () => {
     const store = useSubmarineStore.getState();
@@ -26,6 +27,10 @@ export const loadAmbushScenario = () => {
     const s1X = s1Range * Math.sin(s1BearingRad);
     const s1Y = s1Range * Math.cos(s1BearingRad);
 
+    const merchantSpec = CONTACT_TYPES.MERCHANT;
+    // Task 151: Dynamic Variation (+/- 3dB)
+    const mVariance = (Math.random() * 6) - 3;
+
     const merchant: Contact = {
         id: 'Sierra-1',
         x: s1X,
@@ -34,7 +39,8 @@ export const loadAmbushScenario = () => {
         speed: 12,
         type: 'NEUTRAL', // Assuming merchant is neutral or enemy merchant? Task says "Merchant". Usually neutral, but can be target. Store defaults "ENEMY" | "NEUTRAL".
         classification: 'MERCHANT',
-        sourceLevel: 148, // Task 119.1: Loud (Absolute dB)
+        sourceLevel: merchantSpec.acoustics.baseSL + mVariance, // Task 151: 135 +/- 3
+        baseSourceLevel: merchantSpec.acoustics.baseSL,
         cavitationSpeed: 10, // Cavitates early
         status: 'ACTIVE'
     };
@@ -46,6 +52,9 @@ export const loadAmbushScenario = () => {
     const s2X = s2Range * Math.sin(s2BearingRad);
     const s2Y = s2Range * Math.cos(s2BearingRad);
 
+    const subSpec = CONTACT_TYPES.SUB;
+    const sVariance = (Math.random() * 6) - 3;
+
     const enemySub: Contact = {
         id: 'Sierra-2',
         x: s2X,
@@ -54,7 +63,8 @@ export const loadAmbushScenario = () => {
         speed: 5,
         type: 'ENEMY',
         classification: 'SUB',
-        sourceLevel: 120, // Task 117.1: Quiet (Absolute dB)
+        sourceLevel: subSpec.acoustics.baseSL + sVariance, // Task 151: 105 +/- 3
+        baseSourceLevel: subSpec.acoustics.baseSL,
         cavitationSpeed: 20, // Good screw
         aiMode: 'IDLE',
         sensitivity: 300000000, // Tuned for detection

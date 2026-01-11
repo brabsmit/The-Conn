@@ -2,7 +2,7 @@ export const CONTACT_TYPES = {
     MERCHANT: {
         name: "Standard Merchant",
         acoustics: {
-            baseSL: 165,       // Steady droning
+            baseSL: 135,       // Task 151: Loud. Detected ~20kyds
             profile: "CLEAN",  // Consistent noise output
             transientRate: 0.00 // Rare random noise spikes
         },
@@ -15,7 +15,7 @@ export const CONTACT_TYPES = {
     TRAWLER: {
         name: "Fishing Trawler",
         acoustics: {
-            baseSL: 160,
+            baseSL: 125,       // Task 151: Medium. Detected ~12kyds
             profile: "DIRTY",  // Mechanical rattling
             transientRate: 0.03 // Frequent "clanks" (nets/chains)
         },
@@ -28,7 +28,7 @@ export const CONTACT_TYPES = {
     ESCORT: {
         name: "Surface Escort",
         acoustics: {
-            baseSL: 145,
+            baseSL: 120,       // Task 151: Quieter/Fast (Warship). Detected ~9kyds
             profile: "CLEAN",
             transientRate: 0.0
         },
@@ -41,7 +41,7 @@ export const CONTACT_TYPES = {
     SUB: {
         name: "Attack Submarine",
         acoustics: {
-            baseSL: 130,
+            baseSL: 105,       // Task 151: Stealth. Detected ~5kyds
             profile: "CLEAN",
             transientRate: 0.00 // Very disciplined
         },
@@ -54,7 +54,7 @@ export const CONTACT_TYPES = {
     BIOLOGIC: {
         name: "Biologic",
         acoustics: {
-            baseSL: 115,
+            baseSL: 115,       // Unchanged? Task doesn't specify. Keeping 115.
             profile: "DIRTY", // Organic irregularity
             transientRate: 0.5 // Clicks/Whistles
         },

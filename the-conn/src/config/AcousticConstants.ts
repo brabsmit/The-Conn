@@ -1,11 +1,11 @@
 export const ACOUSTICS = {
     // 1. The Targets (Source Levels in dB)
     SOURCE_LEVELS: {
-        MERCHANT: 148,  // Standard Transit
-        TRAWLER: 142,   // Diesel Chug
-        BIOLOGIC: 115,  // Whale Clicks
-        ESCORT: 145,    // Warship machinery
-        SUB: 130,       // Standard Sub
+        MERCHANT: 135,  // Task 151: Loud
+        TRAWLER: 125,   // Task 151: Medium
+        BIOLOGIC: 115,  // Unchanged
+        ESCORT: 120,    // Task 151: Warship
+        SUB: 105,       // Task 151: Stealth
         TORPEDO: 180    // Screaming
     },
 
