@@ -7,6 +7,36 @@ import { useResize } from '../../hooks/useResize';
 import { RangeTriageDisplay } from '../panels/RangeTriageDisplay';
 import { calculateTargetPosition, FEET_PER_KNOT_SEC, normalizeAngle } from '../../lib/tma';
 
+interface GeometrySnapshot {
+    time: number;
+    ownShip: { x: number, y: number, heading: number };
+    bearing: number; // True Bearing
+}
+
+const getProjectedPointOnLine = (
+    mouse: { x: number, y: number },
+    origin: { x: number, y: number },
+    bearingDeg: number
+) => {
+    const rad = (bearingDeg * Math.PI) / 180;
+    const dx = Math.sin(rad);
+    const dy = Math.cos(rad);
+
+    // Vector V = Mouse - Origin
+    const vx = mouse.x - origin.x;
+    const vy = mouse.y - origin.y;
+
+    // t = V . D
+    const t = vx * dx + vy * dy;
+
+    // Projection P = Origin + t * D
+    return {
+        x: origin.x + t * dx,
+        y: origin.y + t * dy,
+        t: t
+    };
+};
+
 // Colors
 const COLOR_BG = 0x001133;
 const COLOR_OWN_SHIP = 0x0088FF; // Blue
@@ -48,6 +78,27 @@ const GeoDisplay: React.FC = () => {
 
     // Viewport State
     const [viewport, setViewport] = React.useState({ x: 0, y: 0, zoom: 1.0 });
+    const [geometrySnapshot, setGeometrySnapshot] = React.useState<GeometrySnapshot | null>(null);
+
+    // Snapshot Logic
+    const updateSnapshot = React.useCallback(() => {
+        if (!selectedTracker) return;
+        const trueBearing = normalizeAngle(ownShip.heading + selectedTracker.currentBearing);
+        setGeometrySnapshot({
+            time: gameTime,
+            ownShip: { ...ownShip },
+            bearing: trueBearing
+        });
+    }, [ownShip, selectedTracker, gameTime]);
+
+    React.useEffect(() => {
+        if (selectedTrackerId) {
+            updateSnapshot();
+        } else {
+            setGeometrySnapshot(null);
+        }
+    }, [selectedTrackerId]); // Only trigger on selection change
+
     const isDragging = React.useRef(false);
     const isDraggingHandle = React.useRef<'P1' | 'P2' | null>(null);
     const lastMousePos = React.useRef({ x: 0, y: 0 });
@@ -101,82 +152,77 @@ const GeoDisplay: React.FC = () => {
 
             const mouseWorldX = ownShip.x + ((e.clientX - center.x) / globalScale);
             const mouseWorldY = ownShip.y - ((e.clientY - center.y) / globalScale); // Note the sign flip for Y
-
-            // Helper: Project Point M onto Ray(Origin O, Angle theta)
-            // Ray Dir D = (sin(theta), cos(theta))
-            // Vector V = M - O
-            // t = V . D
-            // Proj = O + t * D
+            const mouseWorld = { x: mouseWorldX, y: mouseWorldY };
 
             if (isDraggingHandle.current === 'P1') {
-                // Dragging Anchor
+                // Dragging Anchor (P1)
                 // Constraint: Bearing Line 1 (from anchorOwnShip along solution.bearing)
-                const origin = solution.anchorOwnShip;
-                const thetaRad = (solution.bearing * Math.PI) / 180;
-                const Dx = Math.sin(thetaRad);
-                const Dy = Math.cos(thetaRad);
+                const p1Proj = getProjectedPointOnLine(mouseWorld, solution.anchorOwnShip, solution.bearing);
+                let newRange = Math.max(100, p1Proj.t / 3);
 
-                const Vx = mouseWorldX - origin.x;
-                const Vy = mouseWorldY - origin.y;
+                // Scenario A: P1 moves. P2 stays fixed in space (relative to world).
+                // Existing P2 World Pos:
+                const p2World = calculateTargetPosition(solution, gameTime);
 
-                let t = Vx * Dx + Vy * Dy;
-                if (t < 100) t = 100; // Min Range
+                // New P1 World Pos:
+                const rad = (solution.bearing * Math.PI) / 180;
+                const newP1X = solution.anchorOwnShip.x + Math.sin(rad) * newRange * 3;
+                const newP1Y = solution.anchorOwnShip.y + Math.cos(rad) * newRange * 3;
 
-                // New Range = t / 3 (ft -> yards)
-                const newRange = t / 3;
+                // Vector NewP1 -> FixedP2
+                const vecX = p2World.x - newP1X;
+                const vecY = p2World.y - newP1Y;
+                const dist = Math.sqrt(vecX*vecX + vecY*vecY);
 
-                updateTrackerSolution(tracker.id, { range: newRange });
-            }
-            else if (isDraggingHandle.current === 'P2') {
-                // Dragging Current Pos
-                // Constraint: Bearing Line 2 (from Current Ownship along tracker.currentBearing)
-                const origin = ownShip; // Current Ownship
-                const thetaRad = (tracker.currentBearing + ownShip.heading) * (Math.PI / 180); // Absolute Bearing
-                // Wait, tracker.currentBearing is RELATIVE.
-                // We need True Bearing?
-                // The tracker stores currentBearing as Relative (0-360).
-                // Or True? Let's check store logic.
-                // Store: `currentBearing = reading.bearing` (Noisy Relative) or `relBearing` (True - Heading).
-                // It seems `currentBearing` is Relative.
-                // So True Bearing = Heading + Relative.
-
-                const trueBearingRad = (ownShip.heading + tracker.currentBearing) * (Math.PI / 180);
-
-                const Dx = Math.sin(trueBearingRad);
-                const Dy = Math.cos(trueBearingRad);
-
-                const Vx = mouseWorldX - origin.x;
-                const Vy = mouseWorldY - origin.y;
-
-                let t = Vx * Dx + Vy * Dy;
-                if (t < 100) t = 100;
-
-                // Projected P2
-                const newP2X = origin.x + t * Dx;
-                const newP2Y = origin.y + t * Dy;
-
-                // Calculate New Course / Speed based on Vector (P1 -> NewP2)
-                // P1 is Fixed (derived from current solution.range)
-                const p1Rad = (solution.bearing * Math.PI) / 180;
-                const p1Dist = solution.range * 3;
-                const p1X = solution.anchorOwnShip.x + Math.sin(p1Rad) * p1Dist;
-                const p1Y = solution.anchorOwnShip.y + Math.cos(p1Rad) * p1Dist;
-
-                const vectorX = newP2X - p1X;
-                const vectorY = newP2Y - p1Y;
-                const distFt = Math.sqrt(vectorX * vectorX + vectorY * vectorY);
-
-                // Course = Angle of Vector
-                let newCourse = Math.atan2(vectorX, vectorY) * (180 / Math.PI);
-                newCourse = normalizeAngle(newCourse);
-
-                // Speed = Dist / Time
+                // New Course/Speed
+                let newCourse = normalizeAngle(Math.atan2(vecX, vecY) * (180 / Math.PI));
                 const dt = gameTime - solution.anchorTime;
                 if (dt > 0.1) {
-                    const speedFps = distFt / dt;
-                    const newSpeed = speedFps / FEET_PER_KNOT_SEC;
-                    updateTrackerSolution(tracker.id, { course: newCourse, speed: newSpeed });
+                     const speedFps = dist / dt;
+                     const newSpeed = speedFps / FEET_PER_KNOT_SEC;
+                     updateTrackerSolution(tracker.id, { range: newRange, course: newCourse, speed: newSpeed });
                 }
+            }
+            else if (isDraggingHandle.current === 'P2') {
+                 // Scenario B: Dragging Current Pos (P2)
+                 // Constraint: Bearing Line 2. Use Snapshot if available to lock line.
+                 // If no snapshot, fallback to live data (which may jitter).
+                 let origin = ownShip;
+                 let bearing = normalizeAngle(tracker.currentBearing + ownShip.heading);
+
+                 if (geometrySnapshot) {
+                     origin = geometrySnapshot.ownShip;
+                     bearing = geometrySnapshot.bearing;
+                 }
+
+                 const p2Proj = getProjectedPointOnLine(mouseWorld, origin, bearing);
+
+                 if (p2Proj.t > 100) { // Min range check
+                      const newP2X = p2Proj.x;
+                      const newP2Y = p2Proj.y;
+
+                      // P1 is Fixed (derived from current solution.range)
+                      const p1Rad = (solution.bearing * Math.PI) / 180;
+                      const p1Dist = solution.range * 3;
+                      const p1X = solution.anchorOwnShip.x + Math.sin(p1Rad) * p1Dist;
+                      const p1Y = solution.anchorOwnShip.y + Math.cos(p1Rad) * p1Dist;
+
+                      const vectorX = newP2X - p1X;
+                      const vectorY = newP2Y - p1Y;
+                      const distFt = Math.sqrt(vectorX * vectorX + vectorY * vectorY);
+
+                      // Course = Angle of Vector
+                      let newCourse = Math.atan2(vectorX, vectorY) * (180 / Math.PI);
+                      newCourse = normalizeAngle(newCourse);
+
+                      // Speed = Dist / Time
+                      const dt = gameTime - solution.anchorTime;
+                      if (dt > 0.1) {
+                          const speedFps = distFt / dt;
+                          const newSpeed = speedFps / FEET_PER_KNOT_SEC;
+                          updateTrackerSolution(tracker.id, { course: newCourse, speed: newSpeed });
+                      }
+                 }
             }
 
         } else if (isDragging.current) {
@@ -276,6 +322,7 @@ const GeoDisplay: React.FC = () => {
                                 gameTime={gameTime}
                                 onDragStart={startDragHandle}
                                 viewportZoom={viewport.zoom}
+                                geometrySnapshot={geometrySnapshot}
                             />
                         )}
 
@@ -300,6 +347,16 @@ const GeoDisplay: React.FC = () => {
                     }`}
                 >
                     {showRangeTriage ? 'HIDE TRIAGE' : 'SHOW TRIAGE'}
+                </button>
+            </div>
+
+            {/* Sync Button */}
+             <div className="absolute bottom-2 right-24 pointer-events-auto">
+                <button
+                    onClick={updateSnapshot}
+                    className="px-2 py-1 text-xs font-bold font-mono border rounded bg-black/50 text-cyan-600 border-zinc-800 hover:text-cyan-400"
+                >
+                    SYNC T2
                 </button>
             </div>
 
@@ -355,8 +412,9 @@ const StripPlotOverlay: React.FC<{
     scale: number,
     gameTime: number,
     onDragStart: (handle: 'P1' | 'P2') => void,
-    viewportZoom: number
-}> = ({ tracker, ownShip, scale, gameTime, onDragStart, viewportZoom }) => {
+    viewportZoom: number,
+    geometrySnapshot: GeometrySnapshot | null
+}> = ({ tracker, ownShip, scale, gameTime, onDragStart, viewportZoom, geometrySnapshot }) => {
     const { solution } = tracker;
 
     // 1. Calculate P1 (Anchor Position)
@@ -392,9 +450,17 @@ const StripPlotOverlay: React.FC<{
     const relAnchorOwnX = (solution.anchorOwnShip.x - ownShip.x) * scale;
     const relAnchorOwnY = -(solution.anchorOwnShip.y - ownShip.y) * scale;
 
-    // Line 2: From Current Ownship along tracker.currentBearing
-    const relCurrentOwnX = 0; // Relative to current ownship is 0
-    const relCurrentOwnY = 0;
+    // Line 2: From Current Ownship along tracker.currentBearing (or Snapshot)
+    let origin2 = ownShip;
+    let bearing2 = normalizeAngle(tracker.currentBearing + ownShip.heading);
+
+    if (geometrySnapshot) {
+        origin2 = geometrySnapshot.ownShip;
+        bearing2 = geometrySnapshot.bearing;
+    }
+
+    const relOrigin2X = (origin2.x - ownShip.x) * scale;
+    const relOrigin2Y = -(origin2.y - ownShip.y) * scale;
 
     // Render Function
     const draw = React.useCallback((g: PIXI.Graphics) => {
@@ -410,33 +476,22 @@ const StripPlotOverlay: React.FC<{
         g.moveTo(relAnchorOwnX, relAnchorOwnY);
         g.lineTo(relAnchorOwnX + vec1X, relAnchorOwnY + vec1Y);
 
-        // -- Bearing Line 2 (Current) --
-        // tracker.currentBearing is Relative. Add Ownship Heading for visual True Bearing?
-        // Wait, currentBearing in store IS relative to heading?
-        // `currentBearing` is relative in store logic (`sensor.bearing` which is rel).
-        // But visuals in PIXI usually assume 0 is UP (-Y).
-        // If Ownship is Heading 0, then Rel 0 is Up.
-        // If Ownship is Heading 90, Rel 0 is Right.
-        // But our "Mode: North-Up".
-        // Ownship Graphic is Rotated by Heading.
-        // The View is North-Up.
-        // So we need Absolute Bearing.
-        // Absolute = Heading + Relative.
-        const bearing2Rad = (tracker.currentBearing + ownShip.heading) * (Math.PI / 180);
+        // -- Bearing Line 2 (Current or Snapshot) --
+        const bearing2Rad = (bearing2 * Math.PI) / 180;
         const vec2X = Math.sin(bearing2Rad) * 20000 * scale;
         const vec2Y = -Math.cos(bearing2Rad) * 20000 * scale;
 
         g.lineStyle(1, COLOR_BEARING_LINE, 0.3);
-        // From Current Ownship
-        g.moveTo(relCurrentOwnX, relCurrentOwnY);
-        g.lineTo(relCurrentOwnX + vec2X, relCurrentOwnY + vec2Y);
+        // From Line 2 Origin
+        g.moveTo(relOrigin2X, relOrigin2Y);
+        g.lineTo(relOrigin2X + vec2X, relOrigin2Y + vec2Y);
 
         // -- Solution Vector (P1 -> P2) --
         g.lineStyle(2, COLOR_SOLUTION_LINE, 0.8);
         g.moveTo(relP1X, relP1Y);
         g.lineTo(relP2X, relP2Y);
 
-    }, [relP1X, relP1Y, relP2X, relP2Y, relAnchorOwnX, relAnchorOwnY, relCurrentOwnX, relCurrentOwnY, solution.bearing, tracker.currentBearing, scale, ownShip.heading]);
+    }, [relP1X, relP1Y, relP2X, relP2Y, relAnchorOwnX, relAnchorOwnY, relOrigin2X, relOrigin2Y, solution.bearing, bearing2, scale]);
 
     // Handle Radius logic
     // We want a constant visual size handle regardless of zoom
