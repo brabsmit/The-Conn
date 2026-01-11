@@ -733,6 +733,8 @@ export class SonarEngine {
             if (contact.status === 'DESTROYED') return;
 
             // Physics Stats
+            // Task 151.3: Use correct Source Level from contact (now populated from constants)
+            // Fallback to 120 if missing, but ContactDatabase ensures new contacts have it.
             let sourceLevel = contact.sourceLevel || 120;
 
             // Legacy Support (If value is small < 50, treat as modifier)
@@ -775,6 +777,8 @@ export class SonarEngine {
             // Task 129.1: Revert "Range Step" Logic
             // Let the physics engine determine the raw width (Sinc function width).
             // We pass the physical beam width.
+            // Task 151.3: Physics Check - SonarArray.addSignal converts dB to Power
+            // Power = 10^((SL - TL) / 10). Signal 'rl' passed here is (SL - TL).
             this.sonarArray.addSignal(relBearing, signal, ACOUSTICS.ARRAY.BEAM_WIDTH);
         });
 
