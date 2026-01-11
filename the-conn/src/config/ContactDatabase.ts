@@ -15,7 +15,7 @@ export const CONTACT_TYPES = {
     TRAWLER: {
         name: "Fishing Trawler",
         acoustics: {
-            baseSL: 140,       // Task 151: Medium. Detected ~12kyds
+            baseSL: 143,       // Task 151: Medium. Detected ~12kyds
             profile: "DIRTY",  // Mechanical rattling
             transientRate: 0.03 // Frequent "clanks" (nets/chains)
         },

@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { CONTACT_TYPES } from '../../config/ContactDatabase';
+import type  { ContactTypeKey } from '../../config/ContactDatabase';
+
 
 interface ScenarioManagerProps {
   onClose: () => void;
