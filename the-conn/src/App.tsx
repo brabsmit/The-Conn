@@ -61,10 +61,10 @@ function App() {
       <TopBar />
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
-      <div className="flex-grow flex w-full overflow-hidden p-4 gap-4 relative z-10">
+      <div className="flex-grow grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-4 gap-4 relative z-10">
         
         {/* PANE A: Sonar Panel (Left) */}
-        <div className="w-[350px] flex-shrink-0 h-full flex flex-col gap-4">
+        <div className="h-full flex flex-col gap-4 min-w-0">
           <Panel
             title="Sonar Array"
             className="h-[70%] flex flex-col overflow-hidden"
@@ -85,7 +85,7 @@ function App() {
         </div>
 
         {/* PANE B: Main Scope (Center) */}
-        <div className="flex-grow h-full relative overflow-hidden flex flex-col">
+        <div className="h-full relative overflow-hidden flex flex-col min-w-0">
             <Panel
               title={
                 activeStation === 'TMA' ? "Tactical Plot" :
@@ -137,7 +137,7 @@ function App() {
         </div>
 
         {/* PANE C: Control Sidebar (Right) */}
-        <div className="w-[300px] flex-shrink-0 h-full flex flex-col">
+        <div className="h-full flex flex-col min-w-0">
              <Panel title="TMA Controls" className="h-full flex flex-col overflow-hidden">
                 <div className="flex-grow overflow-hidden">
                    <TMAControls />
