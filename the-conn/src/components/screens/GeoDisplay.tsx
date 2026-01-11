@@ -5,6 +5,7 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import type { Contact, Tracker, Torpedo } from '../../store/useSubmarineStore';
 import { useResize } from '../../hooks/useResize';
 import { RangeTriageDisplay } from '../panels/RangeTriageDisplay';
+import { calculateTargetPosition, FEET_PER_KNOT_SEC, normalizeAngle } from '../../lib/tma';
 
 // Colors
 const COLOR_BG = 0x001133;
@@ -14,11 +15,9 @@ const COLOR_TRACKER_RED = 0xFF0000; // Weapon Trace
 const COLOR_SELECTED = 0xFF8800; // Orange
 const COLOR_TORPEDO = 0xFFFF00; // Yellow
 const COLOR_RANGE_RING = 0x445566;
-
-// Zone Colors
-const COLOR_ZONE_RED = 0xFF0000;
-const COLOR_ZONE_YELLOW = 0xFFFF00;
-const COLOR_ZONE_GREEN = 0x00FF00;
+const COLOR_BEARING_LINE = 0x00FFFF; // Cyan
+const COLOR_SOLUTION_LINE = 0xFFFFFF; // White
+const COLOR_HANDLE = 0xFFFFFF;
 
 // Constants
 const VIEW_RADIUS_YARDS = 12000;
@@ -38,11 +37,20 @@ const GeoDisplay: React.FC = () => {
     const selectedTrackerId = useSubmarineStore(state => state.selectedTrackerId);
     const torpedoes = useSubmarineStore(state => state.torpedoes);
     const gameTime = useSubmarineStore(state => state.gameTime);
+    const updateTrackerSolution = useSubmarineStore(state => state.updateTrackerSolution);
 
     // Store God Mode
     const isGodMode = useSubmarineStore(state => state.godMode);
     const expertMode = useSubmarineStore(state => state.expertMode);
     const toggleGodMode = useSubmarineStore(state => state.toggleGodMode);
+
+    const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
+
+    // Viewport State
+    const [viewport, setViewport] = React.useState({ x: 0, y: 0, zoom: 1.0 });
+    const isDragging = React.useRef(false);
+    const isDraggingHandle = React.useRef<'P1' | 'P2' | null>(null);
+    const lastMousePos = React.useRef({ x: 0, y: 0 });
 
     // Keyboard Handler for Hidden Toggle
     React.useEffect(() => {
@@ -55,70 +63,175 @@ const GeoDisplay: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [toggleGodMode]);
 
-    // Coordinate Transform: World (Yards) -> Screen (Pixels)
-    // Scale: Fit 12k yards?
-    const scale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
+    // Coordinate Transform
+    const baseScale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
+    const center = { x: (width / 2) + viewport.x, y: (height / 2) + viewport.y };
+    const globalScale = baseScale * viewport.zoom;
+
+    // Pan/Zoom Handlers
+    const handleWheel = (e: React.WheelEvent) => {
+        const zoomFactor = 1.1;
+        const newZoom = e.deltaY < 0 ? viewport.zoom * zoomFactor : viewport.zoom / zoomFactor;
+        // Clamp Zoom
+        const clampedZoom = Math.max(0.1, Math.min(5.0, newZoom));
+        setViewport(prev => ({ ...prev, zoom: clampedZoom }));
+    };
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        // Only Pan on Right Click or Middle Click
+        // Left Click handled by Graphics components if they stop propagation, but we use 'isDraggingHandle' flag.
+        if (e.button === 2 || e.button === 1) {
+             isDragging.current = true;
+             lastMousePos.current = { x: e.clientX, y: e.clientY };
+             e.preventDefault();
+        }
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (isDraggingHandle.current && selectedTracker) {
+            // -- INTERACTIVE STRIP PLOT LOGIC --
+            const tracker = selectedTracker;
+            const solution = tracker.solution;
+
+            // Convert Screen -> World
+            // ScreenX = CenterX + (WorldX - OwnShipX) * GlobalScale
+            // WorldX = ((ScreenX - CenterX) / GlobalScale) + OwnShipX
+            // ScreenY = CenterY - (WorldY - OwnShipY) * GlobalScale (Y Flip)
+            // WorldY = OwnShipY - ((ScreenY - CenterY) / GlobalScale)
+
+            const mouseWorldX = ownShip.x + ((e.clientX - center.x) / globalScale);
+            const mouseWorldY = ownShip.y - ((e.clientY - center.y) / globalScale); // Note the sign flip for Y
+
+            // Helper: Project Point M onto Ray(Origin O, Angle theta)
+            // Ray Dir D = (sin(theta), cos(theta))
+            // Vector V = M - O
+            // t = V . D
+            // Proj = O + t * D
+
+            if (isDraggingHandle.current === 'P1') {
+                // Dragging Anchor
+                // Constraint: Bearing Line 1 (from anchorOwnShip along solution.bearing)
+                const origin = solution.anchorOwnShip;
+                const thetaRad = (solution.bearing * Math.PI) / 180;
+                const Dx = Math.sin(thetaRad);
+                const Dy = Math.cos(thetaRad);
+
+                const Vx = mouseWorldX - origin.x;
+                const Vy = mouseWorldY - origin.y;
+
+                let t = Vx * Dx + Vy * Dy;
+                if (t < 100) t = 100; // Min Range
+
+                // New Range = t / 3 (ft -> yards)
+                const newRange = t / 3;
+
+                updateTrackerSolution(tracker.id, { range: newRange });
+            }
+            else if (isDraggingHandle.current === 'P2') {
+                // Dragging Current Pos
+                // Constraint: Bearing Line 2 (from Current Ownship along tracker.currentBearing)
+                const origin = ownShip; // Current Ownship
+                const thetaRad = (tracker.currentBearing + ownShip.heading) * (Math.PI / 180); // Absolute Bearing
+                // Wait, tracker.currentBearing is RELATIVE.
+                // We need True Bearing?
+                // The tracker stores currentBearing as Relative (0-360).
+                // Or True? Let's check store logic.
+                // Store: `currentBearing = reading.bearing` (Noisy Relative) or `relBearing` (True - Heading).
+                // It seems `currentBearing` is Relative.
+                // So True Bearing = Heading + Relative.
+
+                const trueBearingRad = (ownShip.heading + tracker.currentBearing) * (Math.PI / 180);
+
+                const Dx = Math.sin(trueBearingRad);
+                const Dy = Math.cos(trueBearingRad);
+
+                const Vx = mouseWorldX - origin.x;
+                const Vy = mouseWorldY - origin.y;
+
+                let t = Vx * Dx + Vy * Dy;
+                if (t < 100) t = 100;
+
+                // Projected P2
+                const newP2X = origin.x + t * Dx;
+                const newP2Y = origin.y + t * Dy;
+
+                // Calculate New Course / Speed based on Vector (P1 -> NewP2)
+                // P1 is Fixed (derived from current solution.range)
+                const p1Rad = (solution.bearing * Math.PI) / 180;
+                const p1Dist = solution.range * 3;
+                const p1X = solution.anchorOwnShip.x + Math.sin(p1Rad) * p1Dist;
+                const p1Y = solution.anchorOwnShip.y + Math.cos(p1Rad) * p1Dist;
+
+                const vectorX = newP2X - p1X;
+                const vectorY = newP2Y - p1Y;
+                const distFt = Math.sqrt(vectorX * vectorX + vectorY * vectorY);
+
+                // Course = Angle of Vector
+                let newCourse = Math.atan2(vectorX, vectorY) * (180 / Math.PI);
+                newCourse = normalizeAngle(newCourse);
+
+                // Speed = Dist / Time
+                const dt = gameTime - solution.anchorTime;
+                if (dt > 0.1) {
+                    const speedFps = distFt / dt;
+                    const newSpeed = speedFps / FEET_PER_KNOT_SEC;
+                    updateTrackerSolution(tracker.id, { course: newCourse, speed: newSpeed });
+                }
+            }
+
+        } else if (isDragging.current) {
+            const dx = e.clientX - lastMousePos.current.x;
+            const dy = e.clientY - lastMousePos.current.y;
+            setViewport(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+            lastMousePos.current = { x: e.clientX, y: e.clientY };
+        }
+    };
+
+    const handleMouseUp = () => {
+        isDragging.current = false;
+        isDraggingHandle.current = null;
+    };
+
+    const handleCenter = () => {
+        setViewport({ x: 0, y: 0, zoom: 1.0 });
+    };
 
     const [showRangeTriage, setShowRangeTriage] = React.useState(false);
 
-    // Check if Ownship is in the Green Zone of any TRACKED target with a valid solution
-    const selectedTracker = trackers.find(t => t.id === selectedTrackerId);
-    let isSolutionIdeal = false;
+    // Disable Context Menu
+    const handleContextMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+    };
 
-    if (selectedTracker && selectedTracker.solution.range > 0) {
-       // Re-calculate geometry for the selected tracker to determine zone status
-       // This duplicates logic inside TrackerSymbol but is needed for the global UI overlay.
-       // Ideally we could lift this state up, but for now we recalculate.
-
-       // Project Target Position
-       const sol = selectedTracker.solution;
-       const timeDelta = gameTime - sol.anchorTime;
-       const speedYps = sol.speed * 0.5629;
-       const distTraveled = speedYps * timeDelta;
-
-       const radAnchorBearing = (sol.bearing * Math.PI) / 180;
-       const anchorTargetX = sol.anchorOwnShip.x + Math.sin(radAnchorBearing) * sol.range;
-       const anchorTargetY = sol.anchorOwnShip.y + Math.cos(radAnchorBearing) * sol.range;
-
-       const radCourse = (sol.course * Math.PI) / 180;
-       const currentTargetX = anchorTargetX + Math.sin(radCourse) * distTraveled;
-       const currentTargetY = anchorTargetY + Math.cos(radCourse) * distTraveled;
-
-       // Vector Target -> Ownship
-       const dx = ownShip.x - currentTargetX;
-       const dy = ownShip.y - currentTargetY;
-
-       // Bearing from Target to Ownship (0 is North)
-       let bearingFromTarget = Math.atan2(dx, dy) * (180 / Math.PI);
-       if (bearingFromTarget < 0) bearingFromTarget += 360;
-
-       // Aspect = BearingFromTarget - TargetHeading
-       let aspect = bearingFromTarget - sol.course;
-       // Normalize to -180 to 180
-       while (aspect > 180) aspect -= 360;
-       while (aspect <= -180) aspect += 360;
-
-       // Green Zone: Stern +/- 60 deg -> Abs(Aspect) > 120 (since Stern is 180)
-       if (Math.abs(aspect) >= 120) {
-           isSolutionIdeal = true;
-       }
-    }
+    // Callback to start dragging a handle
+    const startDragHandle = (handle: 'P1' | 'P2') => {
+        isDraggingHandle.current = handle;
+    };
 
     return (
-        <div ref={parentRef} className={`w-full h-full bg-[#001133] relative overflow-hidden select-none ${isGodMode ? 'border-4 border-red-500/50' : ''}`}>
+        <div
+            ref={parentRef}
+            className={`w-full h-full bg-[#001133] relative overflow-hidden select-none ${isGodMode ? 'border-4 border-red-500/50' : ''}`}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onContextMenu={handleContextMenu}
+        >
             {width > 0 && height > 0 && (
                 <Stage width={width} height={height} options={{ background: COLOR_BG, antialias: true }}>
-                    <Container x={width / 2} y={height / 2}>
+                    <Container x={(width / 2) + viewport.x} y={(height / 2) + viewport.y} scale={viewport.zoom}>
                         {/* 1. Grid / Range Rings */}
-                        <RangeRings scale={scale} />
+                        <RangeRings scale={baseScale} />
 
-                        {/* 2. Trackers (Normal Mode) - Hide if God Mode enabled to avoid clutter? Or Overlay? Usually overlay. */}
+                        {/* 2. Trackers (Normal Mode) */}
                         {trackers.map(tracker => (
                             <TrackerSymbol
                                 key={tracker.id}
                                 tracker={tracker}
                                 ownShip={ownShip}
-                                scale={scale}
+                                scale={baseScale}
                                 isSelected={tracker.id === selectedTrackerId}
                                 gameTime={gameTime}
                             />
@@ -130,21 +243,15 @@ const GeoDisplay: React.FC = () => {
                                 key={contact.id}
                                 contact={contact}
                                 ownShip={ownShip}
-                                scale={scale}
+                                scale={baseScale}
                             />
                         ))}
 
                         {/* 3. Torpedoes */}
                         {torpedoes.filter(torpedo => {
-                            // Fog of War: Only render if:
-                            // 1. Ownship weapon (or God Mode)
-                            // 2. Detected (Tracker exists)
-                            // Note: Weapon Trackers use ID format `W-{torpID}`
                             if (isGodMode) return true;
-                            if (torpedo.designatedTargetId === 'OWNSHIP' && torpedo.isHostile === false) return true; // Failsafe? Actually Ownship torpedoes are not hostile.
-                            if (!torpedo.isHostile) return true; // Own weapons
-
-                            // Check for tracker
+                            if (torpedo.designatedTargetId === 'OWNSHIP' && torpedo.isHostile === false) return true;
+                            if (!torpedo.isHostile) return true;
                             const trackerId = `W-${torpedo.id}`;
                             const isDetected = trackers.some(t => t.id === trackerId);
                             return isDetected;
@@ -153,12 +260,25 @@ const GeoDisplay: React.FC = () => {
                                 key={torpedo.id}
                                 torpedo={torpedo}
                                 ownShip={ownShip}
-                                scale={scale}
+                                scale={baseScale}
                             />
                         ))}
 
                         {/* 4. Ownship (Last so it's on top) */}
                         <OwnShipSymbol heading={ownShip.heading} />
+
+                        {/* 5. Strip Plot Overlay (Interactive) */}
+                        {selectedTracker && selectedTracker.solution.range > 0 && (
+                            <StripPlotOverlay
+                                tracker={selectedTracker}
+                                ownShip={ownShip}
+                                scale={baseScale}
+                                gameTime={gameTime}
+                                onDragStart={startDragHandle}
+                                viewportZoom={viewport.zoom}
+                            />
+                        )}
+
                     </Container>
                 </Stage>
             )}
@@ -182,6 +302,17 @@ const GeoDisplay: React.FC = () => {
                     {showRangeTriage ? 'HIDE TRIAGE' : 'SHOW TRIAGE'}
                 </button>
             </div>
+
+            {/* Center Button */}
+             <div className="absolute bottom-2 right-2 pointer-events-auto">
+                <button
+                    onClick={handleCenter}
+                    className="px-2 py-1 text-xs font-bold font-mono border rounded bg-black/50 text-cyan-600 border-zinc-800 hover:text-cyan-400"
+                >
+                    CENTER
+                </button>
+            </div>
+
 
             {/* Range Triage Display */}
             {showRangeTriage && (
@@ -212,18 +343,154 @@ const GeoDisplay: React.FC = () => {
                     </button>
                 </div>
             )}
-
-            {/* SOLUTION IDEAL INDICATOR */}
-            {isSolutionIdeal && (
-                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 text-green-400 font-bold text-lg animate-pulse pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
-                    SOLUTION IDEAL
-                </div>
-            )}
         </div>
     );
 };
 
 // --- Subcomponents ---
+
+const StripPlotOverlay: React.FC<{
+    tracker: Tracker,
+    ownShip: { x: number, y: number, heading: number },
+    scale: number,
+    gameTime: number,
+    onDragStart: (handle: 'P1' | 'P2') => void,
+    viewportZoom: number
+}> = ({ tracker, ownShip, scale, gameTime, onDragStart, viewportZoom }) => {
+    const { solution } = tracker;
+
+    // 1. Calculate P1 (Anchor Position)
+    // Use computedWorldX/Y (Position at Anchor Time)
+    let p1X = solution.computedWorldX;
+    let p1Y = solution.computedWorldY;
+
+    // Fallback if computed is missing
+    if (p1X === undefined || p1Y === undefined) {
+         const radAnchorBearing = (solution.bearing * Math.PI) / 180;
+         p1X = solution.anchorOwnShip.x + Math.sin(radAnchorBearing) * solution.range * 3;
+         p1Y = solution.anchorOwnShip.y + Math.cos(radAnchorBearing) * solution.range * 3;
+    }
+
+    // 2. Calculate P2 (Current Position)
+    // Use helper from tma.ts
+    const p2Pos = calculateTargetPosition(solution, gameTime);
+    const p2X = p2Pos.x;
+    const p2Y = p2Pos.y;
+
+    // 3. Screen Coords (Relative)
+    const relP1X = (p1X - ownShip.x) * scale;
+    const relP1Y = -(p1Y - ownShip.y) * scale;
+
+    const relP2X = (p2X - ownShip.x) * scale;
+    const relP2Y = -(p2Y - ownShip.y) * scale;
+
+    // 4. Bearing Lines
+    // Line 1: From Anchor Ownship along solution.bearing (or anchorBearing if stored separately?)
+    // Note: solution.bearing IS the anchor bearing.
+    // Anchor Ownship might differ from Current Ownship if we moved.
+    // Screen Coord for Anchor Ownship:
+    const relAnchorOwnX = (solution.anchorOwnShip.x - ownShip.x) * scale;
+    const relAnchorOwnY = -(solution.anchorOwnShip.y - ownShip.y) * scale;
+
+    // Line 2: From Current Ownship along tracker.currentBearing
+    const relCurrentOwnX = 0; // Relative to current ownship is 0
+    const relCurrentOwnY = 0;
+
+    // Render Function
+    const draw = React.useCallback((g: PIXI.Graphics) => {
+        g.clear();
+
+        // -- Bearing Line 1 (Start) --
+        const bearing1Rad = (solution.bearing * Math.PI) / 180;
+        const vec1X = Math.sin(bearing1Rad) * 20000 * scale; // Long line
+        const vec1Y = -Math.cos(bearing1Rad) * 20000 * scale; // -Y is North
+
+        g.lineStyle(1, COLOR_BEARING_LINE, 0.3);
+        // From Anchor Ownship
+        g.moveTo(relAnchorOwnX, relAnchorOwnY);
+        g.lineTo(relAnchorOwnX + vec1X, relAnchorOwnY + vec1Y);
+
+        // -- Bearing Line 2 (Current) --
+        // tracker.currentBearing is Relative. Add Ownship Heading for visual True Bearing?
+        // Wait, currentBearing in store IS relative to heading?
+        // `currentBearing` is relative in store logic (`sensor.bearing` which is rel).
+        // But visuals in PIXI usually assume 0 is UP (-Y).
+        // If Ownship is Heading 0, then Rel 0 is Up.
+        // If Ownship is Heading 90, Rel 0 is Right.
+        // But our "Mode: North-Up".
+        // Ownship Graphic is Rotated by Heading.
+        // The View is North-Up.
+        // So we need Absolute Bearing.
+        // Absolute = Heading + Relative.
+        const bearing2Rad = (tracker.currentBearing + ownShip.heading) * (Math.PI / 180);
+        const vec2X = Math.sin(bearing2Rad) * 20000 * scale;
+        const vec2Y = -Math.cos(bearing2Rad) * 20000 * scale;
+
+        g.lineStyle(1, COLOR_BEARING_LINE, 0.3);
+        // From Current Ownship
+        g.moveTo(relCurrentOwnX, relCurrentOwnY);
+        g.lineTo(relCurrentOwnX + vec2X, relCurrentOwnY + vec2Y);
+
+        // -- Solution Vector (P1 -> P2) --
+        g.lineStyle(2, COLOR_SOLUTION_LINE, 0.8);
+        g.moveTo(relP1X, relP1Y);
+        g.lineTo(relP2X, relP2Y);
+
+    }, [relP1X, relP1Y, relP2X, relP2Y, relAnchorOwnX, relAnchorOwnY, relCurrentOwnX, relCurrentOwnY, solution.bearing, tracker.currentBearing, scale, ownShip.heading]);
+
+    // Handle Radius logic
+    // We want a constant visual size handle regardless of zoom
+    const handleRadius = 6 / viewportZoom;
+
+    const drawHandleP1 = React.useCallback((g: PIXI.Graphics) => {
+        g.clear();
+        g.lineStyle(1, COLOR_HANDLE, 1);
+        g.beginFill(0x000000);
+        g.drawCircle(0, 0, handleRadius);
+        g.endFill();
+    }, [handleRadius]);
+
+    const drawHandleP2 = React.useCallback((g: PIXI.Graphics) => {
+        g.clear();
+        g.lineStyle(1, COLOR_HANDLE, 1);
+        g.beginFill(0x000000);
+        g.drawCircle(0, 0, handleRadius);
+        g.endFill();
+    }, [handleRadius]);
+
+    return (
+        <Container>
+            <Graphics draw={draw} />
+
+            {/* P1 Handle */}
+            <Container
+                x={relP1X} y={relP1Y}
+                eventMode="static"
+                cursor="pointer"
+                onpointerdown={(e) => {
+                    e.stopPropagation();
+                    onDragStart('P1');
+                }}
+            >
+                <Graphics draw={drawHandleP1} />
+            </Container>
+
+             {/* P2 Handle */}
+             <Container
+                x={relP2X} y={relP2Y}
+                eventMode="static"
+                cursor="pointer"
+                onpointerdown={(e) => {
+                    e.stopPropagation();
+                    onDragStart('P2');
+                }}
+            >
+                <Graphics draw={drawHandleP2} />
+            </Container>
+
+        </Container>
+    );
+};
 
 const RangeRings: React.FC<{ scale: number }> = ({ scale }) => {
     const draw = React.useCallback((g: PIXI.Graphics) => {
@@ -276,9 +543,6 @@ const TrackerSymbol: React.FC<{
     const { solution } = tracker;
 
     // --- Dead Reckoning Projection ---
-    // 1. Get the "Anchor" (The Fix)
-    // We use computedWorldX/Y if available (it should be), otherwise fallback to calculating it.
-    // Fallback is necessary for existing state that hasn't been updated yet (though a refresh fixes that).
     let fixX = solution.computedWorldX;
     let fixY = solution.computedWorldY;
 
@@ -290,8 +554,7 @@ const TrackerSymbol: React.FC<{
 
     // 2. Project Forward (The DR Track)
     const timeDelta = gameTime - solution.anchorTime;
-    // Speed in knots -> ft/sec. 1 knot = 1.6878 ft/sec
-    const speedFps = solution.speed * 1.6878;
+    const speedFps = solution.speed * FEET_PER_KNOT_SEC;
     const distTraveledFt = speedFps * timeDelta;
 
     const radCourse = (solution.course * Math.PI) / 180;
@@ -299,10 +562,6 @@ const TrackerSymbol: React.FC<{
     const currentTargetY = fixY + Math.cos(radCourse) * distTraveledFt;
 
     // 3. Screen Coordinates (Relative to Ownship)
-    // Map View: +Y is Up on Screen.
-    // World: +Y is North.
-    // So ScreenY = -(WorldY - OwnY).
-    // ScreenX = (WorldX - OwnX).
     const relX = (currentTargetX - ownShip.x) * scale;
     const relY = -(currentTargetY - ownShip.y) * scale;
 
@@ -311,26 +570,6 @@ const TrackerSymbol: React.FC<{
     const fixRelY = -(fixY - ownShip.y) * scale;
 
     const isSolutionIncomplete = !solution.range || solution.range < 100;
-
-    // Calculate Aspect/Zones for Valid Solution
-    let inGreenZone = false;
-    let targetAngle = 0; // Relative bearing of Ownship from Target
-
-    if (!isSolutionIncomplete) {
-        // Vector Target -> Ownship
-        const dx = ownShip.x - currentTargetX;
-        const dy = ownShip.y - currentTargetY;
-
-        let bearingFromTarget = Math.atan2(dx, dy) * (180 / Math.PI); // 0=North
-        if (bearingFromTarget < 0) bearingFromTarget += 360;
-
-        // Aspect (relative to Target Heading)
-        let aspect = bearingFromTarget - solution.course;
-        while (aspect > 180) aspect -= 360;
-        while (aspect <= -180) aspect += 360;
-
-        inGreenZone = Math.abs(aspect) >= 120;
-    }
 
     const draw = React.useCallback((g: PIXI.Graphics) => {
         g.clear();
@@ -363,72 +602,22 @@ const TrackerSymbol: React.FC<{
 
         } else {
             // --- DRAW DR VISUALIZATION (Fix + Track) ---
-            // Only draw if we have moved enough to see it (e.g. > 1 px)
-            // Fix Marker (Small X or Dot)
+            // Fix Marker
             g.lineStyle(1, color, 0.5);
             g.moveTo(fixRelX - 3, fixRelY - 3); g.lineTo(fixRelX + 3, fixRelY + 3);
             g.moveTo(fixRelX + 3, fixRelY - 3); g.lineTo(fixRelX - 3, fixRelY + 3);
 
-            // DR Track (Dashed Line) - Pixi doesn't do dashed lines natively easily, so just thin solid line
+            // DR Track
             g.lineStyle(1, color, 0.3);
             g.moveTo(fixRelX, fixRelY);
             g.lineTo(relX, relY);
-
-            // --- DRAW TACTICAL ZONES (Underneath Symbol) ---
-            // Only draw zones if solution is valid.
-            // Radius of cones: Let's pick a reasonable visual size, e.g. 2000 yards scaled or fixed pixels?
-            // Fixed pixels might be better for UI clarity, but scaled gives tactical context.
-            // Let's go with fixed pixels to avoid clutter at zoom, or scaled but clamped?
-            // Task says "Draw Arcs (Extending from Target)". Let's use a fixed radius like 60px or scaled 1500yds.
-            const zoneRadius = 1500 * scale;
-
-            // Pixi Arc Logic:
-            // 0 is East (+X).
-            // North is -90 deg (-PI/2).
-            // Target Course C corresponds to angle (C - 90).
-
-            const toPixiAngle = (deg: number) => (deg - 90) * (Math.PI / 180);
-            const course = solution.course;
-
-            // Red Zone: +/- 30
-            g.beginFill(COLOR_ZONE_RED, 0.2);
-            g.moveTo(relX, relY);
-            g.arc(relX, relY, zoneRadius, toPixiAngle(course - 30), toPixiAngle(course + 30));
-            g.lineTo(relX, relY);
-            g.endFill();
-
-            // Yellow Zone: 30 to 120 (Starboard) and -30 to -120 (Port => 330 to 240)
-            g.beginFill(COLOR_ZONE_YELLOW, 0.1);
-            // Starboard Beam
-            g.moveTo(relX, relY);
-            g.arc(relX, relY, zoneRadius, toPixiAngle(course + 30), toPixiAngle(course + 120));
-            g.lineTo(relX, relY);
-            // Port Beam
-            g.moveTo(relX, relY);
-            g.arc(relX, relY, zoneRadius, toPixiAngle(course - 120), toPixiAngle(course - 30));
-            g.lineTo(relX, relY);
-            g.endFill();
-
-            // Green Zone: 120 to 240 (Stern)
-            // If inGreenZone (Ownship is there), highlight brighter
-            const greenAlpha = (isSelected && inGreenZone) ? 0.4 : 0.2;
-            g.beginFill(COLOR_ZONE_GREEN, greenAlpha);
-            g.moveTo(relX, relY);
-            g.arc(relX, relY, zoneRadius, toPixiAngle(course + 120), toPixiAngle(course + 240));
-            g.lineTo(relX, relY);
-            g.endFill();
 
             // --- DRAW SYMBOL ---
             g.lineStyle(lineWeight, color, alpha);
             const size = 6;
 
             if (isWeapon) {
-                // Triangle / Caret for Weapon
-                // Pointing up (relative to screen) or along course?
-                // Let's make a generic warning triangle centered on relX/relY
-                //    ^
-                //   / \
-                //  /___\
+                // Triangle
                 g.moveTo(relX, relY - size);
                 g.lineTo(relX + size, relY + size);
                 g.lineTo(relX - size, relY + size);
@@ -448,7 +637,7 @@ const TrackerSymbol: React.FC<{
             g.lineTo(tipX, tipY);
         }
 
-    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, inGreenZone, scale, fixRelX, fixRelY]);
+    }, [relX, relY, isSolutionIncomplete, tracker.currentBearing, solution.course, isSelected, scale, fixRelX, fixRelY]);
 
     return (
         <React.Fragment>
@@ -511,9 +700,6 @@ const GodModeSymbol: React.FC<{
     ownShip: { x: number, y: number },
     scale: number
 }> = ({ contact, ownShip, scale }) => {
-    // Colors
-    // Enemy (SUB/ESCORT) -> Red
-    // Neutral (MERCHANT/BIOLOGICAL/TRAWLER) -> Green
     const isEnemy = contact.classification === 'SUB' || contact.classification === 'ESCORT';
     const color = isEnemy ? 0xFF0000 : 0x00FF00;
 
@@ -524,12 +710,9 @@ const GodModeSymbol: React.FC<{
         g.clear();
         g.lineStyle(2, color, 1);
 
-        // Symbol
         if (isEnemy) {
-            // Square for Enemy
             g.drawRect(-6, -6, 12, 12);
         } else if (contact.classification === 'TRAWLER') {
-            // Diamond for Trawler
             g.drawPolygon([
                 0, -8,
                 6, 0,
@@ -537,22 +720,17 @@ const GodModeSymbol: React.FC<{
                 -6, 0
             ]);
         } else {
-            // Circle for Neutral
             g.drawCircle(0, 0, 6);
         }
 
-        // Heading Vector
         if (contact.heading !== undefined) {
             const len = 20;
             const rad = (contact.heading * Math.PI) / 180;
             const vecX = Math.sin(rad) * len;
-            const vecY = -Math.cos(rad) * len; // -Y is North (Up) on screen
+            const vecY = -Math.cos(rad) * len;
             g.moveTo(0, 0);
             g.lineTo(vecX, vecY);
         }
-
-        // ID Label
-        // (Handled by Text component below)
 
     }, [color, isEnemy, contact.heading]);
 
