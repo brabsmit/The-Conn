@@ -604,7 +604,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         currentContact.sourceLevel = effectiveSL;
 
         // Apply Scenario Director Updates
-        if (directorUpdates.contactUpdates[contact.id]) {
+        if (!currentContact.aiDisabled && directorUpdates.contactUpdates[contact.id]) {
             const update = directorUpdates.contactUpdates[contact.id];
             if (update.heading !== undefined) currentContact.heading = update.heading;
             if (update.hasZigged !== undefined) currentContact.hasZigged = update.hasZigged;
