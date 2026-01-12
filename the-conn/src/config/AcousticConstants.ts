@@ -37,5 +37,15 @@ export const ACOUSTICS = {
         BLOOM_THRESHOLD: 2000, // Yards (Ranges closer than this bloom)
         SPATIAL_KERNEL: [0.2, 0.6, 0.2], // Task 134.2: Tune the Spread
         NOISE_FLOOR_OFFSET: 12 // Task 136.3: Lower floor to visualize noise
-    }
+    },
+
+    // 5. Active Sonar (Task 156)
+    ACTIVE_SONAR: {
+        FREQ: 3500,        // Hz (3.5kHz)
+        SL: 235,           // dB (Source Level)
+        PULSE_DURATION: 0.1, // Seconds
+        INTERVAL: 6.0,     // Seconds (Ping Rate)
+    },
+
+    OWNSHIP_TARGET_STRENGTH: -15 // dB (Aspect dependent simplified)
 };

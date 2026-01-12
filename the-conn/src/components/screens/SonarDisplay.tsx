@@ -3,8 +3,15 @@ import { SonarEngine } from '../../services/SonarEngine';
 import SonarOverlay from './SonarOverlay';
 import SonarBezel from '../panels/SonarBezel';
 import { useResize } from '../../hooks/useResize';
+import { useSubmarineStore } from '../../store/useSubmarineStore';
+import { useSonarAudio } from '../../hooks/useSonarAudio';
 
 const SonarDisplay: React.FC = () => {
+    const { activeIntercepts } = useSubmarineStore(state => ({
+        activeIntercepts: state.activeIntercepts
+    }));
+    const { playPing } = useSonarAudio();
+
     // We now use a flex container for correct sizing, but we need refs for the layers
     const { ref: containerRef, width: rawWidth, height: rawHeight } = useResize();
 
@@ -29,6 +36,46 @@ const SonarDisplay: React.FC = () => {
     // Use locked dimensions if available, otherwise raw
     const width = lockedSize ? lockedSize.width : Math.floor(rawWidth);
     const height = lockedSize ? lockedSize.height : Math.floor(rawHeight);
+
+    // Audio / Visual Warning Logic
+    const [showInterceptWarning, setShowInterceptWarning] = useState(false);
+    const lastInterceptTimeRef = useRef<number>(0);
+    const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (activeIntercepts.length > 0) {
+            // Get the latest intercept
+            const latest = activeIntercepts[activeIntercepts.length - 1];
+
+            // Only act if this is a NEW intercept (time > last processed)
+            if (latest.timestamp > lastInterceptTimeRef.current) {
+                lastInterceptTimeRef.current = latest.timestamp;
+
+                // Trigger Audio ONCE per new intercept
+                playPing(0.8);
+
+                // Trigger Visual Warning
+                setShowInterceptWarning(true);
+
+                // Clear existing timer to extend duration if rapid pings occur
+                if (warningTimerRef.current) {
+                    clearTimeout(warningTimerRef.current);
+                }
+
+                warningTimerRef.current = setTimeout(() => {
+                    setShowInterceptWarning(false);
+                    warningTimerRef.current = null;
+                }, 2000);
+            }
+        }
+    }, [activeIntercepts, playPing]);
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => {
+            if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+        };
+    }, []);
 
     // Layer 0: WebGL Container
     const webglContainerRef = useRef<HTMLDivElement>(null);
@@ -114,6 +161,15 @@ const SonarDisplay: React.FC = () => {
                     height={height}
                     style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
                 />
+
+                {/* High Frequency Intercept Warning Overlay */}
+                {showInterceptWarning && (
+                    <div className="absolute top-10 left-0 w-full flex justify-center pointer-events-none z-50">
+                        <div className="bg-red-900/80 border-2 border-red-500 text-red-100 px-6 py-2 rounded shadow-lg animate-pulse font-mono font-bold text-xl tracking-widest">
+                            HIGH FREQUENCY INTERCEPT
+                        </div>
+                    </div>
+                )}
 
                 {/* Interaction Layer (Click Handling) - Z-Index needs to be above overlays */}
                 <SonarOverlay width={width} height={height} />

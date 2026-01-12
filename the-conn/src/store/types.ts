@@ -21,9 +21,11 @@ export interface Contact {
   wobbleState?: number;
   transientTimer?: number;
   cavitationSpeed?: number;
-  aiMode?: 'IDLE' | 'PATROL' | 'APPROACH' | 'ATTACK' | 'EVADE';
+  aiMode?: 'IDLE' | 'PATROL' | 'APPROACH' | 'PROSECUTE' | 'ATTACK' | 'EVADE';
   aiLastUpdate?: number;
   aiReactionTimer?: number;
+  isActivePingEnabled?: boolean;
+  activePingTimer?: number;
   torpedoCooldown?: number;
   canDetectTorpedoes?: boolean;
   sensitivity?: number;
@@ -144,6 +146,12 @@ export interface VisualTransient {
   timestamp: number;
 }
 
+export interface ActiveIntercept {
+    bearing: number;
+    timestamp: number;
+    sourceId: string;
+}
+
 export interface ScriptedEvent {
   time: number;
   type: 'LOG' | 'DELETE_TRACKER' | 'RESET_ALERT';
@@ -176,6 +184,7 @@ export interface SubmarineState {
   cavitating: boolean;
   transients: Transient[];
   visualTransients: VisualTransient[];
+  activeIntercepts: ActiveIntercept[];
   lastScenarioTick?: number;
   scriptedEvents: ScriptedEvent[];
 
