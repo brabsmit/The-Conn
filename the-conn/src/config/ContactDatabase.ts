@@ -28,7 +28,7 @@ export const CONTACT_TYPES = {
     ESCORT: {
         name: "Surface Escort",
         acoustics: {
-            baseSL: 120,       // Task 151: Quieter/Fast (Warship). Detected ~9kyds
+            baseSL: 130,       // Task 151: Quieter/Fast (Warship). Detected ~9kyds
             profile: "CLEAN",
             transientRate: 0.0
         },
@@ -41,7 +41,7 @@ export const CONTACT_TYPES = {
     SUB: {
         name: "Attack Submarine",
         acoustics: {
-            baseSL: 105,       // Task 151: Stealth. Detected ~5kyds
+            baseSL: 125,       // Task 151: Stealth. Detected ~5kyds
             profile: "CLEAN",
             transientRate: 0.00 // Very disciplined
         },
