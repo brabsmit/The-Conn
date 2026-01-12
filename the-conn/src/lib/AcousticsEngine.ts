@@ -90,4 +90,47 @@ export class AcousticsEngine {
 
         return rl - noiseLevel + directivityIndex;
     }
+
+    /**
+     * Task 156.1: Active Intercept Calculation (One-Way)
+     * Formula: Intercept = SL - TL
+     * We hear the ping directly.
+     *
+     * @param sourceLevel Active Sonar Source Level (SL) in dB
+     * @param rangeYards Range to source in yards
+     * @param deepWater Environment flag
+     * @returns Received Level (RL) in dB
+     */
+    static calculateActiveOneWay(
+        sourceLevel: number,
+        rangeYards: number,
+        deepWater: boolean = true
+    ): number {
+        // Note: We might want a different TL for active freq (3.5kHz),
+        // but for now we reuse the existing TL model which assumes absorption 0.002.
+        const tl = this.calculateTransmissionLoss(rangeYards, deepWater);
+        return sourceLevel - tl;
+    }
+
+    /**
+     * Task 156.1: Active Return Calculation (Two-Way)
+     * Formula: Echo = SL - 2*TL + TS
+     * The source hears the echo bouncing off the target.
+     *
+     * @param sourceLevel Active Sonar Source Level (SL) in dB
+     * @param rangeYards Range to target in yards
+     * @param targetStrength Target Strength (TS) in dB
+     * @param deepWater Environment flag
+     * @returns Echo Level (EL) at the source in dB
+     */
+    static calculateActiveTwoWay(
+        sourceLevel: number,
+        rangeYards: number,
+        targetStrength: number,
+        deepWater: boolean = true
+    ): number {
+        const tl = this.calculateTransmissionLoss(rangeYards, deepWater);
+        // Two-way loss
+        return sourceLevel - (2 * tl) + targetStrength;
+    }
 }

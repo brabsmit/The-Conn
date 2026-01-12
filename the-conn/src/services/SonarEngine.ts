@@ -867,6 +867,8 @@ export class SonarEngine {
         }
 
         // PASS 2b: POST-PROCESS & COLOR (Screen Space Effects)
+        const { activeIntercepts } = state; // Task 156.3
+
         for (let i = 0; i < width; i++) {
             const curr = tempPixelValues[i];
 
@@ -882,8 +884,9 @@ export class SonarEngine {
             const mix = Math.max(0, Math.min(1, (curr - 0.5) / 0.4));
             let val = (curr * (1 - mix)) + (blurred * mix);
             
-            // Visual Transients (Override) - Applied in Screen Space
             const bearing = this.mapXToBearing(i);
+
+            // Visual Transients (Explosions)
             visualTransients.forEach(t => {
                 const age = gameTime - t.timestamp;
                 if (age > 5) return;
@@ -897,10 +900,37 @@ export class SonarEngine {
                 }
             });
 
+            // Task 156.3: Active Intercepts (Blue Spike)
+            let isActiveIntercept = false;
+            activeIntercepts.forEach(t => {
+                const age = gameTime - t.timestamp;
+                if (age > 2.0) return; // Short duration
+
+                const tBearing = normalizeAngle(t.bearing); // Already relative in store? No, store calculates relative.
+                // Wait, store calculates bearingToSource using (90 - mathAngle). This is TRUE bearing?
+                // No, store logic: const mathAngle = Math.atan2(dy, dx)... bearingToSource = normalizeAngle(90 - mathAngle).
+                // This is TRUE bearing.
+                // We need relative.
+                const relBearing = normalizeAngle(tBearing - ownHeading);
+                const diff = Math.abs(relBearing - bearing);
+
+                // Tight spike (1 degree)
+                if (diff < 1.0 || diff > 359.0) {
+                     isActiveIntercept = true;
+                     val += 1.0; // Max out intensity
+                }
+            });
+
             // Task 131.1: Cinematic Tone Mapping
             val = val / (val + 0.15);
 
-            const color = this.getColor(val);
+            let color = this.getColor(val);
+
+            // Task 156.3: Blue Spike Override
+            if (isActiveIntercept) {
+                // Mix with Cyan/Blue
+                color = { r: 0, g: 255, b: 255 }; // Cyan Spike
+            }
 
             pixelBuffer[i * 4 + 0] = color.r;
             pixelBuffer[i * 4 + 1] = color.g;
