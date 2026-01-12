@@ -477,6 +477,8 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       const newTickCount = state.tickCount + 1;
       const newGameTime = state.gameTime + (1/60);
       let newLogs = state.logs;
+      let newScriptedEvents = [...state.scriptedEvents];
+      let newVisualTransients = [...state.visualTransients];
 
       let newGameState = state.gameState;
       let newHeading = state.heading;
@@ -825,6 +827,22 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
             }
         }
 
+        // --- Manual Active Sonar Override Logic (Task 157) ---
+        // Force Active State or Silence (Takes precedence over AI)
+        if (currentContact.sonarState === 'ACTIVE') {
+            currentContact.isActivePingEnabled = true;
+        } else if (currentContact.sonarState === 'SILENT') {
+            currentContact.isActivePingEnabled = false;
+        }
+        // If AUTO, we let AI decide (or maintain current state)
+
+        // Force One-Shot Ping
+        if (currentContact.forceOneShotPing) {
+            currentContact.forceOneShotPing = false; // Reset flag immediately
+            currentContact.activePingTimer = 0; // Trigger immediately in the active sonar block below
+            currentContact.isActivePingEnabled = true; // Ensure it's enabled for at least this tick
+        }
+
         if (currentContact.speed !== undefined && currentContact.heading !== undefined) {
             const radHeading = (currentContact.heading * Math.PI) / 180;
             const distance = currentContact.speed * FEET_PER_KNOT_PER_TICK * delta;
@@ -952,9 +970,6 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       }));
 
       // Update Torpedoes & Collision Check
-      let newScriptedEvents = [...state.scriptedEvents];
-      let newVisualTransients = [...state.visualTransients];
-
       const newTorpedoes = state.torpedoes.map(torpedo => {
         if (torpedo.status !== 'RUNNING') return torpedo;
 
