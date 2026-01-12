@@ -317,6 +317,38 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                         DELETE ENTITY
                     </button>
 
+                    <div className="mt-4 pt-4 border-t border-zinc-700">
+                         <label className="text-xs text-zinc-400 block mb-2">MANUAL SONAR</label>
+                         <div className="flex bg-zinc-900 rounded border border-zinc-700 overflow-hidden mb-2">
+                             {['SILENT', 'AUTO', 'ACTIVE'].map((state) => {
+                                 const currentSonarState = contacts.find(c => c.id === selectedEntityId)?.sonarState || 'AUTO';
+                                 const isActive = currentSonarState === state;
+                                 let bg = 'bg-zinc-900 text-zinc-500';
+                                 if (isActive) {
+                                     if (state === 'SILENT') bg = 'bg-zinc-600 text-white';
+                                     if (state === 'AUTO') bg = 'bg-blue-700 text-white';
+                                     if (state === 'ACTIVE') bg = 'bg-red-600 text-white animate-pulse';
+                                 }
+
+                                 return (
+                                     <button
+                                         key={state}
+                                         onClick={() => updateContact(selectedEntityId, { sonarState: state as any })}
+                                         className={`flex-1 py-1 text-xs font-bold ${bg} hover:bg-opacity-80 transition-colors border-r border-zinc-800 last:border-0`}
+                                     >
+                                         {state}
+                                     </button>
+                                 );
+                             })}
+                         </div>
+                         <button
+                            onClick={() => updateContact(selectedEntityId, { forceOneShotPing: true })}
+                            className="w-full bg-orange-900/50 hover:bg-orange-800 text-orange-200 border border-orange-800 py-1 rounded text-xs font-mono"
+                         >
+                            [ PING NOW ]
+                         </button>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-zinc-700">
                          <button
                             onClick={() => updateContact(selectedEntityId, { aiMode: 'APPROACH' })}

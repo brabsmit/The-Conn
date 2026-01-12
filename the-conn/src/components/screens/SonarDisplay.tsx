@@ -7,9 +7,7 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useSonarAudio } from '../../hooks/useSonarAudio';
 
 const SonarDisplay: React.FC = () => {
-    const { activeIntercepts } = useSubmarineStore(state => ({
-        activeIntercepts: state.activeIntercepts
-    }));
+    const activeIntercepts = useSubmarineStore(state => state.activeIntercepts);
     const { playPing } = useSonarAudio();
 
     // We now use a flex container for correct sizing, but we need refs for the layers
