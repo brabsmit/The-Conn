@@ -24,6 +24,7 @@ export interface Contact {
   aiMode?: 'IDLE' | 'PATROL' | 'APPROACH' | 'PROSECUTE' | 'ATTACK' | 'EVADE';
   aiLastUpdate?: number;
   aiReactionTimer?: number;
+  trackingTimer?: number;
   sonarState?: 'SILENT' | 'AUTO' | 'ACTIVE';
   forceOneShotPing?: boolean;
   isActivePingEnabled?: boolean;

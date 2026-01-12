@@ -364,14 +364,31 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({ onClose }) => 
                          </button>
                     </div>
 
-                    {contacts.find(c => c.id === selectedEntityId)?.aiDisabled && (
-                        <button
-                            onClick={() => updateContact(selectedEntityId, { aiDisabled: false })}
-                            className="w-full bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded mt-2 font-bold font-mono text-xs"
-                        >
-                            [RESUME AI]
-                        </button>
-                    )}
+                    {/* Task 158.3: Toggle AI */}
+                    {(() => {
+                        const c = contacts.find(c => c.id === selectedEntityId);
+                        if (!c) return null;
+
+                        return (
+                           <div className="mt-4 pt-2 border-t border-zinc-700">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-zinc-400">AI CONTROL</span>
+                                    {c.trackingTimer !== undefined && c.trackingTimer > 0 && c.aiMode === 'PROSECUTE' && (
+                                        <span className="text-xs text-amber-500 font-mono animate-pulse">
+                                            LOCKING... {Math.max(0, 30 - Math.floor(c.trackingTimer))}s
+                                        </span>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => updateContact(selectedEntityId, { aiDisabled: !c.aiDisabled })}
+                                    className={`w-full py-2 rounded font-bold font-mono text-xs ${c.aiDisabled ? 'bg-zinc-700 text-zinc-400 border border-zinc-600' : 'bg-cyan-900 text-cyan-200 border border-cyan-700'}`}
+                                >
+                                    {c.aiDisabled ? '[ RESUME AI ]' : '[ AI: ACTIVE ]'}
+                                </button>
+                           </div>
+                        );
+                    })()}
                 </div>
             ) : (
                 <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm italic">

@@ -367,8 +367,8 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
     contacts: state.contacts.map(c => {
         if (c.id === id) {
             const updated = { ...c, ...updates };
-            // Auto-disable AI if kinematics are manually adjusted (Task 70 God Hand)
-            if (updates.x !== undefined || updates.y !== undefined || updates.heading !== undefined || updates.speed !== undefined || updates.depth !== undefined) {
+            // Auto-disable AI if kinematics or sensors are manually adjusted (Task 158.1)
+            if (updates.x !== undefined || updates.y !== undefined || updates.heading !== undefined || updates.speed !== undefined || updates.depth !== undefined || updates.sonarState !== undefined) {
                 updated.aiDisabled = true;
             }
             return updated;
@@ -734,12 +734,32 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                         currentContact.isActivePingEnabled = true;
                     }
 
+                    // Task 158.2: Weapon ROE (The "Nervous" Timer)
+                    // If we have a solid lock, start the timer
+                    if (signalExcess > 0.9) {
+                        if (currentContact.trackingTimer === undefined) currentContact.trackingTimer = 0;
+                        currentContact.trackingTimer += timeSinceLastUpdate; // Use calculated delta since last update
+
+                        // Fire logic
+                        if (currentContact.trackingTimer > 30) {
+                             if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
+                                 currentContact.aiMode = 'ATTACK';
+                                 currentContact.trackingTimer = 0;
+                             }
+                        }
+                    } else {
+                        // Reset if lock falters significantly? Or just decay?
+                        // For now, reset to avoid firing on lucky pings.
+                        currentContact.trackingTimer = 0;
+                    }
+
                     // Lost contact?
                     // If active return fails repeatedly? Handled in Return Logic or just use passive fallback.
                     // If signalExcess drops too low
                     if (signalExcess < -0.5) {
                         currentContact.aiMode = 'PATROL';
                         currentContact.isActivePingEnabled = false;
+                        currentContact.trackingTimer = 0;
                     }
                 }
 
