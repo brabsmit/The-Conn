@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { generateNoisySolution } from '../lib/SolutionAI';
 import { getDirectorUpdates } from '../lib/ScenarioDirector';
+import { ACOUSTICS } from '../config/AcousticConstants';
+import { AcousticsEngine } from '../lib/AcousticsEngine';
 import type {
   SubmarineState,
   Tracker,
@@ -99,6 +101,7 @@ const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode'
   cavitating: false,
   transients: [],
   visualTransients: [],
+  activeIntercepts: [],
   scriptedEvents: [],
   contacts: [],
   sensorReadings: [],
@@ -394,6 +397,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
     incomingTorpedoDetected: false,
     scriptedEvents: [],
     visualTransients: [],
+    activeIntercepts: [],
     gameState: 'RUNNING',
     scenarioId: id || null,
     appState: 'GAME'
@@ -658,6 +662,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                     currentContact.torpedoCooldown -= 1;
                 }
 
+                // Task 156.2: AI State Machine (Prosecution Logic)
                 // A. PATROL State
                 if (currentContact.aiMode === 'PATROL' || currentContact.aiMode === 'IDLE') {
                     if (signalExcess > 0) {
@@ -691,8 +696,16 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                          currentContact.heading = interceptHeading;
                          currentContact.speed = 5; // Silent Speed
 
-                         // Transition to ATTACK
-                         if (distYards < 4000) {
+                         // Task 156.2: Transition to PROSECUTE if confidence is high or detected loudly
+                         // Threshold for "Prosecute": Strong Passive Lock
+                         if (signalExcess > 0.4) {
+                             currentContact.aiMode = 'PROSECUTE';
+                             currentContact.isActivePingEnabled = true;
+                             currentContact.activePingTimer = 0; // Start immediately
+                         }
+
+                         // Fallback direct attack if close (Task 156 says Hunt then Shoot, but close quarters requires reaction)
+                         if (distYards < 2000) {
                              if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
                                  currentContact.aiMode = 'ATTACK';
                              }
@@ -700,7 +713,31 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                      }
                 }
 
-                // C. ATTACK State ("The Ambush")
+                // C. PROSECUTE State (Active Sonar)
+                if (currentContact.aiMode === 'PROSECUTE') {
+                    // Turn towards contact
+                    const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
+                    const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
+                    currentContact.heading = bearingToOwnship;
+
+                    // Speed up to 15kts (Hunt speed)
+                    currentContact.speed = 15;
+
+                    // Active Sonar Logic (Below in active ping section)
+                    if (!currentContact.isActivePingEnabled) {
+                        currentContact.isActivePingEnabled = true;
+                    }
+
+                    // Lost contact?
+                    // If active return fails repeatedly? Handled in Return Logic or just use passive fallback.
+                    // If signalExcess drops too low
+                    if (signalExcess < -0.5) {
+                        currentContact.aiMode = 'PATROL';
+                        currentContact.isActivePingEnabled = false;
+                    }
+                }
+
+                // D. ATTACK State ("The Ambush")
                 if (currentContact.aiMode === 'ATTACK') {
                     if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
                         currentContact.torpedoCooldown = 600; // Cooldown
@@ -708,7 +745,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
                     }
                 }
 
-                // 3. Threat Perception (Torpedoes)
+                // E. Threat Perception (Torpedoes)
                 let detectedThreatType: 'NONE' | 'PASSIVE' | 'ACTIVE' = 'NONE';
                 let detectedInBaffles = false;
 
@@ -795,6 +832,87 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         }
         return currentContact;
       });
+
+      // --- Active Sonar Logic (Global Event Processing) ---
+      let newActiveIntercepts = [...state.activeIntercepts];
+
+      newContacts = newContacts.map(contact => {
+          if (contact.status === 'DESTROYED' || !contact.isActivePingEnabled) return contact;
+
+          let updatedContact = { ...contact };
+          const pingInterval = ACOUSTICS.ACTIVE_SONAR.INTERVAL;
+
+          // Decrement Timer
+          if (updatedContact.activePingTimer === undefined) updatedContact.activePingTimer = 0;
+          updatedContact.activePingTimer -= (1/60) * delta;
+
+          if (updatedContact.activePingTimer <= 0) {
+              // PING!
+              updatedContact.activePingTimer = pingInterval;
+
+              const dx = state.x - contact.x;
+              const dy = state.y - contact.y;
+              const distYards = Math.sqrt(dx * dx + dy * dy) / 3;
+              const deepWater = true; // Assumption
+
+              // 1. One-Way (Intercept) - Player hears it?
+              const interceptSignal = AcousticsEngine.calculateActiveOneWay(ACOUSTICS.ACTIVE_SONAR.SL, distYards, deepWater);
+              const interceptThreshold = 0; // 0dB detection threshold for intercept? Usually highly audible.
+
+              if (interceptSignal > interceptThreshold) {
+                   // Calculate Bearing of source relative to ownship
+                   // Vector from Ownship TO Contact is (dx, dy) reversed: contact.x - state.x
+                   const dxSource = contact.x - state.x;
+                   const dySource = contact.y - state.y;
+                   const mathAngle = Math.atan2(dySource, dxSource) * (180 / Math.PI);
+                   const bearingToSource = normalizeAngle(90 - mathAngle);
+
+                   // Add Intercept Event
+                   newActiveIntercepts.push({
+                       bearing: bearingToSource,
+                       timestamp: newGameTime,
+                       sourceId: contact.id
+                   });
+
+                   // Log
+                   if (interceptSignal > 10) {
+                       newLogs = [...newLogs, {
+                           message: `Conn, Sonar: HIGH FREQUENCY INTERCEPT! Bearing ${Math.round(bearingToSource)}!`,
+                           type: 'ALERT' as const,
+                           timestamp: newGameTime
+                       }].slice(-50);
+                   }
+              }
+
+              // 2. Two-Way (Return) - Enemy hears us?
+              const returnSignal = AcousticsEngine.calculateActiveTwoWay(
+                  ACOUSTICS.ACTIVE_SONAR.SL,
+                  distYards,
+                  ACOUSTICS.OWNSHIP_TARGET_STRENGTH,
+                  deepWater
+              );
+
+              const detectionThreshold = 0; // 0dB excess needed
+              if (returnSignal > detectionThreshold && contact.type === 'ENEMY') {
+                  // Confirmed Range/Bearing
+                  // Trigger Attack if in range
+                  if (distYards < 6000) { // Extended attack range for active
+                       if (!updatedContact.torpedoCooldown || updatedContact.torpedoCooldown <= 0) {
+                           updatedContact.aiMode = 'ATTACK';
+                           newLogs = [...newLogs, {
+                               message: `Conn, Sonar: Active Return Detected by ${contact.id}! Launch Transient!`,
+                               type: 'ALERT' as const,
+                               timestamp: newGameTime
+                           }].slice(-50);
+                       }
+                  }
+              }
+          }
+          return updatedContact;
+      });
+
+      // Cleanup old intercepts (> 2 seconds)
+      newActiveIntercepts = newActiveIntercepts.filter(i => newGameTime - i.timestamp < 2.0);
 
       // Detect fire requests (Transitioned to cooldown this tick)
       const enemyFireRequests: { shooterId: string; x: number; y: number; heading: number }[] = [];
@@ -1626,6 +1744,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         cavitating: isCavitating,
         transients: newTransients,
         visualTransients: newVisualTransients,
+        activeIntercepts: newActiveIntercepts,
         scriptedEvents: newScriptedEvents,
         alertLevel: newAlertLevel,
         incomingTorpedoDetected: newIncomingTorpedoDetected,
