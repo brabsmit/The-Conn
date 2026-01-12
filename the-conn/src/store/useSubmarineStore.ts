@@ -474,6 +474,10 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         return {};
       }
 
+      const newTickCount = state.tickCount + 1;
+      const newGameTime = state.gameTime + (1/60);
+      let newLogs = state.logs;
+
       let newGameState = state.gameState;
       let newHeading = state.heading;
       let newSpeed = state.speed;
@@ -950,7 +954,6 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       // Update Torpedoes & Collision Check
       let newScriptedEvents = [...state.scriptedEvents];
       let newVisualTransients = [...state.visualTransients];
-      let newLogs = state.logs;
 
       const newTorpedoes = state.torpedoes.map(torpedo => {
         if (torpedo.status !== 'RUNNING') return torpedo;
@@ -1231,9 +1234,6 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       });
 
       const allTorpedoes = [...newTorpedoes, ...generatedTorpedoes];
-
-      const newTickCount = state.tickCount + 1;
-      const newGameTime = state.gameTime + (1/60);
 
       // Detect Incoming Torpedoes
       let newIncomingTorpedoDetected = false;

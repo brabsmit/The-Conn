@@ -7,9 +7,7 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useSonarAudio } from '../../hooks/useSonarAudio';
 
 const SonarDisplay: React.FC = () => {
-    const { activeIntercepts } = useSubmarineStore(state => ({
-        activeIntercepts: state.activeIntercepts
-    }));
+    const activeIntercepts = useSubmarineStore(state => state.activeIntercepts);
     const { playPing } = useSonarAudio();
 
     // We now use a flex container for correct sizing, but we need refs for the layers
@@ -161,15 +159,6 @@ const SonarDisplay: React.FC = () => {
                     height={height}
                     style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
                 />
-
-                {/* High Frequency Intercept Warning Overlay */}
-                {showInterceptWarning && (
-                    <div className="absolute top-10 left-0 w-full flex justify-center pointer-events-none z-50">
-                        <div className="bg-red-900/80 border-2 border-red-500 text-red-100 px-6 py-2 rounded shadow-lg animate-pulse font-mono font-bold text-xl tracking-widest">
-                            HIGH FREQUENCY INTERCEPT
-                        </div>
-                    </div>
-                )}
 
                 {/* Interaction Layer (Click Handling) - Z-Index needs to be above overlays */}
                 <SonarOverlay width={width} height={height} />

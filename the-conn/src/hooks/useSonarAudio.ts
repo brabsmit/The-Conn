@@ -37,6 +37,8 @@ export const useSonarAudio = () => {
             osc.start(audioCtx.currentTime);
             osc.stop(audioCtx.currentTime + 0.1);
 
+            console.log("Ping")
+
         } catch (e) {
             console.warn("Audio playback failed", e);
         }
