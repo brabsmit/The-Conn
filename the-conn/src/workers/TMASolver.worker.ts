@@ -1,6 +1,13 @@
 
 // TMASolver.worker.ts
 
+import {
+    FEET_PER_KNOT_SEC,
+    YARDS_TO_FEET,
+    normalizeAngle,
+    getShortestAngle
+} from '../lib/math';
+
 interface WorkerInput {
     t1: number;
     t2: number;
@@ -18,16 +25,7 @@ interface WorkerInput {
     };
 }
 
-const FEET_PER_KNOT_SEC = 1.68;
-const YARDS_TO_FEET = 3.0;
 const MAX_SPEED = 40.0; // Increased margin slightly
-
-const normalizeAngle = (angle: number) => (angle % 360 + 360) % 360;
-
-const getShortestAngle = (target: number, source: number) => {
-    const diff = (target - source + 540) % 360 - 180;
-    return diff;
-};
 
 const interpolateOwnShip = (history: any[], time: number) => {
     // Assuming history is sorted by time ASCENDING (we will sort it once received)

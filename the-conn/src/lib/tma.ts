@@ -1,5 +1,11 @@
-export const FEET_PER_KNOT_SEC = 1.68;
-export const YARDS_TO_FEET = 3.0;
+import {
+  FEET_PER_KNOT_SEC,
+  YARDS_TO_FEET,
+  normalizeAngle,
+  getShortestAngle
+} from './math';
+
+export { FEET_PER_KNOT_SEC, YARDS_TO_FEET, normalizeAngle, getShortestAngle };
 
 export interface Position {
   x: number;
@@ -28,21 +34,6 @@ export interface TMASolution {
   anchorTime: number;
   anchorOwnShip: OwnShipState;
 }
-
-/**
- * Normalizes an angle to 0-359 degrees
- */
-export const normalizeAngle = (angle: number): number => {
-  return (angle % 360 + 360) % 360;
-};
-
-/**
- * Returns the shortest difference between two angles (-180 to 180)
- */
-export const getShortestAngle = (target: number, source: number): number => {
-  const diff = (target - source + 540) % 360 - 180;
-  return diff;
-};
 
 /**
  * Calculates the target's world position at a specific time based on the solution legs.
