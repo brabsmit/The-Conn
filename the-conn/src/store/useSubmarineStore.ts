@@ -3,6 +3,12 @@ import { generateNoisySolution } from '../lib/SolutionAI';
 import { getDirectorUpdates } from '../lib/ScenarioDirector';
 import { ACOUSTICS } from '../config/AcousticConstants';
 import { AcousticsEngine } from '../lib/AcousticsEngine';
+import {
+  normalizeAngle,
+  gaussianRandom,
+  checkCollision,
+  FEET_PER_KNOT_PER_TICK
+} from '../lib/math';
 import type {
   SubmarineState,
   Tracker,
@@ -26,55 +32,13 @@ import type {
 
 export * from './types';
 
-// Helper to normalize angle to 0-359
-const normalizeAngle = (angle: number) => {
-  return (angle + 360) % 360;
-};
-
 // Physics constants
 const TURN_RATE = 0.5; // degrees per tick
 const ACCELERATION = 0.05; // knots per tick
 const DECELERATION = 0.05; // knots per tick
 const DIVE_RATE = 1.0; // feet per tick
 const ASCENT_RATE = 1.0; // feet per tick
-const FEET_PER_KNOT_PER_TICK = 0.028; // approx 1.68 ft/sec / 60 ticks/sec
 const MAX_HISTORY = 25000;
-
-// Helper for Gaussian noise (Box-Muller)
-const gaussianRandom = (mean: number, stdev: number) => {
-  let u = 0, v = 0;
-  while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
-  while(v === 0) v = Math.random();
-  const num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
-  return num * stdev + mean;
-};
-
-// Collision Helper (Raycast Segment vs Circle)
-const checkCollision = (p1x: number, p1y: number, p2x: number, p2y: number, cx: number, cy: number, radius: number) => {
-    const dx = p2x - p1x;
-    const dy = p2y - p1y;
-    const lengthSq = dx*dx + dy*dy;
-
-    // If segment is zero length, point check
-    if (lengthSq === 0) {
-        const distSq = (p1x - cx)**2 + (p1y - cy)**2;
-        return distSq < radius*radius;
-    }
-
-    // Projection of C onto line P1P2
-    // t = ((cx - p1x) * dx + (cy - p1y) * dy) / lengthSq
-    let t = ((cx - p1x) * dx + (cy - p1y) * dy) / lengthSq;
-
-    // Clamp t to segment [0, 1]
-    t = Math.max(0, Math.min(1, t));
-
-    // Closest point
-    const closestX = p1x + t * dx;
-    const closestY = p1y + t * dy;
-
-    const distSq = (closestX - cx)**2 + (closestY - cy)**2;
-    return distSq < radius*radius;
-};
 
 // FULL DEFAULT STATE FOR RESET
 const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'addSolutionLeg' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
