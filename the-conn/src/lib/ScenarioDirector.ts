@@ -1,5 +1,5 @@
-import type { SubmarineState, Contact, SubmarineState as State } from '../store/types'; // Alias for ease
-import { getPolarPosition, getRandomRange } from '../utils/ScenarioUtils'; // Assuming these exist or we create them
+import type { SubmarineState, Contact } from '../store/types'; // Alias for ease
+import { getPolarPosition } from '../utils/ScenarioUtils'; // Assuming these exist or we create them
 import { calculateSolutionCPA, normalizeAngle } from './tma';
 
 // Extend DirectorUpdates to include adds/removes

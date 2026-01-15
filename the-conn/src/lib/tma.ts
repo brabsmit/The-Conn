@@ -47,66 +47,6 @@ export const calculateTargetPosition = (
       // Find the leg active at 'time' or the last leg if 'time' is in the future
       // We assume legs are sorted by startTime ascending.
 
-      // 1. Start from Leg 0
-      let currentLeg = solution.legs[0];
-
-      // Calculate World Start Position for Leg 0
-      const bearingRad = (currentLeg.startBearing * Math.PI) / 180;
-      const rangeFt = currentLeg.startRange * 3;
-      const relX = rangeFt * Math.sin(bearingRad);
-      const relY = rangeFt * Math.cos(bearingRad);
-
-      let currentX = currentLeg.startOwnShip.x + relX;
-      let currentY = currentLeg.startOwnShip.y + relY;
-      let currentTime = currentLeg.startTime;
-
-      // 2. Walk through legs
-      for (let i = 0; i < solution.legs.length; i++) {
-          const leg = solution.legs[i];
-          const nextLeg = solution.legs[i+1];
-
-          // Determine end time of this segment
-          // If there is a next leg, end time is nextLeg.startTime
-          // If we are aiming for a time BEFORE nextLeg.startTime, we stop in this leg.
-
-          let endTimeForSegment = time;
-          if (nextLeg && nextLeg.startTime < time) {
-              endTimeForSegment = nextLeg.startTime;
-          }
-
-          // If the requested time is BEFORE this leg started (historical query), we might need to project backwards?
-          // Or we just start from the first leg and project backwards if time < legs[0].startTime.
-          // But here we are iterating.
-
-          // Calculate movement in this segment
-          // Note: If i > 0, we need to ensure continuity.
-          // The prompt says: "User clicks New Leg... System calculates Target's position at Now. That position becomes startRange/startBearing for Leg 2."
-          // This implies Leg 2's start pos IS Leg 1's end pos.
-          // However, we store startRange/startBearing relative to anchorOwnShip for EACH leg.
-          // This creates a potential discontinuity if the user edits previous legs.
-          // "User adjusts only Course/Speed for the new leg."
-          // If user edits Leg 1 Course, Leg 2 Start Pos (which is fixed) might not align with Leg 1 End Pos anymore.
-          // The prompt says: "Allows switching between segments to refine past guesses."
-          // If I change Leg 1, Leg 2 *start* is technically a new anchor snapshot taken at Leg 2 start time.
-          // Does Leg 2 move?
-          // "Leg 2 (The Turn): User clicks 'New Leg'. System calculates the Target's position at Now. That position becomes startRange / startBearing for Leg 2."
-          // This implies Leg 2 is anchored to the *computed* position at that moment.
-          // If I go back and change Leg 1, Leg 2's anchor remains where it was set. The track will be discontinuous (jump).
-          // This is actually standard for "Dogleg" TMA tools if not strictly constrained.
-          // However, a "Multi-Leg Time-Based solution solver" usually implies a continuous track.
-          // But implementing continuous constraint solver is hard.
-          // Given the prompt "Allows switching between segments to refine past guesses", let's assume discontinuous is acceptable OR
-          // we treat each leg as independent projection from its anchor.
-          // AND we assume the code just calculates position based on the leg that covers the time.
-
-          // Let's look at coverage:
-          // Time < Leg 0 Start: Back project Leg 0.
-          // Leg N Start <= Time < Leg N+1 Start: Project Leg N.
-          // Time >= Leg Last Start: Project Leg Last.
-
-          // So we don't need to walk and integrate. We just find the active leg.
-      }
-
       // Find active leg
       // Active Leg is the last leg that started <= time.
       // If time is before first leg, use first leg (back project).

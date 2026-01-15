@@ -66,7 +66,6 @@ const GeoDisplay: React.FC = () => {
 
     // Coordinate Transform
     const baseScale = Math.min(width, height) / (VIEW_RADIUS_YARDS * 2) * 0.9;
-    const center = { x: (width / 2) + viewport.x, y: (height / 2) + viewport.y };
     // const globalScale = baseScale * viewport.zoom; // Unused in main component now
 
     // Pan/Zoom Handlers

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { ScenarioManager } from '../debug/ScenarioManager';
-import { loadAmbushScenario } from '../../scenarios/Ambush';
 import type { ViewScale } from '../../store/useSubmarineStore';
 import { LogHistory } from './LogHistory';
 
@@ -39,10 +38,8 @@ const TimeControls = () => {
 
 export const TopBar = () => {
   const [showScenarioManager, setShowScenarioManager] = useState(false);
-  const [showScenarioMenu, setShowScenarioMenu] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState(false);
-  const expertMode = useSubmarineStore(state => state.expertMode);
 
   // Subscribe to latest log for ticker
   const latestLog = useSubmarineStore(state => state.logs[state.logs.length - 1]);

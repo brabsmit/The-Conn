@@ -275,7 +275,7 @@ interface KnuckleControlProps {
     containerRef: React.RefObject<HTMLDivElement>;
 }
 
-const KnuckleControl = ({ width, height, viewMode, containerRef }: KnuckleControlProps) => {
+const KnuckleControl = ({ width, viewMode, containerRef }: KnuckleControlProps) => {
     // ... (Keep existing KnuckleControl implementation) ...
     const graphicsRef = useRef<PIXI.Graphics | null>(null);
     const textRef = useRef<PIXI.Text | null>(null);

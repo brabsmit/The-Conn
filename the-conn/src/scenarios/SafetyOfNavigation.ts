@@ -69,9 +69,6 @@ export const SafetyOfNavigation = {
         const laneDirX = Math.sin(radHeading);
         const laneDirY = Math.cos(radHeading);
 
-        // Offset vector (Perpendicular). Rot 90 deg.
-        // If heading is SW (-,-), Right is NW (-,+).
-        const offsetX = -10000 * Math.cos(radHeading); // -10000 * -0.707 = 7071? No.
         // Normal vector (-cos, sin) ?
         // Let's use getPolarPosition.
         // CPA Point is 10k yds at Bearing 315 (NW).

@@ -1,5 +1,3 @@
-import { useRef, useEffect } from 'react';
-
 // Use a singleton audio context to avoid recreating it
 let audioCtx: AudioContext | null = null;
 

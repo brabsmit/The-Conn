@@ -1,4 +1,4 @@
-import type { Tracker, SolutionLeg } from '../store/types';
+import type { Tracker } from '../store/types';
 
 export type SafetyLevel = 'SAFE' | 'WARNING' | 'DANGER';
 
@@ -19,7 +19,6 @@ const SAFETY_THRESHOLDS = {
 };
 
 export const generateSafetyHeatmap = (
-    ownship: { x: number; y: number }, // Current position to project from
     trackers: Tracker[],
     timeHorizonMinutes: number = 15
 ): SafetyHeatmap => {

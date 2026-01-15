@@ -14,7 +14,7 @@ const GRID_SIZE = 80; // 80x80 grid for solver resolution
 const PEPDisplay = ({ onGhostSolution, onClose }: PEPDisplayProps) => {
     const { selectedTrackerId, trackers, ownShipHistory, gameTime } = useSubmarineStore();
     const workerRef = useRef<Worker | null>(null);
-    const [calculating, setCalculating] = useState(false);
+    const [_, setCalculating] = useState(false);
     const [rangeScale, setRangeScale] = useState(40000); // Default 40k
 
     // Canvas Refs

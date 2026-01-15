@@ -237,7 +237,7 @@ export const TMAControls = () => {
         <>
             {/* ZONE A: TIMELINE (Scrollable) */}
             <div className="flex-none h-12 flex items-center gap-1 overflow-x-auto px-2 border-b border-white/10 bg-black/20 no-scrollbar">
-                {legs.map((leg, idx) => (
+                {legs.map((_, idx) => (
                     <button
                         key={idx}
                         onClick={() => setSelectedLegIndex(idx)}

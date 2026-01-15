@@ -61,7 +61,7 @@ const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode'
   orderedDepth: 150,
 });
 
-export const useSubmarineStore = create<SubmarineState>((set, get) => ({
+export const useSubmarineStore = create<SubmarineState>((set) => ({
   ...getInitialState(),
 
   setAppState: (appState) => set({ appState }),
@@ -316,7 +316,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
     contacts: state.contacts.map(c => c.id === id ? { ...c, status: 'DESTROYED' } : c)
   })),
 
-  loadScenario: (newState, id) => set((state) => ({
+  loadScenario: (newState, id) => set((_) => ({
     ...getInitialState(), // Reset to defaults first
     ...newState,
     // Ensure complex objects are handled

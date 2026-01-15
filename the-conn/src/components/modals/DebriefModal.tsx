@@ -1,4 +1,3 @@
-import React, { useRef, useEffect } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 
 export const DebriefModal: React.FC = () => {
@@ -56,7 +55,6 @@ export const DebriefModal: React.FC = () => {
 
     const worldToScreen = (wx: number, wy: number) => {
         const relX = wx - minX;
-        const relY = wy - minY; // y increases downwards in SVG, but North is Up in World
         // World +Y is North (Up). Screen +Y is Down.
         // So we flip Y.
         // maxY corresponds to Screen Y=0.

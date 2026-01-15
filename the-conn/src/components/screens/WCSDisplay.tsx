@@ -106,7 +106,7 @@ const WCSDisplay = () => {
 
     const ownShip = { x, y, heading };
 
-    const { loadTube, floodTube, equalizeTube, openTube, fireTube } = useSubmarineStore.getState();
+    const { loadTube, fireTube } = useSubmarineStore.getState();
     const [selectedTubeId, setSelectedTubeId] = useState<number>(1);
 
     // Preset State

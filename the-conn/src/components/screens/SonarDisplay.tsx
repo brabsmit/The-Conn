@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { SonarEngine } from '../../services/SonarEngine';
 import SonarOverlay from './SonarOverlay';
-import SonarBezel from '../panels/SonarBezel';
 import { useResize } from '../../hooks/useResize';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { useSonarAudio } from '../../hooks/useSonarAudio';
@@ -36,7 +35,7 @@ const SonarDisplay: React.FC = () => {
     const height = lockedSize ? lockedSize.height : Math.floor(rawHeight);
 
     // Audio / Visual Warning Logic
-    const [showInterceptWarning, setShowInterceptWarning] = useState(false);
+    const [_, setShowInterceptWarning] = useState(false);
     const lastInterceptTimeRef = useRef<number>(0);
     const warningTimerRef = useRef<number | null>(null);
 

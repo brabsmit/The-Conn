@@ -3,8 +3,6 @@ import { generateSafetyHeatmap } from './AnalysisUtils';
 import type { Tracker } from '../store/types';
 
 describe('AnalysisUtils - generateSafetyHeatmap', () => {
-    // Mock basic ownship
-    const ownship = { x: 0, y: 0 };
 
     // Helper to create a tracker with a specific solution
     const createTracker = (id: string, range: number, bearing: number, course: number, speed: number): Tracker => ({
@@ -28,7 +26,7 @@ describe('AnalysisUtils - generateSafetyHeatmap', () => {
     });
 
     it('identifies SAFE zones when no trackers present', () => {
-        const heatmap = generateSafetyHeatmap(ownship, []);
+        const heatmap = generateSafetyHeatmap([]);
         // Check a few points
         expect(heatmap[0][5]).toBe('SAFE');
         expect(heatmap[180][20]).toBe('SAFE');
@@ -41,7 +39,7 @@ describe('AnalysisUtils - generateSafetyHeatmap', () => {
         // CPA should be 0.
         const tracker = createTracker('T1', 5000, 0, 180, 10);
 
-        const heatmap = generateSafetyHeatmap(ownship, [tracker]);
+        const heatmap = generateSafetyHeatmap([tracker]);
 
         // Course 0 (North), Speed 10 -> Collision
         expect(heatmap[0][10]).toBe('DANGER');
@@ -59,7 +57,7 @@ describe('AnalysisUtils - generateSafetyHeatmap', () => {
         // Should be DANGER (since CPA < 2000 and Time < 15).
 
         const tracker = createTracker('T2', 5000, 0, 0, 0); // Stationary
-        const heatmap = generateSafetyHeatmap(ownship, [tracker]);
+        const heatmap = generateSafetyHeatmap([tracker]);
 
         expect(heatmap[0][10]).toBe('DANGER'); // Just under 15 mins
     });
@@ -68,7 +66,7 @@ describe('AnalysisUtils - generateSafetyHeatmap', () => {
         // Target 2000yds North, going North at 20kts.
         // We go South at 5kts. Diverging.
         const tracker = createTracker('T3', 2000, 0, 0, 20);
-        const heatmap = generateSafetyHeatmap(ownship, [tracker]);
+        const heatmap = generateSafetyHeatmap([tracker]);
 
         expect(heatmap[180][5]).toBe('SAFE');
     });

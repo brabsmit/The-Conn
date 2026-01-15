@@ -64,7 +64,6 @@ export const RotaryKnob: React.FC<RotaryKnobProps> = ({
 
     if (loop) {
         // Wrap
-        const range = max - min; // usually 360 - 0 = 360.
         while (newValue >= max) newValue -= (max - min);
         while (newValue < min) newValue += (max - min);
     } else {

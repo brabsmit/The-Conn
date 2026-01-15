@@ -3,12 +3,9 @@ import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { generateSafetyHeatmap } from '../../utils/AnalysisUtils';
 import type { SafetyLevel } from '../../utils/AnalysisUtils';
 
-const COLOR_SAFE = 'rgba(0, 255, 0, 0.1)';
 const COLOR_WARNING = 'rgba(255, 200, 0, 0.4)';
 const COLOR_DANGER = 'rgba(255, 0, 0, 0.5)';
 const COLOR_GRID = '#445566';
-const COLOR_TEXT = '#00aaaa';
-const COLOR_OWNSHIP = '#ffffff';
 
 interface RangeTriageDisplayProps {
     width?: number;
@@ -18,12 +15,6 @@ interface RangeTriageDisplayProps {
 export const RangeTriageDisplay: React.FC<RangeTriageDisplayProps> = ({ width = 300, height = 300 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-
-    // Store Access
-    const x = useSubmarineStore(state => state.x);
-    const y = useSubmarineStore(state => state.y);
-    const heading = useSubmarineStore(state => state.heading);
-    const ownShip = useMemo(() => ({ x, y, heading }), [x, y, heading]);
 
     const trackers = useSubmarineStore(state => state.trackers);
     const orderedHeading = useSubmarineStore(state => state.orderedHeading);
@@ -46,7 +37,7 @@ export const RangeTriageDisplay: React.FC<RangeTriageDisplayProps> = ({ width = 
     // Doing it every tick might be heavy (72 * 6 = 432 CPA calcs).
     // JS is fast, 432 simple loops is nothing.
     const heatmap = useMemo(() => {
-        return generateSafetyHeatmap(ownShip, trackers, 15);
+        return generateSafetyHeatmap(trackers, 15);
     }, [trackers, tickCount]); // Reduced frequency? trackers update every tick.
 
     // Helper: Screen Center & Scale
