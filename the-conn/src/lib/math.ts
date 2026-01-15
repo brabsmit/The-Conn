@@ -141,3 +141,134 @@ export const calculateBearing = (x1: number, y1: number, x2: number, y2: number)
   const angleDeg = (angleRad * 180) / Math.PI;
   return normalizeAngle(angleDeg);
 };
+
+/**
+ * Calculates distance in yards between two points (assumes coordinates in feet)
+ * @param x1 - First point X in feet
+ * @param y1 - First point Y in feet
+ * @param x2 - Second point X in feet
+ * @param y2 - Second point Y in feet
+ * @returns Distance in yards
+ */
+export const distanceYards = (x1: number, y1: number, x2: number, y2: number): number => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy) / YARDS_TO_FEET;
+};
+
+/**
+ * Converts a mathematical angle (from Math.atan2) to a navigational bearing
+ * @param mathAngle - Angle in degrees from Math.atan2 (0 = East, positive counterclockwise)
+ * @returns Bearing in degrees (0 = North, 90 = East)
+ */
+export const mathAngleToBearing = (mathAngle: number): number => {
+  return normalizeAngle(90 - mathAngle);
+};
+
+/**
+ * Calculates both bearing and distance from point 1 to point 2
+ * @param x1 - Start point X in feet
+ * @param y1 - Start point Y in feet
+ * @param x2 - End point X in feet
+ * @param y2 - End point Y in feet
+ * @returns Object with bearing (degrees) and distanceYards (yards)
+ */
+export const getBearingAndDistance = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): { bearing: number; distanceYards: number } => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const mathAngle = Math.atan2(dx, dy) * (180 / Math.PI);
+  const bearing = normalizeAngle(mathAngle);
+  const distYards = Math.sqrt(dx * dx + dy * dy) / YARDS_TO_FEET;
+  return { bearing, distanceYards: distYards };
+};
+
+/**
+ * Calculates relative bearing (difference between absolute bearing and heading)
+ * @param absoluteBearing - Absolute bearing in degrees
+ * @param heading - Current heading in degrees
+ * @returns Relative bearing in range [0, 360)
+ */
+export const relativeBearing = (absoluteBearing: number, heading: number): number => {
+  return normalizeAngle(absoluteBearing - heading);
+};
+
+/**
+ * Checks if a relative bearing is in the baffles (blind zone behind the vessel)
+ * @param relBearing - Relative bearing in degrees
+ * @returns true if bearing is in baffles (150-210 degrees relative)
+ */
+export const isInBaffles = (relBearing: number): boolean => {
+  const normalized = normalizeAngle(relBearing);
+  return normalized > 150 && normalized < 210;
+};
+
+/**
+ * Linear interpolation between two values
+ * @param current - Current value
+ * @param target - Target value
+ * @param alpha - Interpolation factor [0, 1]
+ * @returns Interpolated value
+ */
+export const lerp = (current: number, target: number, alpha: number): number => {
+  return current + (target - current) * alpha;
+};
+
+/**
+ * Smoothly interpolates between two angles, handling wraparound
+ * @param current - Current angle in degrees
+ * @param target - Target angle in degrees
+ * @param alpha - Interpolation factor [0, 1]
+ * @returns Interpolated angle in degrees
+ */
+export const lerpAngle = (current: number, target: number, alpha: number): number => {
+  let diff = target - current;
+  // Handle wraparound
+  while (diff < -180) diff += 360;
+  while (diff > 180) diff -= 360;
+  return normalizeAngle(current + diff * alpha);
+};
+
+// ============================================================================
+// CONVERSION UTILITIES
+// ============================================================================
+
+/**
+ * Converts speed from knots to feet per second
+ * @param knots - Speed in knots
+ * @returns Speed in feet per second
+ */
+export const knotsToFeetPerSecond = (knots: number): number => {
+  return knots * FEET_PER_KNOT_SEC;
+};
+
+/**
+ * Converts speed from knots to yards per second
+ * @param knots - Speed in knots
+ * @returns Speed in yards per second
+ */
+export const knotsToYardsPerSecond = (knots: number): number => {
+  return knots * (FEET_PER_KNOT_SEC / YARDS_TO_FEET);
+};
+
+/**
+ * Converts feet to yards
+ * @param feet - Distance in feet
+ * @returns Distance in yards
+ */
+export const feetToYards = (feet: number): number => {
+  return feet / YARDS_TO_FEET;
+};
+
+/**
+ * Converts yards to feet
+ * @param yards - Distance in yards
+ * @returns Distance in feet
+ */
+export const yardsToFeet = (yards: number): number => {
+  return yards * YARDS_TO_FEET;
+};
