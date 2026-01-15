@@ -148,7 +148,7 @@ export const generateSafetyHeatmap = (
                     if (distCPA < SAFETY_THRESHOLDS.DANGER.range) {
                         maxRisk = 'DANGER';
                         break; // Worst case found
-                    } else if (distCPA < SAFETY_THRESHOLDS.WARNING.range && maxRisk !== 'DANGER') {
+                    } else if (distCPA < SAFETY_THRESHOLDS.WARNING.range) {
                         maxRisk = 'WARNING';
                     }
                 }
