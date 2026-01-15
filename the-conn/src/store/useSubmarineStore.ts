@@ -565,101 +565,19 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         return currentContact;
       });
 
-      // --- Active Sonar Logic (Global Event Processing) ---
-      let newActiveIntercepts = [...state.activeIntercepts];
-
-      newContacts = newContacts.map(contact => {
-          if (contact.status === 'DESTROYED' || !contact.isActivePingEnabled) return contact;
-
-          let updatedContact = { ...contact };
-          const pingInterval = ACOUSTICS.ACTIVE_SONAR.INTERVAL;
-
-          // Decrement Timer
-          if (updatedContact.activePingTimer === undefined) updatedContact.activePingTimer = 0;
-          updatedContact.activePingTimer -= (1/60) * delta;
-
-          if (updatedContact.activePingTimer <= 0) {
-              // PING!
-              updatedContact.activePingTimer = pingInterval;
-
-              const dx = state.x - contact.x;
-              const dy = state.y - contact.y;
-              const distYards = Math.sqrt(dx * dx + dy * dy) / 3;
-              const deepWater = true; // Assumption
-
-              // 1. One-Way (Intercept) - Player hears it?
-              const interceptSignal = AcousticsEngine.calculateActiveOneWay(ACOUSTICS.ACTIVE_SONAR.SL, distYards, deepWater);
-              const interceptThreshold = 0; // 0dB detection threshold for intercept? Usually highly audible.
-
-              if (interceptSignal > interceptThreshold) {
-                   // Calculate Bearing of source relative to ownship
-                   // Vector from Ownship TO Contact is (dx, dy) reversed: contact.x - state.x
-                   const dxSource = contact.x - state.x;
-                   const dySource = contact.y - state.y;
-                   const mathAngle = Math.atan2(dySource, dxSource) * (180 / Math.PI);
-                   const bearingToSource = normalizeAngle(90 - mathAngle);
-
-                   // Add Intercept Event
-                   newActiveIntercepts.push({
-                       bearing: bearingToSource,
-                       timestamp: newGameTime,
-                       sourceId: contact.id
-                   });
-
-                   // Log
-                   if (interceptSignal > 10) {
-                       newLogs = [...newLogs, {
-                           message: `Conn, Sonar: HIGH FREQUENCY INTERCEPT! Bearing ${Math.round(bearingToSource)}!`,
-                           type: 'ALERT' as const,
-                           timestamp: newGameTime
-                       }].slice(-50);
-                   }
-              }
-
-              // 2. Two-Way (Return) - Enemy hears us?
-              const returnSignal = AcousticsEngine.calculateActiveTwoWay(
-                  ACOUSTICS.ACTIVE_SONAR.SL,
-                  distYards,
-                  ACOUSTICS.OWNSHIP_TARGET_STRENGTH,
-                  deepWater
-              );
-
-              const detectionThreshold = 0; // 0dB excess needed
-              if (returnSignal > detectionThreshold && contact.type === 'ENEMY') {
-                  // Confirmed Range/Bearing
-                  // Trigger Attack if in range
-                  if (distYards < 6000) { // Extended attack range for active
-                       if (!updatedContact.torpedoCooldown || updatedContact.torpedoCooldown <= 0) {
-                           updatedContact.aiMode = 'ATTACK';
-                           newLogs = [...newLogs, {
-                               message: `Conn, Sonar: Active Return Detected by ${contact.id}! Launch Transient!`,
-                               type: 'ALERT' as const,
-                               timestamp: newGameTime
-                           }].slice(-50);
-                       }
-                  }
-              }
-          }
-          return updatedContact;
+      // Active Sonar Processing (SensorEngine)
+      const activeSonarResult = SensorEngine.processActiveSonar({
+        gameTime: newGameTime,
+        ownship: { x: newX, y: newY },
+        contacts: newContacts,
+        activeIntercepts: state.activeIntercepts,
+        delta,
       });
 
-      // Cleanup old intercepts (> 2 seconds)
-      newActiveIntercepts = newActiveIntercepts.filter(i => newGameTime - i.timestamp < 2.0);
-
-      // Detect fire requests (Transitioned to cooldown this tick)
-      const enemyFireRequests: { shooterId: string; x: number; y: number; heading: number }[] = [];
-      newContacts.forEach(c => {
-          if (c.aiMode === 'EVADE' && c.torpedoCooldown === 600) {
-              // Just fired
-              // Calculate Bearing to Ownship for correct firing solution
-              const dx = newX - c.x;
-              const dy = newY - c.y;
-              const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
-              const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
-
-              enemyFireRequests.push({ shooterId: c.id, x: c.x, y: c.y, heading: bearingToOwnship });
-          }
-      });
+      newContacts = activeSonarResult.updatedContacts;
+      let newActiveIntercepts = activeSonarResult.activeIntercepts;
+      newLogs = [...newLogs, ...activeSonarResult.logs].slice(-50);
+      const enemyFireRequests = activeSonarResult.enemyFireRequests;
 
       const generatedTorpedoes: Torpedo[] = enemyFireRequests.map(req => ({
           id: `T-${Math.floor(state.gameTime)}-${req.shooterId}`,
@@ -679,282 +597,78 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
           history: []
       }));
 
-      // Update Torpedoes & Collision Check
+      // Update Torpedoes (PhysicsEngine)
       const newTorpedoes = state.torpedoes.map(torpedo => {
-        if (torpedo.status !== 'RUNNING') return torpedo;
+        const update = PhysicsEngine.updateTorpedo(torpedo, {
+          ownshipX: newX,
+          ownshipY: newY,
+          contacts: newContacts,
+          delta,
+        });
 
-        let newSpeed = torpedo.speed;
-        if (newSpeed < 45) {
-          newSpeed += 0.5 * delta; // Accelerate
-          if (newSpeed > 45) newSpeed = 45;
-        }
+        // Handle collision side effects
+        if (update.collision) {
+          const expDx = update.collision.position.x - newX;
+          const expDy = update.collision.position.y - newY;
+          const expAngle = Math.atan2(expDy, expDx) * (180 / Math.PI);
+          const expBearing = normalizeAngle(90 - expAngle);
 
-        const distThisTick = newSpeed * FEET_PER_KNOT_PER_TICK * delta; // Feet
-        const newTotalDistance = torpedo.distanceTraveled + (distThisTick / 3); // Yards
+          newVisualTransients.push({
+            bearing: expBearing,
+            intensity: 1.0,
+            timestamp: state.gameTime + (1/60),
+          });
 
-        let newHeading = torpedo.heading;
+          if (update.collision.targetId === 'OWNSHIP') {
+            newScriptedEvents.push({
+              time: state.gameTime + (1/60),
+              type: 'LOG',
+              payload: { message: `ALARM: HULL BREACH! TORPEDO IMPACT!`, type: 'ALERT' },
+            });
+            newGameState = 'DEFEAT';
+          } else {
+            const contact = newContacts.find((c) => c.id === update.collision!.targetId);
+            if (contact) {
+              newContacts = newContacts.map((c) => c.id === contact.id ? { ...c, status: 'DESTROYED' } : c);
 
-        // --- Autonomy Logic ---
-
-        let finalStatus: Torpedo['status'] = torpedo.status;
-        let finalActiveTargetId = torpedo.activeTargetId;
-
-        if (newTotalDistance > 20000) {
-            finalStatus = 'DUD';
-        }
-
-        if (newTotalDistance >= torpedo.enableRange && finalStatus === 'RUNNING') {
-           // Acquisition Logic (Active Seeker)
-           if (!finalActiveTargetId) {
-                let bestContactId = undefined;
-                let minDist = 2000; // Seeker Range
-
-                // Prioritize designated target
-                if (torpedo.designatedTargetId) {
-                    if (torpedo.designatedTargetId === 'OWNSHIP') {
-                        const dx = state.x - torpedo.position.x;
-                        const dy = state.y - torpedo.position.y;
-                        const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                        if (distToContact < 2000) {
-                            const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                            const bearingToContact = normalizeAngle(90 - mathAngle);
-                            let relBearing = Math.abs(bearingToContact - newHeading);
-                            if (relBearing > 180) relBearing = 360 - relBearing;
-
-                            if (relBearing < 45) {
-                                bestContactId = 'OWNSHIP';
-                            }
-                        }
-                    } else {
-                        const contact = newContacts.find(c => c.id === torpedo.designatedTargetId && c.status !== 'DESTROYED');
-                        if (contact) {
-                             const dx = contact.x - torpedo.position.x;
-                             const dy = contact.y - torpedo.position.y;
-                             const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                             if (distToContact < 2000) {
-                                const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                                const bearingToContact = normalizeAngle(90 - mathAngle);
-                                let relBearing = Math.abs(bearingToContact - newHeading);
-                                if (relBearing > 180) relBearing = 360 - relBearing;
-
-                                if (relBearing < 45) {
-                                    bestContactId = contact.id;
-                                }
-                             }
-                        }
-                    }
-                }
-
-                // If not found designated, check all contacts AND OWNSHIP
-                if (!bestContactId) {
-                    // Check Ownship
-                    const dx = state.x - torpedo.position.x;
-                    const dy = state.y - torpedo.position.y;
-                    const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                    if (distToContact < 2000) {
-                        const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                        const bearingToContact = normalizeAngle(90 - mathAngle);
-                        let relBearing = Math.abs(bearingToContact - newHeading);
-                        if (relBearing > 180) relBearing = 360 - relBearing;
-
-                        if (relBearing < 45) {
-                            if (distToContact < minDist) {
-                                minDist = distToContact;
-                                bestContactId = 'OWNSHIP';
-                            }
-                        }
-                    }
-
-                    for (const contact of newContacts) {
-                        if (contact.status === 'DESTROYED') continue;
-                        const dx = contact.x - torpedo.position.x;
-                        const dy = contact.y - torpedo.position.y;
-                        const distToContact = Math.sqrt(dx*dx + dy*dy) / 3; // yards
-                        if (distToContact < 2000) {
-                            const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                            const bearingToContact = normalizeAngle(90 - mathAngle);
-                            let relBearing = Math.abs(bearingToContact - newHeading);
-                            if (relBearing > 180) relBearing = 360 - relBearing;
-
-                            if (relBearing < 45) {
-                                if (distToContact < minDist) {
-                                    minDist = distToContact;
-                                    bestContactId = contact.id;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (bestContactId) {
-                    finalActiveTargetId = bestContactId;
-                }
-           }
-
-           // Snake Search Pattern (if not locked)
-           if (!finalActiveTargetId) {
-               const searchWidth = 20; // degrees
-               const searchPeriod = 2000; // yards
-               const phase = ((newTotalDistance - torpedo.enableRange) % searchPeriod) / searchPeriod;
-               const offset = Math.sin(phase * Math.PI * 2) * searchWidth;
-
-               // Turn towards Search Heading
-               const desired = normalizeAngle(torpedo.gyroAngle + offset);
-               const diff = desired - newHeading;
-               let turnAmount = diff;
-               if (diff > 180) turnAmount = diff - 360;
-               if (diff < -180) turnAmount = diff + 360;
-               const maxTurn = 3.0 * delta;
-               if (Math.abs(turnAmount) < maxTurn) {
-                   newHeading = desired;
-               } else {
-                   newHeading = normalizeAngle(newHeading + Math.sign(turnAmount) * maxTurn);
-               }
-           }
-        }
-        else {
-            // Transit Phase: Turn towards Gyro
-            const desired = torpedo.gyroAngle;
-            const diff = desired - newHeading;
-            let turnAmount = diff;
-            if (diff > 180) turnAmount = diff - 360;
-            if (diff < -180) turnAmount = diff + 360;
-            const maxTurn = 3.0 * delta; // Fast turn for torpedo
-            if (Math.abs(turnAmount) < maxTurn) {
-                newHeading = desired;
-            } else {
-                newHeading = normalizeAngle(newHeading + Math.sign(turnAmount) * maxTurn);
+              const hitTime = state.gameTime + (1/60);
+              newScriptedEvents.push({
+                time: hitTime,
+                type: 'LOG',
+                payload: { message: `Conn, Sonar: Loud transient bearing ${Math.round(expBearing)}!`, type: 'ALERT' },
+              });
+              newScriptedEvents.push({
+                time: hitTime + 5,
+                type: 'LOG',
+                payload: { message: `Conn, Sonar: Breaking up noises confirmed on ${contact.id}.`, type: 'INFO' },
+              });
+              newScriptedEvents.push({
+                time: hitTime + 15,
+                type: 'LOG',
+                payload: { message: `Conn, Sonar: Contact ${contact.id} lost.`, type: 'INFO' },
+              });
+              newScriptedEvents.push({
+                time: hitTime + 15,
+                type: 'DELETE_TRACKER',
+                payload: { contactId: contact.id },
+              });
+              newScriptedEvents.push({
+                time: hitTime + 15,
+                type: 'RESET_ALERT',
+                payload: {},
+              });
             }
+          }
         }
-
-        // Apply Heading Prediction for Collision Check
-        const torpRadHeading = (newHeading * Math.PI) / 180;
-        const torpNewX = torpedo.position.x + distThisTick * Math.sin(torpRadHeading);
-        const torpNewY = torpedo.position.y + distThisTick * Math.cos(torpRadHeading);
-
-        // Phase 3: Homing (Pure Pursuit) and COLLISION CHECK
-        if (finalActiveTargetId && finalStatus === 'RUNNING') {
-             let targetX = 0, targetY = 0;
-             let validTarget = false;
-
-             if (finalActiveTargetId === 'OWNSHIP') {
-                 targetX = state.x;
-                 targetY = state.y;
-                 validTarget = true;
-             } else {
-                 const contact = newContacts.find(c => c.id === finalActiveTargetId);
-                 if (contact && contact.status !== 'DESTROYED') {
-                     targetX = contact.x;
-                     targetY = contact.y;
-                     validTarget = true;
-                 }
-             }
-
-             if (validTarget) {
-                 const dx = targetX - torpedo.position.x;
-                 const dy = targetY - torpedo.position.y;
-                 const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                 const bearingToContact = normalizeAngle(90 - mathAngle);
-
-                 // Update heading for next tick (or current tick?)
-                 // If we update heading now, we should re-calculate torpNewX?
-                 // Homing implies we turn towards target.
-                 // "Pure Pursuit".
-                 // If we turn now, we move in that direction THIS tick?
-                 // Usually yes.
-                 newHeading = bearingToContact;
-                 const newRad = (newHeading * Math.PI) / 180;
-                 // Re-calculate position based on new heading
-                 const correctedNewX = torpedo.position.x + distThisTick * Math.sin(newRad);
-                 const correctedNewY = torpedo.position.y + distThisTick * Math.cos(newRad);
-
-                 // Proximity Fuse (Detonation) with Raycast
-                 // Radius 40 yards = 120 units
-                 const hit = checkCollision(
-                     torpedo.position.x, torpedo.position.y,
-                     correctedNewX, correctedNewY,
-                     targetX, targetY,
-                     120
-                 );
-
-                 if (hit) {
-                     finalStatus = 'EXPLODED';
-
-                     // IMPACT LOGIC
-                     // Calculate relative bearing from ownship to explosion
-                     const expDx = torpedo.position.x - newX;
-                     const expDy = torpedo.position.y - newY;
-                     const expAngle = Math.atan2(expDy, expDx) * (180 / Math.PI);
-                     const expBearing = normalizeAngle(90 - expAngle);
-
-                     newVisualTransients.push({
-                         bearing: expBearing,
-                         intensity: 1.0,
-                         timestamp: state.gameTime + (1/60)
-                     });
-
-                     if (finalActiveTargetId === 'OWNSHIP') {
-                         // Hit Ownship
-                         newScriptedEvents.push({
-                             time: state.gameTime + (1/60),
-                             type: 'LOG',
-                             payload: { message: `ALARM: HULL BREACH! TORPEDO IMPACT!`, type: 'ALERT' }
-                         });
-                         newGameState = 'DEFEAT';
-                     } else {
-                         // Hit Contact
-                         const contact = newContacts.find(c => c.id === finalActiveTargetId);
-                         if (contact) {
-                             newContacts = newContacts.map(c => c.id === contact.id ? { ...c, status: 'DESTROYED' } : c);
-
-                             // Schedule Events
-                             const hitTime = state.gameTime + (1/60);
-                             newScriptedEvents.push({
-                                 time: hitTime,
-                                 type: 'LOG',
-                                 payload: { message: `Conn, Sonar: Loud transient bearing ${Math.round(expBearing)}!`, type: 'ALERT' }
-                             });
-                             newScriptedEvents.push({
-                                 time: hitTime + 5,
-                                 type: 'LOG',
-                                 payload: { message: `Conn, Sonar: Breaking up noises confirmed on ${contact.id}.`, type: 'INFO' }
-                             });
-                             newScriptedEvents.push({
-                                 time: hitTime + 15,
-                                 type: 'LOG',
-                                 payload: { message: `Conn, Sonar: Contact ${contact.id} lost.`, type: 'INFO' }
-                             });
-                             newScriptedEvents.push({
-                                 time: hitTime + 15,
-                                 type: 'DELETE_TRACKER',
-                                 payload: { contactId: contact.id }
-                             });
-                             newScriptedEvents.push({
-                                time: hitTime + 15,
-                                type: 'RESET_ALERT',
-                                payload: {}
-                             });
-                         }
-                     }
-                 }
-             } else {
-                 finalActiveTargetId = undefined; // Lost lock or target destroyed
-             }
-        }
-
-        // Recalculate final position (redundant but safe if homing didn't run)
-        const finalRad = (newHeading * Math.PI) / 180;
-        const finalNewX = torpedo.position.x + distThisTick * Math.sin(finalRad);
-        const finalNewY = torpedo.position.y + distThisTick * Math.cos(finalRad);
 
         return {
           ...torpedo,
-          speed: newSpeed,
-          heading: newHeading,
-          position: { x: finalNewX, y: finalNewY },
-          distanceTraveled: newTotalDistance,
-          status: finalStatus,
-          activeTargetId: finalActiveTargetId
+          speed: update.speed,
+          heading: update.heading,
+          position: update.position,
+          distanceTraveled: update.distanceTraveled,
+          status: update.status,
+          activeTargetId: update.activeTargetId,
         };
       });
 
