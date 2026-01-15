@@ -570,7 +570,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
         gameTime: newGameTime,
         ownship: { x: newX, y: newY },
         contacts: newContacts,
-        activeIntercepts: state.activeIntercepts,
+        activeIntercepts: state.activeIntercepts || [],
         delta,
       });
 
