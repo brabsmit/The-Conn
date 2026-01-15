@@ -60,7 +60,7 @@ function App() {
       <TopBar />
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
-      <div className="flex-grow grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
+      <div className="flex-grow min-h-0 grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
         
         {/* PANE A: Sonar Panel (Left) */}
         <div className="h-full flex flex-col gap-4 min-w-0">

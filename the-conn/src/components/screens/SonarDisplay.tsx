@@ -123,8 +123,7 @@ const SonarDisplay: React.FC = () => {
         width: `${width}px`,
         height: `${height}px`,
         flexGrow: 0,
-        flexShrink: 0,
-        minHeight: `${height}px`, // Enforce minimum
+        flexShrink: 1, // Allow shrinking to prevent overflow
         position: 'relative',
         overflow: 'hidden',
         backgroundColor: 'black'
