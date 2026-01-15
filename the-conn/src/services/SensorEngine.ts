@@ -25,8 +25,14 @@ import type {
   Tracker,
   ActiveIntercept,
   OwnShipHistory,
-  LogEntry,
 } from '../store/types';
+
+// Local type definition
+interface LogEntry {
+  message: string;
+  timestamp: number;
+  type: 'INFO' | 'ALERT';
+}
 
 // Sensor Constants
 const BEARING_NOISE_STDEV = 1.0; // degrees
