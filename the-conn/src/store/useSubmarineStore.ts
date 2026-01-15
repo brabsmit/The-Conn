@@ -5,7 +5,7 @@ import * as PhysicsEngine from '../services/PhysicsEngine';
 import * as AIEngine from '../services/AIEngine';
 import * as SensorEngine from '../services/SensorEngine';
 import * as ContactManager from '../services/ContactManager';
-import type { SubmarineState, Tracker } from './types';
+import type { SubmarineState, Tracker, Torpedo } from './types';
 
 export * from './types';
 
