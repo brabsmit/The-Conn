@@ -674,146 +674,23 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
 
       const allTorpedoes = [...newTorpedoes, ...generatedTorpedoes];
 
-      // Detect Incoming Torpedoes
-      let newIncomingTorpedoDetected = false;
-      const weaponTrackers: Tracker[] = [];
-
-      allTorpedoes.forEach(torp => {
-          if (torp.status === 'RUNNING' && torp.isHostile) {
-              const dx = torp.position.x - newX;
-              const dy = torp.position.y - newY;
-              const distYards = Math.sqrt(dx*dx + dy*dy) / 3;
-
-              // Check Baffles
-              const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-              const trueBearing = normalizeAngle(90 - mathAngle);
-              const relBearing = normalizeAngle(trueBearing - newHeading);
-              const inBaffles = relBearing > 150 && relBearing < 210;
-
-              const active = torp.searchMode === 'ACTIVE' && distYards < 4000;
-              const passive = distYards < (inBaffles ? 1000 : 3000);
-
-              if (active || passive) {
-                  newIncomingTorpedoDetected = true;
-
-                  // Update or Create Weapon Tracker
-                  const trackerId = `W-${torp.id}`;
-
-                  // Task 91.2: Watch Team Deduplication
-                  // Prevent processing the same weapon multiple times in one tick
-                  if (weaponTrackers.some(t => t.id === trackerId)) {
-                      return;
-                  }
-
-                  let tracker = state.trackers.find(t => t.id === trackerId);
-
-                  // Solution Logic (Truth + Noise if passive)
-                  let solX = torp.position.x;
-                  let solY = torp.position.y;
-
-                  if (!active) {
-                      // Add some noise for passive detection
-                      solX += gaussianRandom(0, 50);
-                      solY += gaussianRandom(0, 50);
-                  }
-
-                  if (!tracker) {
-                      newLogs = [...newLogs, {
-                          message: `Conn, Sonar: TORPEDO DETECTED! Bearing ${Math.round(trueBearing)}!`,
-                          timestamp: newGameTime,
-                          type: 'ALERT'
-                      }].slice(-50);
-
-                      // Note: We don't set alertLevel here directly, it is calculated at the end of the tick based on trackers.
-
-                      tracker = {
-                          id: trackerId,
-                          kind: 'WEAPON',
-                          currentBearing: relBearing, // Keep it relative for display
-                          displayBearing: relBearing,
-                          bearingHistory: [],
-                          solution: {
-                              legs: [{
-                                startTime: newGameTime,
-                                startRange: distYards,
-                                startBearing: trueBearing,
-                                course: torp.heading,
-                                speed: torp.speed,
-                                startOwnShip: { x: newX, y: newY, heading: newHeading }
-                              }],
-                              speed: torp.speed,
-                              range: distYards,
-                              course: torp.heading,
-                              bearing: trueBearing,
-                              anchorTime: newGameTime,
-                              anchorOwnShip: { x: newX, y: newY, heading: newHeading },
-                              computedWorldX: solX,
-                              computedWorldY: solY
-                          },
-                          classificationStatus: 'CLASSIFIED',
-                          timeToClassify: 0,
-                          classification: 'TORPEDO',
-                          creationTime: newGameTime, // Task 115.1
-                          lastInteractionTime: newGameTime // Task 115.1
-                      };
-                  } else {
-                       // Update existing weapon tracker
-                       // Task 137.2: Apply Smoothing to Weapons too
-                       let diff = relBearing - (tracker.displayBearing !== undefined ? tracker.displayBearing : relBearing);
-                       while (diff < -180) diff += 360;
-                       while (diff > 180) diff -= 360;
-                       const smoothed = (tracker.displayBearing !== undefined ? tracker.displayBearing : relBearing) + (diff * 0.1);
-
-                       tracker = {
-                           ...tracker,
-                           currentBearing: relBearing,
-                           displayBearing: normalizeAngle(smoothed),
-                           solution: {
-                               ...tracker.solution,
-                               speed: torp.speed,
-                               range: distYards,
-                               course: torp.heading,
-                               bearing: trueBearing,
-                               anchorTime: newGameTime,
-                               anchorOwnShip: { x: newX, y: newY, heading: newHeading },
-                               computedWorldX: solX,
-                               computedWorldY: solY
-                           }
-                       };
-                  }
-                  weaponTrackers.push(tracker);
-              }
-          }
+      // Passive Sensor Readings (SensorEngine)
+      const newSensorReadings = SensorEngine.generatePassiveSensorReadings({
+        ownship: { x: newX, y: newY, heading: newHeading },
+        contacts: newContacts,
       });
 
-      // Sensor Simulation
-      const newSensorReadings = newContacts.reduce((acc, contact) => {
-        // Skip destroyed contacts in sensors
-        if (contact.status === 'DESTROYED') return acc;
+      // Weapon Detection (SensorEngine)
+      const weaponDetection = SensorEngine.detectWeapons({
+        gameTime: newGameTime,
+        ownship: { x: newX, y: newY, heading: newHeading },
+        torpedoes: allTorpedoes,
+        existingTrackers: state.trackers,
+      });
 
-        // Calculate True Bearing
-        const dx = contact.x - newX;
-        const dy = contact.y - newY;
-        const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-        const trueBearing = normalizeAngle(90 - mathAngleDeg);
-
-        const relativeBearing = normalizeAngle(trueBearing - newHeading);
-
-        // Baffles: Blind in rear 60 degrees (150 to 210 relative)
-        if (relativeBearing > 150 && relativeBearing < 210) {
-          return acc;
-        }
-
-        // Add Noise (e.g. 2 degrees std dev)
-        const noisyBearing = normalizeAngle(gaussianRandom(relativeBearing, 1.0));
-
-        acc.push({
-          contactId: contact.id,
-          bearing: noisyBearing
-        });
-
-        return acc;
-      }, [] as SensorReading[]);
+      const weaponTrackers = weaponDetection.weaponTrackers;
+      const newIncomingTorpedoDetected = weaponDetection.incomingTorpedoDetected;
+      newLogs = [...newLogs, ...weaponDetection.logs].slice(-50);
 
       // Process Scripted Events
       let remainingEvents = [];
@@ -840,77 +717,18 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       }
       newScriptedEvents = remainingEvents;
 
-      // Update Trackers (Sensors + Weapons)
+      // Update Trackers (SensorEngine)
       let newTrackers = state.trackers.filter(t => t.kind !== 'WEAPON').map(tracker => {
-        let updatedTracker = { ...tracker };
+        const result = SensorEngine.updateTracker(tracker, {
+          gameTime: newGameTime,
+          ownship: { x: newX, y: newY, heading: newHeading },
+          sensorReadings: newSensorReadings,
+          contacts: newContacts,
+          delta,
+        });
 
-        // Follow contact if locked
-        if (updatedTracker.contactId) {
-          const reading = newSensorReadings.find(r => r.contactId === updatedTracker.contactId);
-          if (reading) {
-             updatedTracker.currentBearing = reading.bearing;
-          }
-        }
-
-        // Task 137.2: The "Needle Mass" (Smoothing)
-        // Lerp displayBearing to currentBearing
-        const target = updatedTracker.currentBearing;
-        let diff = target - (updatedTracker.displayBearing !== undefined ? updatedTracker.displayBearing : target);
-
-        // Wrap Logic
-        while (diff < -180) diff += 360;
-        while (diff > 180) diff -= 360;
-
-        // Apply Lerp (0.1)
-        const smoothed = (updatedTracker.displayBearing !== undefined ? updatedTracker.displayBearing : target) + (diff * 0.1);
-        updatedTracker.displayBearing = normalizeAngle(smoothed);
-
-        // Classification Logic
-        if (updatedTracker.classificationStatus === 'PENDING') {
-            updatedTracker.timeToClassify -= (1/60) * delta;
-            if (updatedTracker.timeToClassify <= 0) {
-                updatedTracker.classificationStatus = 'CLASSIFIED';
-
-                // Reveal Truth
-                const contact = newContacts.find(c => c.id === updatedTracker.contactId);
-                const type = contact?.classification || 'UNKNOWN';
-                updatedTracker.classification = type;
-
-                // Log
-                const isHostile = type === 'SUB';
-                newLogs = [...newLogs, {
-                    message: `Conn, Sonar: Contact ${updatedTracker.id} classified as ${type}.`,
-                    timestamp: newGameTime,
-                    type: isHostile ? 'ALERT' : 'INFO'
-                }].slice(-50);
-            }
-        }
-
-        // Task 115.3: Automated FTOW (Safety Net)
-        if (
-            updatedTracker.kind !== 'WEAPON' &&
-            updatedTracker.contactId &&
-            !updatedTracker.isAutoSolution &&
-            (updatedTracker.creationTime !== undefined) &&
-            (newGameTime - updatedTracker.creationTime > 30) &&
-            (updatedTracker.lastInteractionTime === updatedTracker.creationTime) // User hasn't touched it
-        ) {
-             const contact = newContacts.find(c => c.id === updatedTracker.contactId);
-             if (contact) {
-                 const noisySol = generateNoisySolution(contact, newGameTime, { x: newX, y: newY, heading: newHeading });
-                 updatedTracker.solution = noisySol;
-                 updatedTracker.isAutoSolution = true;
-
-                 // Log
-                 newLogs = [...newLogs, {
-                     message: `FTOW: MLE APPLIED on ${updatedTracker.id}`,
-                     type: 'INFO',
-                     timestamp: newGameTime
-                 }].slice(-50);
-             }
-        }
-
-        return updatedTracker;
+        newLogs = [...newLogs, ...result.logs].slice(-50);
+        return result.updatedTracker;
       });
 
       // Merge Weapon Trackers
