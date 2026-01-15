@@ -60,7 +60,7 @@ function App() {
       <TopBar />
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
-      <div className="flex-grow grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-4 gap-4 relative z-10">
+      <div className="flex-grow grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
         
         {/* PANE A: Sonar Panel (Left) */}
         <div className="h-full flex flex-col gap-4 min-w-0">
@@ -91,10 +91,10 @@ function App() {
                </div>
 
                {/* Mode Select Buttons */}
-               <div className="mt-4 flex justify-center gap-2">
+               <div className="mt-4 flex flex-wrap justify-center gap-2">
                  <button
                    onClick={() => setActiveStation('TMA')}
-                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                   className={`px-3 md:px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
                      activeStation === 'TMA'
                        ? 'bg-amber-500/20 border-amber-500 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
                        : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
@@ -104,7 +104,7 @@ function App() {
                  </button>
                  <button
                    onClick={() => setActiveStation('WCS')}
-                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                   className={`px-3 md:px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
                      activeStation === 'WCS'
                        ? 'bg-red-500/20 border-red-500 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
                        : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
@@ -114,7 +114,7 @@ function App() {
                  </button>
                  <button
                    onClick={() => setActiveStation('NAV')}
-                   className={`px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
+                   className={`px-3 md:px-6 py-2 rounded text-xs font-bold tracking-widest border transition-colors ${
                      activeStation === 'NAV'
                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
                        : 'bg-black/40 border-white/10 text-zinc-500 hover:border-white/30 hover:text-zinc-300'
@@ -138,7 +138,7 @@ function App() {
       </div>
 
       {/* LAYER 3: Helm Strip (Bottom, Fixed Height) */}
-      <div className="h-[100px] w-full flex-shrink-0 px-4 pb-4 z-10">
+      <div className="h-[100px] w-full flex-shrink-0 px-2 md:px-4 pb-2 md:pb-4 z-10">
           <HelmScreen />
       </div>
 

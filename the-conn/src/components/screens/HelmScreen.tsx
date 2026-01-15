@@ -44,10 +44,10 @@ export const HelmScreen = () => {
 
   return (
     <Panel title="Helm" className="h-full">
-        <div className="flex flex-row gap-4 h-full items-center px-4">
+        <div className="flex flex-row flex-wrap gap-2 md:gap-4 h-full items-center px-2 md:px-4">
 
             {/* Noise Control */}
-            <div className={`flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-center h-14 ${cavitating ? 'animate-pulse border-red-500/50' : ''}`}>
+            <div className={`flex-1 min-w-[150px] bg-black/30 p-2 rounded border border-white/5 flex flex-col justify-center h-14 ${cavitating ? 'animate-pulse border-red-500/50' : ''}`}>
                 <div className="flex justify-between items-center mb-1">
                     <span className="text-[10px] text-zinc-500">NOISE</span>
                     {cavitating && <span className="text-[10px] text-red-500 font-bold">CAVITATING</span>}
@@ -69,7 +69,7 @@ export const HelmScreen = () => {
             </div>
 
             {/* Heading Control */}
-            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+            <div className="flex-1 min-w-[150px] bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
                 <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">HEADING</span>
                     <span ref={headingRef} className="text-xl text-amber-500 font-bold tabular-nums">000</span>
@@ -89,7 +89,7 @@ export const HelmScreen = () => {
             </div>
 
             {/* Depth Control */}
-            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+            <div className="flex-1 min-w-[150px] bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
                 <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">DEPTH</span>
                     <span ref={depthRef} className="text-xl text-amber-500 font-bold tabular-nums">0000</span>
@@ -109,7 +109,7 @@ export const HelmScreen = () => {
             </div>
 
             {/* Speed Control */}
-            <div className="flex-1 bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
+            <div className="flex-1 min-w-[150px] bg-black/30 p-2 rounded border border-white/5 flex flex-row items-center justify-between h-14">
                 <div className="flex flex-col">
                     <span className="text-[10px] text-zinc-500">SPEED</span>
                     <span ref={speedRef} className="text-xl text-amber-500 font-bold tabular-nums">0.0</span>
@@ -130,7 +130,7 @@ export const HelmScreen = () => {
 
             {/* EMERGENCY EVASION */}
             {alertLevel === 'COMBAT' && incomingTorpedoDetected && (
-                <div className="flex-1 flex items-center justify-center">
+                <div className="flex-1 min-w-[150px] flex items-center justify-center">
                     <button
                         onClick={() => {
                             setOrderedSpeed(30);
