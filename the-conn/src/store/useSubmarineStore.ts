@@ -9,6 +9,10 @@ import {
   checkCollision,
   FEET_PER_KNOT_PER_TICK
 } from '../lib/math';
+import * as PhysicsEngine from '../services/PhysicsEngine';
+import * as AIEngine from '../services/AIEngine';
+import * as SensorEngine from '../services/SensorEngine';
+import * as ContactManager from '../services/ContactManager';
 import type {
   SubmarineState,
   Tracker,
@@ -445,55 +449,24 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       let newVisualTransients = [...state.visualTransients];
 
       let newGameState = state.gameState;
-      let newHeading = state.heading;
-      let newSpeed = state.speed;
-      let newDepth = state.depth;
 
-      // Update Heading
-      if (state.heading !== state.orderedHeading) {
-        const diff = state.orderedHeading - state.heading;
-        let turnAmount = diff;
+      // Update Ownship Kinematics (PhysicsEngine)
+      const ownshipUpdate = PhysicsEngine.updateOwnshipKinematics({
+        heading: state.heading,
+        speed: state.speed,
+        depth: state.depth,
+        x: state.x,
+        y: state.y,
+        orderedHeading: state.orderedHeading,
+        orderedSpeed: state.orderedSpeed,
+        orderedDepth: state.orderedDepth,
+      }, delta);
 
-        // Handle wrapping for shortest turn
-        if (diff > 180) turnAmount = diff - 360;
-        if (diff < -180) turnAmount = diff + 360;
-
-        const maxTurn = TURN_RATE * delta;
-        if (Math.abs(turnAmount) < maxTurn) {
-          newHeading = state.orderedHeading;
-        } else {
-          newHeading += Math.sign(turnAmount) * maxTurn;
-        }
-        newHeading = normalizeAngle(newHeading);
-      }
-
-      // Update Speed
-      if (state.speed !== state.orderedSpeed) {
-        const diff = state.orderedSpeed - state.speed;
-        const rate = (diff > 0 ? ACCELERATION : DECELERATION) * delta;
-        if (Math.abs(diff) < rate) {
-          newSpeed = state.orderedSpeed;
-        } else {
-          newSpeed += Math.sign(diff) * rate;
-        }
-      }
-
-      // Update Depth
-      if (state.depth !== state.orderedDepth) {
-        const diff = state.orderedDepth - state.depth;
-        const rate = (diff > 0 ? DIVE_RATE : ASCENT_RATE) * delta;
-        if (Math.abs(diff) < rate) {
-          newDepth = state.orderedDepth;
-        } else {
-          newDepth += Math.sign(diff) * rate;
-        }
-      }
-
-      // Update Position (Simple 2D kinematics)
-      const radHeading = (newHeading * Math.PI) / 180;
-      const distance = newSpeed * FEET_PER_KNOT_PER_TICK * delta;
-      const newX = state.x + distance * Math.sin(radHeading);
-      const newY = state.y + distance * Math.cos(radHeading);
+      const newHeading = ownshipUpdate.heading;
+      const newSpeed = ownshipUpdate.speed;
+      const newDepth = ownshipUpdate.depth;
+      const newX = ownshipUpdate.x;
+      const newY = ownshipUpdate.y;
 
       // --- Resource Consumption ---
       let newFuel = state.fuel;
@@ -530,312 +503,65 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
           currentContactsList = currentContactsList.filter(c => !directorUpdates.removedContactIds.includes(c.id));
       }
 
-      // Update Contacts (Truth movement & AI)
+      // Update Contacts (Using ContactManager, AIEngine, PhysicsEngine)
       let newContacts = currentContactsList.map(contact => {
-        // Skip destroyed contacts movement logic
         if (contact.status === 'DESTROYED') return contact;
 
         let currentContact = { ...contact };
 
-        // Task 125.3: Signature Dynamics Implementation
-        // 1. Base Logic
-        const baseSL = currentContact.baseSourceLevel || 120;
-        let effectiveSL = baseSL;
+        // 1. Signature Dynamics (ContactManager)
+        const signatureUpdate = ContactManager.updateSignatureDynamics(currentContact, { delta });
+        currentContact.sourceLevel = signatureUpdate.sourceLevel;
+        if (signatureUpdate.wobbleState !== undefined) currentContact.wobbleState = signatureUpdate.wobbleState;
+        if (signatureUpdate.transientTimer !== undefined) currentContact.transientTimer = signatureUpdate.transientTimer;
 
-        // 2. Dirty Profile (Wobble)
-        if (currentContact.acousticProfile === 'DIRTY') {
-             // Random Walk: +/- 0.5dB per tick/step? No, per second.
-             // Delta is roughly 1.0 = 1/60s.
-             // We want +/- 2dB variance range.
-             const wobbleStep = (Math.random() - 0.5) * 0.1 * delta; // Small drift
-             currentContact.wobbleState = (currentContact.wobbleState || 0) + wobbleStep;
+        // 2. Apply Director Updates (ContactManager)
+        const directorUpdate = directorUpdates.contactUpdates[contact.id];
+        const directorChanges = ContactManager.applyDirectorUpdates(currentContact, directorUpdate);
+        Object.assign(currentContact, directorChanges);
 
-             // Clamp
-             const maxWobble = 2.0;
-             currentContact.wobbleState = Math.max(-maxWobble, Math.min(maxWobble, currentContact.wobbleState));
+        // 3. Scenario-Specific Behavior (ContactManager)
+        const scenarioBehavior = ContactManager.applyScenarioBehavior(currentContact, {
+          scenarioId: state.scenarioId,
+          gameTime: state.gameTime,
+        });
+        if (scenarioBehavior.speed !== undefined) currentContact.speed = scenarioBehavior.speed;
 
-             effectiveSL += currentContact.wobbleState;
-        }
+        // 4. AI Decision Making (AIEngine)
+        const aiDecision = AIEngine.updateEnemyAI(currentContact, {
+          gameTime: newGameTime,
+          ownship: {
+            x: newX,
+            y: newY,
+            heading: newHeading,
+            speed: newSpeed,
+            noiseLevel: totalNoise,
+          },
+          torpedoes: state.torpedoes,
+        });
 
-        // 3. Transient Logic
-        // Decay existing
-        if (currentContact.transientTimer && currentContact.transientTimer > 0) {
-             effectiveSL += 10; // 10dB Spike
-             currentContact.transientTimer -= (1/60) * delta;
-        } else {
-             // Chance to trigger new
-             if (currentContact.transientRate) {
-                 // Rate is prob per second? Prompt says "0.05".
-                 // if rate is 0.05/sec, then prob per tick is 0.05 / 60.
-                 const prob = (currentContact.transientRate / 60) * delta;
-                 if (Math.random() < prob) {
-                     currentContact.transientTimer = 2.0; // 2 second spike
-                     effectiveSL += 10; // Immediate spike
-                 }
-             }
-        }
+        // Apply AI decisions
+        currentContact.aiLastUpdate = newGameTime;
+        if (aiDecision.heading !== undefined) currentContact.heading = aiDecision.heading;
+        if (aiDecision.speed !== undefined) currentContact.speed = aiDecision.speed;
+        if (aiDecision.aiMode !== undefined) currentContact.aiMode = aiDecision.aiMode;
+        if (aiDecision.isActivePingEnabled !== undefined) currentContact.isActivePingEnabled = aiDecision.isActivePingEnabled;
+        if (aiDecision.activePingTimer !== undefined) currentContact.activePingTimer = aiDecision.activePingTimer;
+        if (aiDecision.torpedoCooldown !== undefined) currentContact.torpedoCooldown = aiDecision.torpedoCooldown;
+        if (aiDecision.trackingTimer !== undefined) currentContact.trackingTimer = aiDecision.trackingTimer;
+        if (aiDecision.aiReactionTimer !== undefined) currentContact.aiReactionTimer = aiDecision.aiReactionTimer;
 
-        currentContact.sourceLevel = effectiveSL;
+        // 5. Manual Sonar Overrides (ContactManager)
+        const sonarOverrides = ContactManager.applySonarOverrides(currentContact);
+        if (sonarOverrides.isActivePingEnabled !== undefined) currentContact.isActivePingEnabled = sonarOverrides.isActivePingEnabled;
+        if (sonarOverrides.activePingTimer !== undefined) currentContact.activePingTimer = sonarOverrides.activePingTimer;
+        if (currentContact.forceOneShotPing) currentContact.forceOneShotPing = false;
 
-        // Apply Scenario Director Updates
-        if (!currentContact.aiDisabled && directorUpdates.contactUpdates[contact.id]) {
-            const update = directorUpdates.contactUpdates[contact.id];
-            if (update.heading !== undefined) currentContact.heading = update.heading;
-            if (update.hasZigged !== undefined) currentContact.hasZigged = update.hasZigged;
-        }
+        // 6. Position Update (PhysicsEngine)
+        const positionUpdate = PhysicsEngine.updateContactPosition(currentContact, delta);
+        currentContact.x = positionUpdate.x;
+        currentContact.y = positionUpdate.y;
 
-        // Scenario 3: Sprint & Drift (Escorts)
-        if (state.scenarioId === 'sc3' && currentContact.classification === 'ESCORT' && currentContact.type === 'ENEMY') {
-             // 10 min cycle (600s). 0-240 Sprint, 240-600 Drift
-             const cycleTime = state.gameTime % 600;
-             if (cycleTime < 240) { // Sprint
-                 currentContact.speed = 25;
-             } else { // Drift
-                 currentContact.speed = 5;
-             }
-        }
-
-        // AI Logic (Only for ENEMY)
-        if (currentContact.type === 'ENEMY') {
-            if (currentContact.aiDisabled) return currentContact;
-
-            const timeSinceLastUpdate = state.gameTime - (currentContact.aiLastUpdate || 0);
-
-            // Run AI every 1 second
-            if (timeSinceLastUpdate >= 1.0) {
-                currentContact.aiLastUpdate = state.gameTime;
-
-                // Merchant: Return immediately (No reaction)
-                if (currentContact.classification === 'MERCHANT') {
-                    // Force maintain IDLE or existing state without processing threats/ownship
-                    return currentContact;
-                }
-
-                // Trawler: Oblivious (Skip AI, allow Physics)
-                if (currentContact.classification === 'TRAWLER') {
-                    // Skip remaining AI logic
-                } else {
-
-                // 1. Detection (Ownship)
-                const dx = state.x - currentContact.x;
-                const dy = state.y - currentContact.y;
-                const distSquared = (dx * dx + dy * dy);
-                const sensitivity = currentContact.sensitivity !== undefined ? currentContact.sensitivity : 300000000;
-                const signalStrength = (totalNoise / Math.max(1, distSquared)) * sensitivity;
-                const detectionThreshold = 0.5;
-                const signalExcess = signalStrength - detectionThreshold;
-
-                // 2. State Machine Logic
-                if (!currentContact.aiMode) currentContact.aiMode = 'PATROL';
-
-                if (currentContact.torpedoCooldown && currentContact.torpedoCooldown > 0) {
-                    currentContact.torpedoCooldown -= 1;
-                }
-
-                // Task 156.2: AI State Machine (Prosecution Logic)
-                // A. PATROL State
-                if (currentContact.aiMode === 'PATROL' || currentContact.aiMode === 'IDLE') {
-                    if (signalExcess > 0) {
-                        currentContact.aiMode = 'APPROACH';
-                    }
-                }
-
-                // B. APPROACH State ("The Stalk")
-                if (currentContact.aiMode === 'APPROACH') {
-                     // Lost contact logic with hysteresis
-                     if (signalExcess < -0.2) {
-                         currentContact.aiMode = 'PATROL';
-                     } else {
-                         // Intelligent Maneuvering
-                         const distYards = Math.sqrt(distSquared) / 3;
-
-                         // Calculate bearing to Ownship
-                         const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
-
-                         // Lead Intercept Logic
-                         // Predict Ownship position in 5 minutes (300 seconds)
-                         const leadTime = 300;
-                         const predictedOx = state.x + (Math.sin(state.heading * Math.PI/180) * state.speed * FEET_PER_KNOT_PER_TICK * 60 * (leadTime/60));
-                         const predictedOy = state.y + (Math.cos(state.heading * Math.PI/180) * state.speed * FEET_PER_KNOT_PER_TICK * 60 * (leadTime/60));
-
-                         const pdx = predictedOx - currentContact.x;
-                         const pdy = predictedOy - currentContact.y;
-                         const pAngle = Math.atan2(pdy, pdx) * (180 / Math.PI);
-                         const interceptHeading = normalizeAngle(90 - pAngle);
-
-                         currentContact.heading = interceptHeading;
-                         currentContact.speed = 5; // Silent Speed
-
-                         // Task 156.2: Transition to PROSECUTE if confidence is high or detected loudly
-                         // Threshold for "Prosecute": Strong Passive Lock
-                         if (signalExcess > 0.4) {
-                             currentContact.aiMode = 'PROSECUTE';
-                             currentContact.isActivePingEnabled = true;
-                             currentContact.activePingTimer = 0; // Start immediately
-                         }
-
-                         // Fallback direct attack if close (Task 156 says Hunt then Shoot, but close quarters requires reaction)
-                         if (distYards < 2000) {
-                             if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
-                                 currentContact.aiMode = 'ATTACK';
-                             }
-                         }
-                     }
-                }
-
-                // C. PROSECUTE State (Active Sonar)
-                if (currentContact.aiMode === 'PROSECUTE') {
-                    // Turn towards contact
-                    const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
-                    const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
-                    currentContact.heading = bearingToOwnship;
-
-                    // Speed up to 15kts (Hunt speed)
-                    currentContact.speed = 15;
-
-                    // Active Sonar Logic (Below in active ping section)
-                    if (!currentContact.isActivePingEnabled) {
-                        currentContact.isActivePingEnabled = true;
-                    }
-
-                    // Task 158.2: Weapon ROE (The "Nervous" Timer)
-                    // If we have a solid lock, start the timer
-                    if (signalExcess > 0.9) {
-                        if (currentContact.trackingTimer === undefined) currentContact.trackingTimer = 0;
-                        currentContact.trackingTimer += timeSinceLastUpdate; // Use calculated delta since last update
-
-                        // Fire logic
-                        if (currentContact.trackingTimer > 30) {
-                             if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
-                                 currentContact.aiMode = 'ATTACK';
-                                 currentContact.trackingTimer = 0;
-                             }
-                        }
-                    } else {
-                        // Reset if lock falters significantly? Or just decay?
-                        // For now, reset to avoid firing on lucky pings.
-                        currentContact.trackingTimer = 0;
-                    }
-
-                    // Lost contact?
-                    // If active return fails repeatedly? Handled in Return Logic or just use passive fallback.
-                    // If signalExcess drops too low
-                    if (signalExcess < -0.5) {
-                        currentContact.aiMode = 'PATROL';
-                        currentContact.isActivePingEnabled = false;
-                        currentContact.trackingTimer = 0;
-                    }
-                }
-
-                // D. ATTACK State ("The Ambush")
-                if (currentContact.aiMode === 'ATTACK') {
-                    if (!currentContact.torpedoCooldown || currentContact.torpedoCooldown <= 0) {
-                        currentContact.torpedoCooldown = 600; // Cooldown
-                        currentContact.aiMode = 'EVADE'; // Fire and Evade
-                    }
-                }
-
-                // E. Threat Perception (Torpedoes)
-                let detectedThreatType: 'NONE' | 'PASSIVE' | 'ACTIVE' = 'NONE';
-                let detectedInBaffles = false;
-
-                // Check capability (Merchant defaults to false/oblivious if set, or check type)
-                const canDetect = currentContact.canDetectTorpedoes !== undefined ? currentContact.canDetectTorpedoes : true;
-
-                if (canDetect) {
-                     for (const torpedo of state.torpedoes) {
-                         if (torpedo.status !== 'RUNNING') continue;
-                         const tDx = torpedo.position.x - currentContact.x;
-                         const tDy = torpedo.position.y - currentContact.y;
-                         const distToTorp = Math.sqrt(tDx*tDx + tDy*tDy) / 3; // yards
-
-                         // Calculate Bearing Info
-                         const angleToTorp = Math.atan2(tDy, tDx) * (180 / Math.PI);
-                         const bearingToTorp = normalizeAngle(90 - angleToTorp);
-                         let relBrg = Math.abs((currentContact.heading || 0) - bearingToTorp);
-                         if (relBrg > 180) relBrg = 360 - relBrg;
-                         const inBaffles = relBrg > 150;
-
-                         // Active Intercept (Ping)
-                         const isPinging = torpedo.distanceTraveled >= torpedo.enableRange && torpedo.searchMode === 'ACTIVE';
-                         if (isPinging && distToTorp < 4000) {
-                              detectedThreatType = 'ACTIVE';
-                              detectedInBaffles = inBaffles;
-                              break; // Priority
-                         }
-
-                         // Passive Detection
-                         const detectionRange = inBaffles ? 1000 : 3000;
-                         if (distToTorp < detectionRange) {
-                              detectedThreatType = 'PASSIVE';
-                              detectedInBaffles = inBaffles;
-                              // Don't break, check for active
-                         }
-                     }
-                }
-
-                // 4. Reaction Logic
-                if (detectedThreatType !== 'NONE') {
-                    if (currentContact.aiMode !== 'EVADE') {
-                         if (currentContact.aiReactionTimer === undefined) {
-                              if (detectedThreatType === 'ACTIVE') {
-                                  currentContact.aiReactionTimer = 0; // Immediate
-                              } else {
-                                  currentContact.aiReactionTimer = detectedInBaffles ? 10 : 2;
-                              }
-                         }
-
-                         if (currentContact.aiReactionTimer <= 0) {
-                             currentContact.aiMode = 'EVADE';
-                             currentContact.aiReactionTimer = undefined;
-                         } else {
-                             currentContact.aiReactionTimer -= 1;
-                         }
-                    }
-                } else {
-                     // If threat lost, reset timer?
-                     // If we were counting down but threat disappeared (e.g. out of range), reset.
-                     if (currentContact.aiMode !== 'EVADE') {
-                        currentContact.aiReactionTimer = undefined;
-                     }
-                }
-
-                // 5. Behavior
-                if (currentContact.aiMode === 'EVADE') {
-                    currentContact.speed = 25;
-                    const angleToOwnship = Math.atan2(dy, dx) * (180 / Math.PI);
-                    const bearingToOwnship = normalizeAngle(90 - angleToOwnship);
-                    currentContact.heading = normalizeAngle(bearingToOwnship + 180);
-                }
-                } // End Trawler Check
-            }
-        }
-
-        // --- Manual Active Sonar Override Logic (Task 157) ---
-        // Force Active State or Silence (Takes precedence over AI)
-        if (currentContact.sonarState === 'ACTIVE') {
-            currentContact.isActivePingEnabled = true;
-        } else if (currentContact.sonarState === 'SILENT') {
-            currentContact.isActivePingEnabled = false;
-        }
-        // If AUTO, we let AI decide (or maintain current state)
-
-        // Force One-Shot Ping
-        if (currentContact.forceOneShotPing) {
-            currentContact.forceOneShotPing = false; // Reset flag immediately
-            currentContact.activePingTimer = 0; // Trigger immediately in the active sonar block below
-            currentContact.isActivePingEnabled = true; // Ensure it's enabled for at least this tick
-        }
-
-        if (currentContact.speed !== undefined && currentContact.heading !== undefined) {
-            const radHeading = (currentContact.heading * Math.PI) / 180;
-            const distance = currentContact.speed * FEET_PER_KNOT_PER_TICK * delta;
-            return {
-                ...currentContact,
-                x: currentContact.x + distance * Math.sin(radHeading),
-                y: currentContact.y + distance * Math.cos(radHeading)
-            };
-        }
         return currentContact;
       });
 
