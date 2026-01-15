@@ -146,8 +146,8 @@ export const TMAControls = () => {
     <div className="flex flex-col h-full bg-white/5 border-l border-white/10 overflow-hidden font-mono select-none">
 
         {/* HEADER / READOUT */}
-        <div className="flex-none flex-shrink-0 p-3 bg-black/40 border-b border-white/10 shadow-inner shadow-black/50">
-            <div className="flex justify-between items-center mb-3">
+        <div className="flex-none flex-shrink-0 p-2 bg-black/40 border-b border-white/10 shadow-inner shadow-black/50">
+            <div className="flex justify-between items-center mb-2">
                 {/* CONTACT SELECTOR */}
                 <div className="flex items-center gap-1 bg-black/40 rounded border border-white/10 p-0.5">
                     <button
@@ -182,7 +182,7 @@ export const TMAControls = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
                  <div className="flex flex-col items-center">
                     <span className="text-[9px] text-zinc-500 mb-0.5">BRG</span>
                     <span className={`text-xl font-bold tabular-nums tracking-tighter drop-shadow-[0_0_2px_rgba(74,222,128,0.5)] ${projected ? 'text-green-400' : 'text-zinc-700'}`}>
@@ -210,7 +210,7 @@ export const TMAControls = () => {
             </div>
 
             {/* SAFETY STRIP */}
-            <div className="flex justify-between items-center mt-2 px-1 pt-2 border-t border-white/5">
+            <div className="flex justify-between items-center mt-1.5 px-1 pt-1.5 border-t border-white/5">
                 <div className="flex flex-col items-center">
                     <span className="text-[8px] text-cyan-700/80 mb-0.5">CPA RNG</span>
                     <span className={`text-sm font-bold tabular-nums tracking-tighter ${cpa && cpa.range < 1000 ? 'text-red-500 animate-pulse' : cpa ? 'text-cyan-400' : 'text-zinc-700'}`}>
@@ -236,7 +236,7 @@ export const TMAControls = () => {
         {selectedTracker && activeLeg ? (
         <>
             {/* ZONE A: TIMELINE (Scrollable) */}
-            <div className="flex-none h-12 flex items-center gap-1 overflow-x-auto px-2 border-b border-white/10 bg-black/20 no-scrollbar">
+            <div className="flex-none h-11 flex items-center gap-1 overflow-x-auto px-2 border-b border-white/10 bg-black/20 no-scrollbar">
                 {legs.map((_, idx) => (
                     <button
                         key={idx}
@@ -261,10 +261,10 @@ export const TMAControls = () => {
             </div>
 
             {/* MAIN CONTROLS AREA (Flex Grow) */}
-            <div className="flex-grow flex flex-col p-4 gap-6 overflow-y-auto min-h-0 flex-shrink">
+            <div className="flex-grow flex flex-col p-3 gap-4 overflow-y-auto min-h-0 flex-shrink">
 
                 {/* ZONE B: KINEMATICS (Large Knobs) */}
-                <div className="flex justify-around items-start flex-shrink min-h-0">
+                <div className="flex justify-around items-start flex-shrink-0 min-h-0">
                     <RotaryKnob
                         label="COURSE"
                         value={activeLeg.course}
@@ -295,9 +295,9 @@ export const TMAControls = () => {
                 <div className="h-px bg-white/10 w-full" />
 
                 {/* ZONE C: ANCHOR (Small Knobs) */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                     <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest text-center">Anchor Settings</div>
-                    <div className="flex justify-around items-start mt-2">
+                    <div className="flex justify-around items-start mt-1">
                         <RotaryKnob
                             label="BEARING"
                             value={activeLeg.startBearing}
@@ -333,7 +333,7 @@ export const TMAControls = () => {
             </div>
 
             {/* ZONE D: TOOLS (Footer) */}
-            <div className="flex-none flex-shrink-0 p-3 border-t border-white/10 grid grid-cols-2 gap-2 bg-black/20">
+            <div className="flex-none flex-shrink-0 p-2 border-t border-white/10 grid grid-cols-2 gap-2 bg-black/20">
                 <button
                     onClick={handleMerge}
                     disabled={selectedLegIndex === 0}
