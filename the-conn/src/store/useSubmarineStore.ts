@@ -1,47 +1,14 @@
 import { create } from 'zustand';
-import { generateNoisySolution } from '../lib/SolutionAI';
 import { getDirectorUpdates } from '../lib/ScenarioDirector';
-import { ACOUSTICS } from '../config/AcousticConstants';
-import { AcousticsEngine } from '../lib/AcousticsEngine';
-import {
-  normalizeAngle,
-  gaussianRandom,
-  checkCollision,
-  FEET_PER_KNOT_PER_TICK
-} from '../lib/math';
+import { normalizeAngle } from '../lib/math';
 import * as PhysicsEngine from '../services/PhysicsEngine';
 import * as AIEngine from '../services/AIEngine';
 import * as SensorEngine from '../services/SensorEngine';
 import * as ContactManager from '../services/ContactManager';
-import type {
-  SubmarineState,
-  Tracker,
-  Tube,
-  Torpedo,
-  SensorReading,
-  Contact,
-  WeaponData,
-  EntityHistory,
-  TrackerHistory,
-  OwnShipHistory,
-  Station,
-  ViewScale,
-  TrackerSolution,
-  TubeStatus,
-  Transient,
-  VisualTransient,
-  ScriptedEvent,
-  GameMetrics
-} from './types';
+import type { SubmarineState, Tracker, Torpedo } from './types';
 
 export * from './types';
 
-// Physics constants
-const TURN_RATE = 0.5; // degrees per tick
-const ACCELERATION = 0.05; // knots per tick
-const DECELERATION = 0.05; // knots per tick
-const DIVE_RATE = 1.0; // feet per tick
-const ASCENT_RATE = 1.0; // feet per tick
 const MAX_HISTORY = 25000;
 
 // FULL DEFAULT STATE FOR RESET
@@ -448,7 +415,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       let newScriptedEvents = [...state.scriptedEvents];
       let newVisualTransients = [...state.visualTransients];
 
-      let newGameState = state.gameState;
+      let newGameState: SubmarineState['gameState'] = state.gameState;
 
       // Update Ownship Kinematics (PhysicsEngine)
       const ownshipUpdate = PhysicsEngine.updateOwnshipKinematics({
@@ -747,7 +714,7 @@ export const useSubmarineStore = create<SubmarineState>((set, get) => ({
       // Update Alert Level
       // Combat if any active tracker is SUB or Incoming Torpedo
       const combatActive = newTrackers.some(t => t.classification === 'SUB') || newIncomingTorpedoDetected;
-      let newAlertLevel: 'NORMAL' | 'COMBAT' = combatActive ? 'COMBAT' : 'NORMAL';
+      let newAlertLevel: 'NORMAL' | 'COMBAT' = shouldResetAlert ? 'NORMAL' : (combatActive ? 'COMBAT' : 'NORMAL');
 
       // Log All Clear
       if (state.incomingTorpedoDetected && !newIncomingTorpedoDetected) {

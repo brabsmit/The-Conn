@@ -476,10 +476,10 @@ const Grid = ({ width, height, viewMode }: DisplayProps) => {
             <Graphics ref={graphicsRef} />
             <Container ref={labelsContainerRef}>
                 {labels.map(angle => (
-                     <Text key={angle} text={angle.toString().padStart(3, '0')} x={0} y={10} anchor={0.5} style={new PIXI.TextStyle({ fill: '#33FF33', fontSize: 12, fontFamily: 'monospace', alpha: 0.5 })} />
+                     <Text key={angle} text={angle.toString().padStart(3, '0')} x={0} y={10} anchor={0.5} alpha={0.5} style={new PIXI.TextStyle({ fill: '#33FF33', fontSize: 12, fontFamily: 'monospace' })} />
                 ))}
                 {[0, 1].map(i => (
-                     <Text key={`dup-${i}`} text="" x={0} y={10} anchor={0.5} visible={false} style={new PIXI.TextStyle({ fill: '#33FF33', fontSize: 12, fontFamily: 'monospace', alpha: 0.5 })} />
+                     <Text key={`dup-${i}`} text="" x={0} y={10} anchor={0.5} visible={false} alpha={0.5} style={new PIXI.TextStyle({ fill: '#33FF33', fontSize: 12, fontFamily: 'monospace' })} />
                 ))}
             </Container>
         </Container>

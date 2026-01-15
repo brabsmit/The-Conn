@@ -38,7 +38,7 @@ const SonarDisplay: React.FC = () => {
     // Audio / Visual Warning Logic
     const [showInterceptWarning, setShowInterceptWarning] = useState(false);
     const lastInterceptTimeRef = useRef<number>(0);
-    const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const warningTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (activeIntercepts.length > 0) {

@@ -198,8 +198,7 @@ function runStateMachine(
         // Intelligent maneuvering - lead intercept
         const interceptHeading = calculateLeadIntercept(
           contact,
-          context.ownship,
-          angleToOwnship
+          context.ownship
         );
         decision.heading = interceptHeading;
         decision.speed = SILENT_SPEED;
@@ -277,8 +276,7 @@ function runStateMachine(
  */
 function calculateLeadIntercept(
   contact: Contact,
-  ownship: { x: number; y: number; heading: number; speed: number },
-  angleToOwnship: number
+  ownship: { x: number; y: number; heading: number; speed: number }
 ): number {
   // Predict ownship position in LEAD_INTERCEPT_TIME seconds
   const predictedOx =

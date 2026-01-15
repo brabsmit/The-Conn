@@ -13,7 +13,6 @@ import {
   lerpAngle,
   relativeBearing,
   isInBaffles,
-  distanceYards,
 } from '../lib/math';
 import { ACOUSTICS } from '../config/AcousticConstants';
 import { AcousticsEngine } from '../lib/AcousticsEngine';
@@ -24,14 +23,18 @@ import type {
   SensorReading,
   Tracker,
   ActiveIntercept,
-  OwnShipHistory,
-  LogEntry,
 } from '../store/types';
+
+// Local type definition
+interface LogEntry {
+  message: string;
+  timestamp: number;
+  type: 'INFO' | 'ALERT';
+}
 
 // Sensor Constants
 const BEARING_NOISE_STDEV = 1.0; // degrees
 const BEARING_SMOOTHING_ALPHA = 0.1;
-const CLASSIFICATION_TIME = 15; // seconds
 const FTOW_TIMEOUT = 30; // seconds
 const WEAPON_PASSIVE_DETECTION_RANGE = 3000; // yards
 const WEAPON_PASSIVE_DETECTION_RANGE_BAFFLES = 1000; // yards
