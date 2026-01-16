@@ -17,7 +17,6 @@ let seaStateOverride = 3;
 let sourceLevelAdjustments: Record<string, number> = {};
 
 export function useAcousticTuning() {
-    const updateContact = useSubmarineStore((state) => state.updateContact);
     const setSpeed = useSubmarineStore((state) => state.setOrderedSpeed);
 
     const handleEquipmentChange = useCallback((equipmentId: string) => {

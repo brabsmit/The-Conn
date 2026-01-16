@@ -4,15 +4,18 @@
  * Provides unified interface for acoustic calculations
  */
 
-import { SonarArrayConfig } from '../config/SonarEquipment';
-import { EnvironmentConfig } from '../config/EnvironmentConfig';
+import type { SonarArrayConfig } from '../config/SonarEquipment';
+import type { EnvironmentConfig } from '../config/EnvironmentConfig';
 import { ACOUSTICS } from '../config/AcousticConstants';
 
 export class AcousticContext {
-    constructor(
-        public equipment: SonarArrayConfig,
-        public environment: EnvironmentConfig
-    ) {}
+    public equipment: SonarArrayConfig;
+    public environment: EnvironmentConfig;
+
+    constructor(equipment: SonarArrayConfig, environment: EnvironmentConfig) {
+        this.equipment = equipment;
+        this.environment = environment;
+    }
 
     /**
      * Get total ambient noise level (environment + biologics + shipping)
