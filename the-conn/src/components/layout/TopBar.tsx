@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSubmarineStore } from '../../store/useSubmarineStore';
 import { ScenarioManager } from '../debug/ScenarioManager';
+import { AcousticTuningPanel } from '../debug/AcousticTuningPanel';
+import { useAcousticTuning } from '../../hooks/useAcousticTuning';
 import type { ViewScale } from '../../store/useSubmarineStore';
 import { LogHistory } from './LogHistory';
 
@@ -38,8 +40,11 @@ const TimeControls = () => {
 
 export const TopBar = () => {
   const [showScenarioManager, setShowScenarioManager] = useState(false);
+  const [showAcousticTuning, setShowAcousticTuning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState(false);
+
+  const acousticTuning = useAcousticTuning();
 
   // Subscribe to latest log for ticker
   const latestLog = useSubmarineStore(state => state.logs[state.logs.length - 1]);
@@ -85,6 +90,7 @@ export const TopBar = () => {
   return (
     <div className="w-full h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none flex-shrink-0">
       {showScenarioManager && <ScenarioManager onClose={() => setShowScenarioManager(false)} />}
+      {showAcousticTuning && <AcousticTuningPanel {...acousticTuning} />}
 
       {/* TIME */}
       <div className="flex flex-col mr-8">
@@ -149,12 +155,25 @@ export const TopBar = () => {
           <div className="flex gap-4 items-center relative">
             <TimeControls />
 
-            <button
-                onClick={() => setShowScenarioManager(true)}
-                className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
-            >
-                DEV
-            </button>
+            <div className="flex gap-1">
+              <button
+                  onClick={() => setShowAcousticTuning(!showAcousticTuning)}
+                  className={`text-[10px] border px-2 py-0.5 rounded ${
+                    showAcousticTuning
+                      ? 'bg-green-900/70 text-green-300 border-green-700 hover:bg-green-900'
+                      : 'bg-green-900/50 text-green-300 border-green-800 hover:bg-green-900 hover:text-white'
+                  }`}
+              >
+                  🎛️
+              </button>
+
+              <button
+                  onClick={() => setShowScenarioManager(true)}
+                  className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+              >
+                  DEV
+              </button>
+            </div>
           </div>
       </div>
 

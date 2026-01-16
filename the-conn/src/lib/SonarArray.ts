@@ -11,6 +11,7 @@ export class SonarArray {
 
     // Temporal evolution for realistic time-varying noise
     private noisePhase: number = 0;
+    private noisePhase2: number = 0; // Secondary phase for multi-frequency variation
 
     constructor(numBeams: number = 720, beamWidth: number = 2.0, beamSpacing: number = 0.5) {
         this.numBeams = numBeams;
@@ -53,12 +54,22 @@ export class SonarArray {
         const idx = Math.floor(absoluteBearing) % 360;
         const baseNoise = this.noiseField[idx];
 
-        // Add slow temporal variation (period ~30 seconds)
-        // This simulates moving biologics, turbulence, distant shipping changes
-        // Uses both the bearing and phase to create spatiotemporal variation
-        const temporalVariation = Math.sin(this.noisePhase + idx * 0.1) * 0.05; // ±5% variation
+        // Multi-frequency temporal variation to break up streaks
+        // Combines multiple sine waves at different frequencies and spatial scales
 
-        return baseNoise * (1.0 + temporalVariation);
+        // Primary slow variation (~30 second period)
+        const slowVariation = Math.sin(this.noisePhase + idx * 0.1) * 0.03;
+
+        // Secondary faster variation (~10 second period, different spatial frequency)
+        const fastVariation = Math.sin(this.noisePhase2 + idx * 0.31) * 0.02;
+
+        // Tertiary very slow variation (~60 second period, no spatial component)
+        const globalVariation = Math.sin(this.noisePhase * 0.5) * 0.02;
+
+        // Combine variations (total ±7% variation)
+        const totalVariation = slowVariation + fastVariation + globalVariation;
+
+        return baseNoise * (1.0 + totalVariation);
     }
 
     /**
@@ -66,10 +77,16 @@ export class SonarArray {
      * Creates slow evolution to prevent streaky frozen appearance
      */
     public evolveNoise(deltaTime: number = 0.016): void {
-        // Advance phase slowly (full cycle in ~30 seconds at 60fps)
+        // Advance primary phase slowly (full cycle in ~30 seconds at 60fps)
         this.noisePhase += deltaTime * 0.2;
         if (this.noisePhase > Math.PI * 2) {
             this.noisePhase -= Math.PI * 2;
+        }
+
+        // Advance secondary phase faster (full cycle in ~10 seconds)
+        this.noisePhase2 += deltaTime * 0.6;
+        if (this.noisePhase2 > Math.PI * 2) {
+            this.noisePhase2 -= Math.PI * 2;
         }
     }
 
