@@ -123,27 +123,35 @@ export class SonarArray {
         return 10 * Math.log10(p);
     }
 
-    // Sinc Beam Profile with Side Lobes (Realistic Array Response)
-    // Real phased arrays produce a sinc² (sinc-squared) pattern with characteristic side lobes
+    // Hamming-Windowed Beam Profile (Modern Beamforming)
+    // Real passive sonars use amplitude shading (windowing) to suppress side lobes
+    // Hamming window provides excellent side lobe rejection (-43 dB) with minimal main lobe broadening
     private arrayResponse(degreesDiff: number, width: number): number {
-        // Convert angle to radians for calculation
-        // The sinc function mainlobe width relates to beam width by: width ≈ 50.8λ/D
-        // For our purposes, we normalize so that the -3dB point matches the specified beam width
+        // The Hamming window is applied to the array aperture, which modifies the beam pattern
+        // Instead of pure sinc² (uniform weighting), we get a broader main lobe but much lower side lobes
 
-        // Normalization factor: For sinc², the first null is at x = π
-        // The -3dB beamwidth is approximately x = 1.39 radians
-        // We want degreesDiff = width/2 to give us the -3dB point
-        const x = (Math.PI * degreesDiff) / (width * 0.72); // 0.72 ≈ π/1.39/3 calibration factor
+        // Beam pattern is approximately Gaussian-like with the Hamming window
+        // Main lobe width increases by ~1.3x compared to uniform weighting
+        // Side lobes suppressed from -13 dB (sinc²) to -43 dB (Hamming)
 
-        // Sinc function with special handling at x=0 to avoid division by zero
-        if (Math.abs(x) < 0.001) {
-            return 1.0; // lim(x->0) sinc(x) = 1
+        // For a Hamming-weighted array, the pattern resembles a raised Gaussian
+        // We model this as a combination of Gaussian main lobe + suppressed sinc side lobes
+
+        const sigma = width / 1.8; // Calibrated for Hamming window broadening
+        const gaussian = Math.exp(-(degreesDiff * degreesDiff) / (2 * sigma * sigma));
+
+        // Add minimal side lobes (Hamming still has small residual side lobes)
+        // First side lobe at -43 dB = power ratio of 0.00005
+        const x = (Math.PI * degreesDiff) / (width * 1.1);
+        let sideLobe = 0.0;
+
+        if (Math.abs(x) > 0.001) {
+            const sinc = Math.sin(x) / x;
+            // Suppress side lobes by 30 dB (factor of 1000 in power)
+            sideLobe = (sinc * sinc) * 0.001;
         }
 
-        const sinc = Math.sin(x) / x;
-
-        // Return sinc² (power pattern, not amplitude)
-        // This naturally produces side lobes at ±13.2 dB down from main lobe
-        return sinc * sinc;
+        // Combine main lobe (Gaussian) with heavily suppressed side lobes
+        return Math.max(gaussian, sideLobe);
     }
 }
