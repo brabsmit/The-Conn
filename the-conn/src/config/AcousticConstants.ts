@@ -12,7 +12,7 @@ export const ACOUSTICS = {
     // 2. The Ocean (Environment)
     ENVIRONMENT: {
         SEA_STATE_NOISE: [55, 60, 65, 68, 73, 80, 85], // dB for States 0-6
-        ABSORPTION_COEFF: 0.002, // dB per yard
+        ABSORPTION_COEFF: 0.0001, // dB per yard (for 100-1000 Hz passive sonar band)
         CZ_BONUS: 15,            // dB gain in Convergence Zone
         CZ_RANGE_MIN: 28000,
         CZ_RANGE_MAX: 32000
@@ -25,7 +25,8 @@ export const ACOUSTICS = {
         BEAM_WIDTH: 3.0,       // Task 134.3: Revert to 3.0
         SENSITIVITY: 1.0,      // Efficiency
         SELF_NOISE_BASE: 50,   // dB (Stationary)
-        FLOW_NOISE_FACTOR: 0.05 // Noise += Speed^2 * Factor
+        FLOW_NOISE_FACTOR: 0.05, // Noise += Speed^2 * Factor
+        DIRECTIVITY_INDEX: 20  // dB (Array Gain) - approximated for large cylindrical array
     },
 
     // 4. The Screen (Display Processing)

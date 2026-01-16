@@ -80,16 +80,27 @@ export class SonarArray {
         return 10 * Math.log10(p);
     }
 
-    // Gaussian Beam Profile (Task 135.1)
+    // Sinc Beam Profile with Side Lobes (Realistic Array Response)
+    // Real phased arrays produce a sinc² (sinc-squared) pattern with characteristic side lobes
     private arrayResponse(degreesDiff: number, width: number): number {
-        // Gaussian Width (Sigma)
-        // 1.5 degrees roughly matches a "3 degree beam width" visually.
-        // We use width / 2 to align with physical beam width passed.
-        const sigma = width / 2.0;
+        // Convert angle to radians for calculation
+        // The sinc function mainlobe width relates to beam width by: width ≈ 50.8λ/D
+        // For our purposes, we normalize so that the -3dB point matches the specified beam width
 
-        // The Formula: e^(-x² / 2σ²)
-        const response = Math.exp(-(degreesDiff * degreesDiff) / (2 * sigma * sigma));
+        // Normalization factor: For sinc², the first null is at x = π
+        // The -3dB beamwidth is approximately x = 1.39 radians
+        // We want degreesDiff = width/2 to give us the -3dB point
+        const x = (Math.PI * degreesDiff) / (width * 0.72); // 0.72 ≈ π/1.39/3 calibration factor
 
-        return response;
+        // Sinc function with special handling at x=0 to avoid division by zero
+        if (Math.abs(x) < 0.001) {
+            return 1.0; // lim(x->0) sinc(x) = 1
+        }
+
+        const sinc = Math.sin(x) / x;
+
+        // Return sinc² (power pattern, not amplitude)
+        // This naturally produces side lobes at ±13.2 dB down from main lobe
+        return sinc * sinc;
     }
 }

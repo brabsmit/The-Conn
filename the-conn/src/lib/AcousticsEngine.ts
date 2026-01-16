@@ -24,9 +24,14 @@ export class AcousticsEngine {
         const flowFactor = ACOUSTICS.ARRAY.FLOW_NOISE_FACTOR;
         let sn = baseSN + (speedKts * speedKts * flowFactor);
 
-        // Cavitation Penalty
-        if (speedKts > 18) {
-            sn += 20;
+        // Cavitation Penalty (Gradual onset with quadratic growth)
+        // Modern submarine designs cavitate around 18-20 knots depending on depth
+        const cavitationSpeed = 18;
+        if (speedKts > cavitationSpeed) {
+            const excessSpeed = speedKts - cavitationSpeed;
+            // Quadratic growth: starts at 0, reaches +40 dB at 30+ knots
+            const cavitationNoise = Math.min(40, excessSpeed * excessSpeed * 0.3);
+            sn += cavitationNoise;
         }
 
         // Combine AN and SN
@@ -74,7 +79,7 @@ export class AcousticsEngine {
      * @param sourceLevel Target Source Level (SL) in dB
      * @param rangeYards Range to target in yards
      * @param noiseLevel Ownship Noise Level (NL) in dB
-     * @param directivityIndex Array Gain (DI) in dB
+     * @param directivityIndex Array Gain (DI) in dB - defaults to standard array DI
      * @param deepWater Environment flag
      * @returns Signal Excess in dB
      */
@@ -82,7 +87,7 @@ export class AcousticsEngine {
         sourceLevel: number,
         rangeYards: number,
         noiseLevel: number,
-        directivityIndex: number = 0,
+        directivityIndex: number = ACOUSTICS.ARRAY.DIRECTIVITY_INDEX,
         deepWater: boolean = true
     ): number {
         const tl = this.calculateTransmissionLoss(rangeYards, deepWater);

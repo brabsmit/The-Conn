@@ -749,20 +749,25 @@ export class SonarEngine {
                  sourceLevel = 120 + (sourceLevel * 10);
             }
 
-            // Cavitation
-            const cavitationSpeed = contact.cavitationSpeed || 100;
+            // Cavitation (Gradual onset with realistic penalties)
+            const cavitationSpeed = contact.cavitationSpeed || 18;
             if (contact.speed !== undefined && contact.speed > cavitationSpeed) {
-                sourceLevel += 15; // +15dB for cavitation
+                const excessSpeed = contact.speed - cavitationSpeed;
+                // Quadratic growth similar to own-ship model
+                const cavitationBoost = Math.min(40, excessSpeed * excessSpeed * 0.3);
+                sourceLevel += cavitationBoost;
             }
 
             // Transmission Loss
             const dx = contact.x - ownX;
             const dy = contact.y - ownY;
             const distYards = Math.max(1, Math.sqrt(dx * dx + dy * dy) / 3);
-            
+
             // Task 113.2: The Transmission Loss Model (TL)
             const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
-            const rl = sourceLevel - tl;
+            // Apply Directivity Index (DI) to received level
+            // DI represents the array's ability to focus on the signal direction
+            const rl = sourceLevel - tl + ACOUSTICS.ARRAY.DIRECTIVITY_INDEX;
 
             // Geometry
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
@@ -800,7 +805,8 @@ export class SonarEngine {
 
             // Task 113.2: The Transmission Loss Model (TL)
             const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
-            const rl = sourceLevel - tl;
+            // Apply Directivity Index (DI) to received level
+            const rl = sourceLevel - tl + ACOUSTICS.ARRAY.DIRECTIVITY_INDEX;
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
