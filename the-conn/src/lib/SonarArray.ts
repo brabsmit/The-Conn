@@ -4,19 +4,62 @@ export class SonarArray {
     public readonly beamSpacing: number; // Degrees per bin
     public readonly beams: Float32Array; // Stores Linear Power
 
+    // Persistent world-space noise field (360 degrees)
+    // This makes noise spatially coherent - it stays fixed in world coordinates
+    // When the submarine turns, noise appears to drift across the display
+    private noiseField: Float32Array;
+
     constructor(numBeams: number = 720, beamWidth: number = 2.0, beamSpacing: number = 0.5) {
         this.numBeams = numBeams;
         this.beamWidth = beamWidth;
         this.beamSpacing = beamSpacing;
         this.beams = new Float32Array(numBeams);
+
+        // Initialize persistent noise field (1-degree resolution for 360 degrees)
+        this.noiseField = new Float32Array(360);
+        this.generateNoiseField();
     }
 
-    public clear(ambientNoiseDB: number): void {
+    /**
+     * Generates persistent world-space noise field
+     * Uses smoothed random values to create spatially coherent ocean noise
+     */
+    private generateNoiseField(): void {
+        // Generate base random values
+        const rawNoise = new Float32Array(360);
+        for (let i = 0; i < 360; i++) {
+            // Random variation +/- 1 dB in power domain (20% variation)
+            rawNoise[i] = 1.0 + ((Math.random() - 0.5) * 0.2);
+        }
+
+        // Smooth the noise to make it spatially coherent (3-point moving average)
+        for (let i = 0; i < 360; i++) {
+            const prev = rawNoise[(i - 1 + 360) % 360];
+            const curr = rawNoise[i];
+            const next = rawNoise[(i + 1) % 360];
+            this.noiseField[i] = (prev * 0.25 + curr * 0.5 + next * 0.25);
+        }
+    }
+
+    /**
+     * Gets noise dither for a given absolute bearing (world-space)
+     * @param absoluteBearing True bearing in degrees (0-360)
+     */
+    private getNoiseDither(absoluteBearing: number): number {
+        const idx = Math.floor(absoluteBearing) % 360;
+        return this.noiseField[idx];
+    }
+
+    public clear(ambientNoiseDB: number, ownHeading: number = 0): void {
         const baseNoisePower = Math.pow(10, ambientNoiseDB / 10);
 
         for (let i = 0; i < this.numBeams; i++) {
-            // Add +/- 1dB of random "Dither" to make it look like grain
-            const dither = 1.0 + ((Math.random() - 0.5) * 0.2);
+            // Calculate absolute bearing for this beam
+            const relativeBearing = i * this.beamSpacing;
+            const absoluteBearing = (relativeBearing + ownHeading) % 360;
+
+            // Get persistent world-space noise dither
+            const dither = this.getNoiseDither(absoluteBearing);
             this.beams[i] = baseNoisePower * dither;
         }
     }

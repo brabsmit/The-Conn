@@ -732,7 +732,8 @@ export class SonarEngine {
 
         // Task 116.2: Logic - use AcousticsEngine to get the global noise floor
         const currentNoiseFloor = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
-        this.sonarArray.clear(currentNoiseFloor);
+        // Pass ownHeading for world-space noise field (makes noise drift when turning)
+        this.sonarArray.clear(currentNoiseFloor, ownHeading);
 
         // 2. Process Contacts (Physics Integration)
         contacts.forEach((contact) => {
