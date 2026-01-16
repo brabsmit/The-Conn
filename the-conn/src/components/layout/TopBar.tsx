@@ -90,7 +90,15 @@ export const TopBar = () => {
   return (
     <div className="w-full h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none flex-shrink-0">
       {showScenarioManager && <ScenarioManager onClose={() => setShowScenarioManager(false)} />}
-      {showAcousticTuning && <AcousticTuningPanel {...acousticTuning} />}
+      {showAcousticTuning && (
+        <AcousticTuningPanel
+          onEquipmentChange={acousticTuning.handleEquipmentChange}
+          onEnvironmentChange={acousticTuning.handleEnvironmentChange}
+          onSourceLevelAdjust={acousticTuning.handleSourceLevelAdjust}
+          onSeaStateChange={acousticTuning.handleSeaStateChange}
+          onSpeedChange={acousticTuning.handleSpeedChange}
+        />
+      )}
 
       {/* TIME */}
       <div className="flex flex-col mr-8">
