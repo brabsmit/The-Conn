@@ -9,6 +9,9 @@ export class SonarArray {
     // When the submarine turns, noise appears to drift across the display
     private noiseField: Float32Array;
 
+    // Temporal evolution for realistic time-varying noise
+    private noisePhase: number = 0;
+
     constructor(numBeams: number = 720, beamWidth: number = 2.0, beamSpacing: number = 0.5) {
         this.numBeams = numBeams;
         this.beamWidth = beamWidth;
@@ -43,11 +46,31 @@ export class SonarArray {
 
     /**
      * Gets noise dither for a given absolute bearing (world-space)
+     * Includes slow temporal variation to prevent frozen streaky appearance
      * @param absoluteBearing True bearing in degrees (0-360)
      */
     private getNoiseDither(absoluteBearing: number): number {
         const idx = Math.floor(absoluteBearing) % 360;
-        return this.noiseField[idx];
+        const baseNoise = this.noiseField[idx];
+
+        // Add slow temporal variation (period ~30 seconds)
+        // This simulates moving biologics, turbulence, distant shipping changes
+        // Uses both the bearing and phase to create spatiotemporal variation
+        const temporalVariation = Math.sin(this.noisePhase + idx * 0.1) * 0.05; // ±5% variation
+
+        return baseNoise * (1.0 + temporalVariation);
+    }
+
+    /**
+     * Advances the noise field in time (call once per frame)
+     * Creates slow evolution to prevent streaky frozen appearance
+     */
+    public evolveNoise(deltaTime: number = 0.016): void {
+        // Advance phase slowly (full cycle in ~30 seconds at 60fps)
+        this.noisePhase += deltaTime * 0.2;
+        if (this.noisePhase > Math.PI * 2) {
+            this.noisePhase -= Math.PI * 2;
+        }
     }
 
     public clear(ambientNoiseDB: number, ownHeading: number = 0): void {
@@ -123,35 +146,34 @@ export class SonarArray {
         return 10 * Math.log10(p);
     }
 
-    // Hamming-Windowed Beam Profile (Modern Beamforming)
+    // Blackman-Windowed Beam Profile (Modern Digital Beamforming)
     // Real passive sonars use amplitude shading (windowing) to suppress side lobes
-    // Hamming window provides excellent side lobe rejection (-43 dB) with minimal main lobe broadening
+    // Blackman window provides exceptional side lobe rejection (-58 dB) for clean displays
     private arrayResponse(degreesDiff: number, width: number): number {
-        // The Hamming window is applied to the array aperture, which modifies the beam pattern
-        // Instead of pure sinc² (uniform weighting), we get a broader main lobe but much lower side lobes
+        // The Blackman window is applied to the array aperture, which modifies the beam pattern
+        // Provides superior side lobe suppression compared to Hamming (-43 dB) or Hanning (-32 dB)
+        // Trade-off: Main lobe width increases by ~1.45x compared to uniform weighting
 
-        // Beam pattern is approximately Gaussian-like with the Hamming window
-        // Main lobe width increases by ~1.3x compared to uniform weighting
-        // Side lobes suppressed from -13 dB (sinc²) to -43 dB (Hamming)
+        // Blackman-windowed arrays produce a very clean Gaussian-like main lobe
+        // with virtually invisible side lobes (first side lobe at -58 dB)
 
-        // For a Hamming-weighted array, the pattern resembles a raised Gaussian
-        // We model this as a combination of Gaussian main lobe + suppressed sinc side lobes
-
-        const sigma = width / 1.8; // Calibrated for Hamming window broadening
+        // Main lobe - slightly wider than Hamming due to more aggressive windowing
+        const sigma = width / 1.6; // Calibrated for Blackman window broadening (~45% wider)
         const gaussian = Math.exp(-(degreesDiff * degreesDiff) / (2 * sigma * sigma));
 
-        // Add minimal side lobes (Hamming still has small residual side lobes)
-        // First side lobe at -43 dB = power ratio of 0.00005
-        const x = (Math.PI * degreesDiff) / (width * 1.1);
+        // Side lobes are negligible with Blackman windowing
+        // First side lobe at -58 dB = power ratio of 0.0000016
+        // For visual purposes, we can essentially ignore them (below noise floor)
+        const x = (Math.PI * degreesDiff) / (width * 1.2);
         let sideLobe = 0.0;
 
         if (Math.abs(x) > 0.001) {
             const sinc = Math.sin(x) / x;
-            // Suppress side lobes by 30 dB (factor of 1000 in power)
-            sideLobe = (sinc * sinc) * 0.001;
+            // Suppress side lobes by 45 dB (factor of ~32000 in power)
+            sideLobe = (sinc * sinc) * 0.000032;
         }
 
-        // Combine main lobe (Gaussian) with heavily suppressed side lobes
+        // Combine main lobe (Gaussian) with negligible side lobes
         return Math.max(gaussian, sideLobe);
     }
 }

@@ -732,6 +732,10 @@ export class SonarEngine {
 
         // Task 116.2: Logic - use AcousticsEngine to get the global noise floor
         const currentNoiseFloor = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
+
+        // Evolve noise field over time (prevents frozen streaky appearance)
+        this.sonarArray.evolveNoise(deltaMS / 1000);
+
         // Pass ownHeading for world-space noise field (makes noise drift when turning)
         this.sonarArray.clear(currentNoiseFloor, ownHeading);
 
