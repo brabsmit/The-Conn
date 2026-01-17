@@ -11,18 +11,23 @@ export class AcousticsEngine {
      *
      * @param speedKts Ownship speed in knots
      * @param seaState Sea State (0-6)
+     * @param selfNoiseBase Base self-noise level in dB (equipment-dependent)
+     * @param flowNoiseFactor Flow noise coefficient (equipment-dependent)
      * @returns Noise Level in dB
      */
-    static calculateNoiseLevel(speedKts: number, seaState: number = 3): number {
+    static calculateNoiseLevel(
+        speedKts: number,
+        seaState: number = 3,
+        selfNoiseBase: number = ACOUSTICS.ARRAY.SELF_NOISE_BASE,
+        flowNoiseFactor: number = ACOUSTICS.ARRAY.FLOW_NOISE_FACTOR
+    ): number {
         // Ambient Noise (AN)
         const safeSeaState = Math.min(6, Math.max(0, Math.floor(seaState)));
         const an = ACOUSTICS.ENVIRONMENT.SEA_STATE_NOISE[safeSeaState];
 
         // Self Noise (SN)
         // Base Quiet + Flow Noise
-        const baseSN = ACOUSTICS.ARRAY.SELF_NOISE_BASE;
-        const flowFactor = ACOUSTICS.ARRAY.FLOW_NOISE_FACTOR;
-        let sn = baseSN + (speedKts * speedKts * flowFactor);
+        let sn = selfNoiseBase + (speedKts * speedKts * flowNoiseFactor);
 
         // Cavitation Penalty (Gradual onset with quadratic growth)
         // Modern submarine designs cavitate around 18-20 knots depending on depth

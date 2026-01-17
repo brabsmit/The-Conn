@@ -4,6 +4,7 @@ import { normalizeAngle, calculateTargetPosition } from '../lib/tma';
 import { SonarArray } from '../lib/SonarArray';
 import { AcousticsEngine } from '../lib/AcousticsEngine';
 import { ACOUSTICS } from '../config/AcousticConstants';
+import { getCurrentEquipment, getCurrentEnvironment, getCurrentSeaState, getSourceLevelAdjustment } from '../hooks/useAcousticTuning';
 
 // Types
 type SubmarineState = ReturnType<typeof useSubmarineStore.getState>;
@@ -729,12 +730,19 @@ export class SonarEngine {
 
         // 1. Reset Physics Array (Noise Floor)
         // Task 113.1: The Noise Manager (NL = AN + SN)
-        // We assume Sea State 3 and Deep Water for now (Standard Atlantic)
-        const seaState = 3;
-        const deepWater = true;
+        // Get runtime configuration from acoustic tuning
+        const environment = getCurrentEnvironment();
+        const equipment = getCurrentEquipment();
+        const seaState = getCurrentSeaState();
+        const deepWater = environment.deepWater;
 
         // Task 116.2: Logic - use AcousticsEngine to get the global noise floor
-        const currentNoiseFloor = AcousticsEngine.calculateNoiseLevel(Math.abs(ownSpeed), seaState);
+        const currentNoiseFloor = AcousticsEngine.calculateNoiseLevel(
+            Math.abs(ownSpeed),
+            seaState,
+            equipment.selfNoiseBase,
+            equipment.flowNoiseFactor
+        );
 
         // Pass ownHeading for world-space noise field (makes noise drift when turning)
         this.sonarArray.clear(currentNoiseFloor, ownHeading);
@@ -754,6 +762,10 @@ export class SonarEngine {
                  sourceLevel = 120 + (sourceLevel * 10);
             }
 
+            // Apply runtime source level adjustment based on contact type
+            const contactType = contact.type || 'MERCHANT';
+            sourceLevel += getSourceLevelAdjustment(contactType);
+
             // Cavitation (Gradual onset with realistic penalties)
             const cavitationSpeed = contact.cavitationSpeed || 18;
             if (contact.speed !== undefined && contact.speed > cavitationSpeed) {
@@ -772,7 +784,7 @@ export class SonarEngine {
             const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
             // Apply Directivity Index (DI) to received level
             // DI represents the array's ability to focus on the signal direction
-            const rl = sourceLevel - tl + ACOUSTICS.ARRAY.DIRECTIVITY_INDEX;
+            const rl = sourceLevel - tl + equipment.directivityIndex;
 
             // Geometry
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
@@ -795,14 +807,14 @@ export class SonarEngine {
             // We pass the physical beam width.
             // Task 151.3: Physics Check - SonarArray.addSignal converts dB to Power
             // Power = 10^((SL - TL) / 10). Signal 'rl' passed here is (SL - TL).
-            this.sonarArray.addSignal(relBearing, signal, ACOUSTICS.ARRAY.BEAM_WIDTH);
+            this.sonarArray.addSignal(relBearing, signal, equipment.beamWidth);
         });
 
         // 3. Torpedoes (Loud!)
         torpedoes.forEach((torp) => {
             if (torp.status !== 'RUNNING') return;
 
-            const sourceLevel = ACOUSTICS.SOURCE_LEVELS.TORPEDO;
+            const sourceLevel = ACOUSTICS.SOURCE_LEVELS.TORPEDO + getSourceLevelAdjustment('TORPEDO');
 
             const dx = torp.position.x - ownX;
             const dy = torp.position.y - ownY;
@@ -811,22 +823,22 @@ export class SonarEngine {
             // Task 113.2: The Transmission Loss Model (TL)
             const tl = AcousticsEngine.calculateTransmissionLoss(distYards, deepWater);
             // Apply Directivity Index (DI) to received level
-            const rl = sourceLevel - tl + ACOUSTICS.ARRAY.DIRECTIVITY_INDEX;
+            const rl = sourceLevel - tl + equipment.directivityIndex;
 
             const mathAngleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
             const trueBearing = normalizeAngle(90 - mathAngleDeg);
             const relBearing = normalizeAngle(trueBearing - ownHeading);
 
             // Task 129.1: Revert "Range Step" for Torpedoes
-            this.sonarArray.addSignal(relBearing, rl, ACOUSTICS.ARRAY.BEAM_WIDTH);
+            this.sonarArray.addSignal(relBearing, rl, equipment.beamWidth);
         });
 
         // 4. Render Pipeline
         const alpha = 0.3; // Task 120.2: Smoothing Factor
 
         // Dynamic Range Constants
-        const renderFloor = currentNoiseFloor - ACOUSTICS.DISPLAY.NOISE_FLOOR_OFFSET; // Task 136.3: Lower floor to visualize noise
-        const renderCeiling = renderFloor + ACOUSTICS.DISPLAY.DYNAMIC_RANGE; // Task 119.2: Widen the Dynamic Window
+        const renderFloor = currentNoiseFloor - equipment.noiseFloorOffset; // Task 136.3: Lower floor to visualize noise
+        const renderCeiling = renderFloor + equipment.dynamicRange; // Task 119.2: Widen the Dynamic Window
 
         // Task 124.1: Sanity Check (Throttled Log)
         const now = Date.now();
