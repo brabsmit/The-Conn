@@ -176,10 +176,6 @@ export const TMAControls = () => {
                         data-testid="tracker-next"
                     >▶</button>
                 </div>
-
-                <div className="text-[10px] text-zinc-600">
-                    {selectedTracker && activeLeg ? `DOT STACK: ${Math.round(gameTime - activeLeg.startTime)}s` : 'NO CONTACT'}
-                </div>
             </div>
 
             <div className="grid grid-cols-4 gap-1.5">
