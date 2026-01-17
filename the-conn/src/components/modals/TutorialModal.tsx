@@ -15,7 +15,7 @@ const tutorialSteps = [
         content: (
             <div className="space-y-4">
                 <p className="text-lg">
-                    You are the commander of a modern submarine. Your mission is to detect, track, and engage enemy contacts using passive sonar and tactical analysis.
+                    You are the captain of a modern submarine. Your mission is to detect, track, and engage enemy contacts using passive sonar and tactical analysis.
                 </p>
                 <p>
                     This tutorial will guide you through the essential controls and displays.
@@ -70,7 +70,7 @@ const tutorialSteps = [
                     </div>
                     <div className="p-3 bg-cyan-900/20 border border-cyan-700/50 rounded">
                         <p className="text-cyan-400 font-bold">NAV STATION</p>
-                        <p className="text-sm mt-1">Navigation - See the true tactical situation (positions, velocities)</p>
+                        <p className="text-sm mt-1">Navigation - See the tactical situation (positions, velocities)</p>
                     </div>
                 </div>
             </div>
@@ -150,7 +150,7 @@ const tutorialSteps = [
                         <span className="text-white font-bold">Message Ticker</span>: Important events and alerts (click to see history)
                     </li>
                     <li>
-                        <span className="text-white font-bold">TIMESCALE</span>: Control simulation speed (FAST/MED/SLOW)
+                        <span className="text-white font-bold">TIMESCALE</span>: (FAST/MED/SLOW)
                     </li>
                 </ul>
                 <div className="mt-4 p-3 bg-zinc-800/50 border border-white/10 rounded">
@@ -175,8 +175,7 @@ const tutorialSteps = [
                             <li>Watch the sonar for contacts</li>
                             <li>Click on a bright line to track it</li>
                             <li>Maneuver to get different bearing angles</li>
-                            <li>Use TMA controls to solve for range/course/speed</li>
-                            <li>Switch to WCS and engage if hostile</li>
+                            <li>Keep all contacts outside 2000 yards!</li>
                         </ol>
                     </div>
                     <div className="p-4 bg-blue-900/20 border border-blue-700/50 rounded">
