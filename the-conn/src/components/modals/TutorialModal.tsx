@@ -97,7 +97,7 @@ const tutorialSteps = [
                         <span className="text-white font-bold">Mark solution</span> when confident about the contact's position
                     </li>
                     <li>
-                        <span className="text-white font-bold">Drop contacts</span> using the × button if tracking too many
+                        <span className="text-white font-bold">Drop contacts</span> using the × button next to the contact selector if tracking too many
                     </li>
                 </ol>
                 <div className="mt-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded">

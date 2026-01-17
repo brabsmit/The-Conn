@@ -10,6 +10,7 @@ export const TMAControls = () => {
   const addSolutionLeg = useSubmarineStore((state) => state.addSolutionLeg);
   const gameTime = useSubmarineStore((state) => state.gameTime);
   const setSelectedTrackerId = useSubmarineStore((state) => state.setSelectedTracker);
+  const deleteTracker = useSubmarineStore((state) => state.deleteTracker);
 
   // Ownship State
   const x = useSubmarineStore((state) => state.x);
@@ -85,6 +86,24 @@ export const TMAControls = () => {
       setSelectedTrackerId(activeTrackers[next].id);
   };
 
+  const handleDropContact = () => {
+      if (!selectedTrackerId) return;
+      const activeTrackers = trackers.filter(t => t.kind !== 'WEAPON');
+
+      deleteTracker(selectedTrackerId);
+
+      // Auto-select next tracker if available
+      if (activeTrackers.length > 1) {
+          const currentIdx = activeTrackers.findIndex(t => t.id === selectedTrackerId);
+          const nextIdx = currentIdx < activeTrackers.length - 1 ? currentIdx + 1 : currentIdx - 1;
+          if (nextIdx >= 0 && activeTrackers[nextIdx]) {
+              setSelectedTrackerId(activeTrackers[nextIdx].id);
+          }
+      } else {
+          setSelectedTrackerId(null);
+      }
+  };
+
   const formatTime = (t: number | undefined) => {
       if (t === undefined) return "--:--";
       const minutes = Math.floor(t / 60);
@@ -149,32 +168,44 @@ export const TMAControls = () => {
         <div className="flex-none flex-shrink-0 p-2 bg-black/40 border-b border-white/10 shadow-inner shadow-black/50">
             <div className="flex justify-between items-center mb-2">
                 {/* CONTACT SELECTOR */}
-                <div className="flex items-center gap-1 bg-black/40 rounded border border-white/10 p-0.5">
-                    <button
-                        onClick={() => cycleTracker(-1)}
-                        className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-cyan-400 hover:bg-white/5 rounded text-[10px]"
-                        data-testid="tracker-prev"
-                    >◀</button>
+                <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 bg-black/40 rounded border border-white/10 p-0.5">
+                        <button
+                            onClick={() => cycleTracker(-1)}
+                            className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-cyan-400 hover:bg-white/5 rounded text-[10px]"
+                            data-testid="tracker-prev"
+                        >◀</button>
 
-                    <select
-                        value={selectedTrackerId || ''}
-                        onChange={(e) => setSelectedTrackerId(e.target.value)}
-                        className="bg-transparent text-[10px] font-bold text-cyan-400 text-center outline-none border-none appearance-none cursor-pointer w-32"
-                        data-testid="tracker-select"
-                    >
-                        {!selectedTrackerId && <option value="">SELECT TRK</option>}
-                        {trackers.map(t => (
-                            <option key={t.id} value={t.id} className="bg-zinc-900 text-zinc-300">
-                                {t.id} {t.classification ? `(${t.classification.substring(0,3)})` : ''}
-                            </option>
-                        ))}
-                    </select>
+                        <select
+                            value={selectedTrackerId || ''}
+                            onChange={(e) => setSelectedTrackerId(e.target.value)}
+                            className="bg-transparent text-[10px] font-bold text-cyan-400 text-center outline-none border-none appearance-none cursor-pointer w-32"
+                            data-testid="tracker-select"
+                        >
+                            {!selectedTrackerId && <option value="">SELECT TRK</option>}
+                            {trackers.map(t => (
+                                <option key={t.id} value={t.id} className="bg-zinc-900 text-zinc-300">
+                                    {t.id} {t.classification ? `(${t.classification.substring(0,3)})` : ''}
+                                </option>
+                            ))}
+                        </select>
 
-                    <button
-                        onClick={() => cycleTracker(1)}
-                        className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-cyan-400 hover:bg-white/5 rounded text-[10px]"
-                        data-testid="tracker-next"
-                    >▶</button>
+                        <button
+                            onClick={() => cycleTracker(1)}
+                            className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-cyan-400 hover:bg-white/5 rounded text-[10px]"
+                            data-testid="tracker-next"
+                        >▶</button>
+                    </div>
+
+                    {/* DROP CONTACT BUTTON */}
+                    {selectedTrackerId && (
+                        <button
+                            onClick={handleDropContact}
+                            className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-red-900/20 rounded border border-white/10 text-sm font-bold"
+                            title="Drop Contact"
+                            data-testid="drop-contact"
+                        >×</button>
+                    )}
                 </div>
             </div>
 
