@@ -96,7 +96,16 @@ const tutorialSteps = [
                     <li>
                         <span className="text-white font-bold">Mark solution</span> when confident about the contact's position
                     </li>
+                    <li>
+                        <span className="text-white font-bold">Drop contacts</span> using the × button if tracking too many
+                    </li>
                 </ol>
+                <div className="mt-4 p-3 bg-amber-900/20 border border-amber-700/50 rounded">
+                    <p className="text-amber-400 font-bold text-sm mb-2">⚠️ Baffles (Blind Zone)</p>
+                    <p className="text-xs">
+                        Your sonar array is blocked by your hull in the rear 60° arc (150-210° relative). Contacts entering baffles will hold their last bearing and automatically reappear when they exit.
+                    </p>
+                </div>
                 <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded">
                     <p className="text-sm">
                         <span className="text-blue-400 font-bold">TIP:</span> Change your own course to get different bearing angles - this helps solve the range triangle.

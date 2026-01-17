@@ -419,8 +419,11 @@ export function updateTracker(
   if (updatedTracker.contactId) {
     const reading = context.sensorReadings.find((r) => r.contactId === updatedTracker.contactId);
     if (reading) {
+      // Contact is visible (not in baffles)
       updatedTracker.currentBearing = reading.bearing;
     }
+    // If no reading found, contact is likely in baffles
+    // Keep last known bearing - bearing will automatically update when contact exits baffles
   }
 
   // Bearing smoothing
