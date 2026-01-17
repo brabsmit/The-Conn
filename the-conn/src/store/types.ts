@@ -168,6 +168,14 @@ export interface GameMetrics {
   tmaErrorCount: number;
 }
 
+export interface TowedArrayState {
+  deployed: boolean;
+  length: number; // feet
+  cableX: number; // world position of array end
+  cableY: number; // world position of array end
+  cableHeading: number; // heading of array (lags behind ownship during turns)
+}
+
 export interface SubmarineState {
   appState: 'MENU' | 'GAME';
   expertMode: boolean;
@@ -214,6 +222,8 @@ export interface SubmarineState {
   orderedSpeed: number;
   orderedDepth: number;
 
+  towedArray: TowedArrayState;
+
   setAppState: (state: 'MENU' | 'GAME') => void;
   setExpertMode: (enabled: boolean) => void;
   toggleGodMode: () => void;
@@ -239,4 +249,6 @@ export interface SubmarineState {
   loadScenario: (state: Partial<SubmarineState>, id?: string) => void;
   resetSimulation: () => void;
   tick: (delta?: number) => void;
+  setTowedArrayDeployed: (deployed: boolean) => void;
+  setTowedArrayLength: (length: number) => void;
 }

@@ -59,6 +59,13 @@ const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode'
   orderedHeading: 0,
   orderedSpeed: 5,
   orderedDepth: 150,
+  towedArray: {
+    deployed: true, // Start deployed for now
+    length: 1800, // TB-29 typical length in feet
+    cableX: 0,
+    cableY: -1800 / 3, // Start behind ownship (yards conversion)
+    cableHeading: 0,
+  },
 });
 
 export const useSubmarineStore = create<SubmarineState>((set) => ({
@@ -975,6 +982,14 @@ export const useSubmarineStore = create<SubmarineState>((set) => ({
         metrics: newMetrics
       };
     }),
+
+  setTowedArrayDeployed: (deployed) => set((state) => ({
+    towedArray: { ...state.towedArray, deployed }
+  })),
+
+  setTowedArrayLength: (length) => set((state) => ({
+    towedArray: { ...state.towedArray, length }
+  })),
 }));
 
 if (typeof window !== 'undefined' && import.meta.env.DEV) {

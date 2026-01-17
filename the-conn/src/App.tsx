@@ -3,6 +3,7 @@ import { Panel } from './components/ui/Panel';
 import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
 import SonarDisplay from './components/screens/SonarDisplay';
+import TowedArrayDisplay from './components/screens/TowedArrayDisplay';
 import TMADisplay from './components/screens/TMADisplay';
 import WCSDisplay from './components/screens/WCSDisplay';
 import GeoDisplay from './components/screens/GeoDisplay';
@@ -111,14 +112,27 @@ function App() {
       {/* LAYER 2: Main Workspace (Flex Grow) */}
       <div className="flex-grow min-h-0 grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
         
-        {/* PANE A: Sonar Panel (Left) */}
-        <div className="h-full flex flex-col gap-4 min-w-0">
+        {/* PANE A: Sonar Panel (Left) - Split Hull/Towed */}
+        <div className="h-full flex flex-col gap-2 min-w-0">
+          {/* Hull Array (60%) */}
           <Panel
-            title="Sonar Array"
-            className="h-full flex flex-col overflow-hidden"
+            title="Hull Array (Spherical)"
+            className="flex flex-col overflow-hidden"
+            style={{ height: '60%' }}
           >
              <div className="flex-grow w-full bg-black rounded shadow-inset border border-white/10 relative overflow-hidden">
                 <SonarDisplay />
+             </div>
+          </Panel>
+
+          {/* Towed Array (40%) */}
+          <Panel
+            title="Towed Array (TB-29)"
+            className="flex flex-col overflow-hidden"
+            style={{ height: '40%' }}
+          >
+             <div className="flex-grow w-full bg-black rounded shadow-inset border border-white/10 relative overflow-hidden">
+                <TowedArrayDisplay />
              </div>
           </Panel>
         </div>
