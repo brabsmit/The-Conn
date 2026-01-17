@@ -12,7 +12,7 @@ export * from './types';
 const MAX_HISTORY = 25000;
 
 // FULL DEFAULT STATE FOR RESET
-const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'addSolutionLeg' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick'> => ({
+const getInitialState = (): Omit<SubmarineState, 'setAppState' | 'setExpertMode' | 'toggleGodMode' | 'setOrderedHeading' | 'setOrderedSpeed' | 'setOrderedDepth' | 'addLog' | 'designateTracker' | 'setSelectedTracker' | 'deleteTracker' | 'updateTrackerSolution' | 'addSolutionLeg' | 'setViewScale' | 'setActiveStation' | 'loadTube' | 'floodTube' | 'equalizeTube' | 'openTube' | 'fireTube' | 'addContact' | 'updateContact' | 'removeContact' | 'loadScenario' | 'resetSimulation' | 'tick' | 'setTowedArrayDeployed' | 'setTowedArrayLength'> => ({
   appState: 'MENU',
   expertMode: false,
   godMode: false,

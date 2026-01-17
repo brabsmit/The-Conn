@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { SonarEngine } from '../../services/SonarEngine';
 import { useResize } from '../../hooks/useResize';
-import { useSubmarineStore } from '../../store/useSubmarineStore';
 
 const TowedArrayDisplay: React.FC = () => {
     const { ref: containerRef, width: rawWidth, height: rawHeight } = useResize();

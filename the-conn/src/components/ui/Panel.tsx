@@ -6,13 +6,14 @@ interface PanelProps {
   className?: string;
   variant?: 'default' | 'danger';
   headerRight?: React.ReactNode;
+  style?: React.CSSProperties;
 }
 
-export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default', headerRight }) => {
+export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default', headerRight, style }) => {
   const borderColor = variant === 'danger' ? 'border-alert/50' : 'border-panel-border';
-  
+
   return (
-    <div className={`relative flex flex-col bg-panel-bg border-2 ${borderColor} rounded-sm shadow-hard ${className}`}>
+    <div className={`relative flex flex-col bg-panel-bg border-2 ${borderColor} rounded-sm shadow-hard ${className}`} style={style}>
       {/* The "Texture" Overlay */}
       <div className="absolute inset-0 bg-noise pointer-events-none opacity-50" />
       
