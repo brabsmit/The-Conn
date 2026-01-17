@@ -113,16 +113,15 @@ function App() {
       <div className="flex-grow min-h-0 grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
         
         {/* PANE A: Sonar Panel (Left) - Split Hull/Towed */}
-        <div className="h-full flex flex-col gap-2 min-w-0">
+        <div className="h-full flex flex-col gap-1 min-w-0">
           {/* Hull Array (60%) */}
           <Panel
             title="Hull Array (Spherical)"
             className="flex flex-col overflow-hidden"
             style={{ height: '60%' }}
+            noPadding
           >
-             <div className="flex-grow w-full bg-black rounded shadow-inset border border-white/10 relative overflow-hidden">
-                <SonarDisplay />
-             </div>
+             <SonarDisplay />
           </Panel>
 
           {/* Towed Array (40%) */}
@@ -130,10 +129,9 @@ function App() {
             title="Towed Array (TB-29)"
             className="flex flex-col overflow-hidden"
             style={{ height: '40%' }}
+            noPadding
           >
-             <div className="flex-grow w-full bg-black rounded shadow-inset border border-white/10 relative overflow-hidden">
-                <TowedArrayDisplay />
-             </div>
+             <TowedArrayDisplay />
           </Panel>
         </div>
 

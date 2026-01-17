@@ -7,16 +7,17 @@ interface PanelProps {
   variant?: 'default' | 'danger';
   headerRight?: React.ReactNode;
   style?: React.CSSProperties;
+  noPadding?: boolean;
 }
 
-export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default', headerRight, style }) => {
+export const Panel: React.FC<PanelProps> = ({ title, children, className = '', variant = 'default', headerRight, style, noPadding = false }) => {
   const borderColor = variant === 'danger' ? 'border-alert/50' : 'border-panel-border';
 
   return (
     <div className={`relative flex flex-col bg-panel-bg border-2 ${borderColor} rounded-sm shadow-hard ${className}`} style={style}>
       {/* The "Texture" Overlay */}
       <div className="absolute inset-0 bg-noise pointer-events-none opacity-50" />
-      
+
       {/* The Mounting Bolts (Visual Candy) */}
       <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-zinc-700 shadow-inner" />
       <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-zinc-700 shadow-inner" />
@@ -36,7 +37,7 @@ export const Panel: React.FC<PanelProps> = ({ title, children, className = '', v
       </div>
 
       {/* The Content Area */}
-      <div className="relative z-10 flex-1 p-4 flex flex-col min-h-0">
+      <div className={`relative z-10 flex-1 flex flex-col min-h-0 ${noPadding ? '' : 'p-4'}`}>
         {children}
       </div>
     </div>
