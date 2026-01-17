@@ -15,6 +15,7 @@ interface AcousticTuningPanelProps {
     onSourceLevelAdjust?: (contactType: string, delta: number) => void;
     onSeaStateChange?: (seaState: number) => void;
     onSpeedChange?: (speed: number) => void;
+    onClose?: () => void;
 }
 
 export const AcousticTuningPanel: React.FC<AcousticTuningPanelProps> = ({
@@ -23,8 +24,8 @@ export const AcousticTuningPanel: React.FC<AcousticTuningPanelProps> = ({
     onSourceLevelAdjust,
     onSeaStateChange,
     onSpeedChange,
+    onClose,
 }) => {
-    const [collapsed, setCollapsed] = useState(false);
     const [activeTab, setActiveTab] = useState<'equipment' | 'environment' | 'contacts' | 'ownship'>('equipment');
 
     const [selectedEquipment, setSelectedEquipment] = useState('STANDARD');
@@ -56,16 +57,6 @@ export const AcousticTuningPanel: React.FC<AcousticTuningPanelProps> = ({
         onSourceLevelAdjust?.(contactType, delta);
     };
 
-    if (collapsed) {
-        return (
-            <div style={styles.collapsedContainer}>
-                <button onClick={() => setCollapsed(false)} style={styles.expandButton}>
-                    🎛️ Acoustic Tuning
-                </button>
-            </div>
-        );
-    }
-
     const equipment = SONAR_EQUIPMENT[selectedEquipment];
     const environment = ENVIRONMENTS[selectedEnvironment];
 
@@ -73,7 +64,7 @@ export const AcousticTuningPanel: React.FC<AcousticTuningPanelProps> = ({
         <div style={styles.container}>
             <div style={styles.header}>
                 <h3 style={styles.title}>🎛️ Acoustic Tuning Panel</h3>
-                <button onClick={() => setCollapsed(true)} style={styles.collapseButton}>
+                <button onClick={onClose} style={styles.collapseButton}>
                     ✕
                 </button>
             </div>
@@ -344,22 +335,6 @@ export const AcousticTuningPanel: React.FC<AcousticTuningPanelProps> = ({
 };
 
 const styles: Record<string, React.CSSProperties> = {
-    collapsedContainer: {
-        position: 'fixed',
-        top: '10px',
-        right: '10px',
-        zIndex: 9999,
-    },
-    expandButton: {
-        padding: '8px 16px',
-        backgroundColor: '#2a2a2a',
-        color: '#00ff00',
-        border: '1px solid #00ff00',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontFamily: 'monospace',
-        fontSize: '12px',
-    },
     container: {
         position: 'fixed',
         top: '10px',

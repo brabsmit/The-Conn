@@ -107,6 +107,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           onSourceLevelAdjust={acousticTuning.handleSourceLevelAdjust}
           onSeaStateChange={acousticTuning.handleSeaStateChange}
           onSpeedChange={acousticTuning.handleSpeedChange}
+          onClose={() => setShowAcousticTuningPanel(false)}
         />
       )}
 
