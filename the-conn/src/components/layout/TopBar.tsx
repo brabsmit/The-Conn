@@ -6,6 +6,12 @@ import { useAcousticTuning } from '../../hooks/useAcousticTuning';
 import type { ViewScale } from '../../store/useSubmarineStore';
 import { LogHistory } from './LogHistory';
 
+interface TopBarProps {
+  showDevTools?: boolean;
+  showAcousticTuning?: boolean;
+  onOpenSettings?: () => void;
+}
+
 const formatTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -38,9 +44,13 @@ const TimeControls = () => {
   );
 };
 
-export const TopBar = () => {
+export const TopBar: React.FC<TopBarProps> = ({
+  showDevTools = false,
+  showAcousticTuning: showAcousticTuningProp = false,
+  onOpenSettings
+}) => {
   const [showScenarioManager, setShowScenarioManager] = useState(false);
-  const [showAcousticTuning, setShowAcousticTuning] = useState(false);
+  const [showAcousticTuningPanel, setShowAcousticTuningPanel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState(false);
 
@@ -90,7 +100,7 @@ export const TopBar = () => {
   return (
     <div className="w-full h-14 bg-bulkhead bg-noise z-50 border-b border-white/10 shadow-lg flex items-center px-6 font-mono text-zinc-300 select-none flex-shrink-0">
       {showScenarioManager && <ScenarioManager onClose={() => setShowScenarioManager(false)} />}
-      {showAcousticTuning && (
+      {showAcousticTuningPanel && (
         <AcousticTuningPanel
           onEquipmentChange={acousticTuning.handleEquipmentChange}
           onEnvironmentChange={acousticTuning.handleEnvironmentChange}
@@ -164,22 +174,37 @@ export const TopBar = () => {
             <TimeControls />
 
             <div className="flex gap-1">
-              <button
-                  onClick={() => setShowAcousticTuning(!showAcousticTuning)}
-                  className={`text-[10px] border px-2 py-0.5 rounded ${
-                    showAcousticTuning
-                      ? 'bg-green-900/70 text-green-300 border-green-700 hover:bg-green-900'
-                      : 'bg-green-900/50 text-green-300 border-green-800 hover:bg-green-900 hover:text-white'
-                  }`}
-              >
-                  🎛️
-              </button>
+              {/* Acoustic Tuning Button - Only shown if enabled in settings */}
+              {showAcousticTuningProp && (
+                <button
+                    onClick={() => setShowAcousticTuningPanel(!showAcousticTuningPanel)}
+                    className={`text-[10px] border px-2 py-0.5 rounded ${
+                      showAcousticTuningPanel
+                        ? 'bg-green-900/70 text-green-300 border-green-700 hover:bg-green-900'
+                        : 'bg-green-900/50 text-green-300 border-green-800 hover:bg-green-900 hover:text-white'
+                    }`}
+                >
+                    🎛️
+                </button>
+              )}
 
+              {/* Scenario Manager Button - Only shown if enabled in settings */}
+              {showDevTools && (
+                <button
+                    onClick={() => setShowScenarioManager(true)}
+                    className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+                >
+                    DEV
+                </button>
+              )}
+
+              {/* Settings Button - Always visible */}
               <button
-                  onClick={() => setShowScenarioManager(true)}
-                  className="text-[10px] bg-red-900/50 text-red-300 border border-red-800 px-2 py-0.5 rounded hover:bg-red-900 hover:text-white"
+                  onClick={onOpenSettings}
+                  className="text-[10px] bg-cyan-900/50 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded hover:bg-cyan-900 hover:text-white"
+                  title="Settings and Help (Press ?)"
               >
-                  DEV
+                  ⚙️
               </button>
             </div>
           </div>

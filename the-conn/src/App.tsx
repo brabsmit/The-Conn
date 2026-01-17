@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Panel } from './components/ui/Panel';
 import { useSubmarineStore } from './store/useSubmarineStore';
 import { useInterval } from './hooks/useInterval';
@@ -11,6 +11,8 @@ import { TopBar } from './components/layout/TopBar';
 import { HelmScreen } from './components/screens/HelmScreen';
 import { AlertOverlay } from './components/effects/AlertOverlay';
 import { DebriefModal } from './components/modals/DebriefModal';
+import { TutorialModal } from './components/modals/TutorialModal';
+import { SettingsModal } from './components/modals/SettingsModal';
 import { ScenarioSelect } from './components/screens/ScenarioSelect';
 
 function App() {
@@ -19,6 +21,25 @@ function App() {
   const setActiveStation = useSubmarineStore(state => state.setActiveStation);
   const appState = useSubmarineStore(state => state.appState);
   const toggleGodMode = useSubmarineStore(state => state.toggleGodMode);
+
+  // UI State
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDevTools, setShowDevTools] = useState(false);
+  const [showAcousticTuning, setShowAcousticTuning] = useState(false);
+
+  // First-time user detection
+  useEffect(() => {
+    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+    }
+  }, []);
+
+  const handleCloseTutorial = () => {
+    setShowTutorial(false);
+    localStorage.setItem('hasSeenTutorial', 'true');
+  };
 
   // Expose store to window for debugging and Playwright tests
   useEffect(() => {
@@ -35,6 +56,12 @@ function App() {
       if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
         e.preventDefault();
         toggleGodMode();
+      }
+
+      // Settings/Help: ? key
+      if (e.key === '?' && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setShowSettings(true);
       }
     };
 
@@ -55,9 +82,31 @@ function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bulkhead bg-noise font-mono relative">
       <AlertOverlay />
       <DebriefModal />
-      
+
+      {/* Tutorial Modal */}
+      {showTutorial && <TutorialModal onClose={handleCloseTutorial} />}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          showDevTools={showDevTools}
+          onToggleDevTools={() => setShowDevTools(!showDevTools)}
+          showAcousticTuning={showAcousticTuning}
+          onToggleAcousticTuning={() => setShowAcousticTuning(!showAcousticTuning)}
+          onShowTutorial={() => {
+            setShowSettings(false);
+            setShowTutorial(true);
+          }}
+        />
+      )}
+
       {/* LAYER 1: Top Bar (Fixed Height) */}
-      <TopBar />
+      <TopBar
+        showDevTools={showDevTools}
+        showAcousticTuning={showAcousticTuning}
+        onOpenSettings={() => setShowSettings(true)}
+      />
 
       {/* LAYER 2: Main Workspace (Flex Grow) */}
       <div className="flex-grow min-h-0 grid grid-cols-[33fr_42fr_25fr] w-full overflow-hidden p-2 md:p-4 gap-2 md:gap-4 relative z-10">
